@@ -1,0 +1,4 @@
+# Expected errors for test_question.il
+# Format: line|func|type|var
+#
+2|test|undeclared(function)|geOpen

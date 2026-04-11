@@ -1,0 +1,8 @@
+# Expected errors for test_define1.il (without define file)
+# Format: line|function|error_type|variable
+# All 4 items should be reported as errors
+
+7|testDefineFeature|undeclared(function)|func1
+8|testDefineFeature|undeclared(function)|func2
+11|testDefineFeature|undeclared(variable)|variable1
+12|testDefineFeature|undeclared(variable)|variable2

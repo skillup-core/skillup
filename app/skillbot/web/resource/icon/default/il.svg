@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <!-- Left paren -->
+  <path d="M6,3.5 C3,5.5 3,10.5 6,12.5" fill="none" stroke="#d4a800" stroke-width="1.8" stroke-linecap="round"/>
+  <!-- Right paren -->
+  <path d="M10,3.5 C13,5.5 13,10.5 10,12.5" fill="none" stroke="#d4a800" stroke-width="1.8" stroke-linecap="round"/>
+</svg>

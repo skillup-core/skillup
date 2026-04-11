@@ -1,0 +1,6 @@
+# Expected errors for test_define2.il (with define file)
+# Format: line|function|error_type|variable
+# Only func2 and variable2 should be reported (func1 and variable1 are in test_define.txt)
+
+9|testDefineFeature|undeclared(function)|func2
+13|testDefineFeature|undeclared(variable)|variable2

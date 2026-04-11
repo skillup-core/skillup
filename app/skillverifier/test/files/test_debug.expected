@@ -1,0 +1,4 @@
+# Expected errors for test_debug.il
+# Format: line|func|type|var
+#
+4|myFunction1|undeclared(function)|myFunction2

@@ -1,0 +1,3470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skillup Desktop</title>
+    <link rel="icon" type="image/x-icon" href="/common/resource/img/favicon.ico">
+    <link rel="icon" type="image/svg+xml" href="/common/resource/img/favicon.svg">
+
+    <!-- Skillup Common Resources -->
+    <link rel="stylesheet" href="/common/bootstrap/5.3.3/bootstrap.min.css">
+
+    <!-- Default theme CSS -->
+    <link rel="stylesheet" href="/common/style/default.css" id="theme-stylesheet">
+
+    <!-- Define callJS handler BEFORE common.js loads -->
+    <script>
+        // Handler for callJS from Python backend
+        // Must be defined early so common.js can call it
+        window.onVerifierStateUpdate = function(status) {
+            try {
+                // Forward to ALL skillverifier iframes via postMessage
+                // This ensures that all views (verify, dashboard, results) get updates
+                // even when they're cached/hidden
+                const statusJson = typeof status === 'string' ? status : JSON.stringify(status);
+
+                // Find all iframes for skillverifier app
+                // Need to find app ID dynamically since it's now hex-based (e.g., 550e8400)
+                const skillverifierApp = apps ? apps.find(a => a.id_name === 'skillverifier') : null;
+                const appId = skillverifierApp ? skillverifierApp.id : null;
+
+                if (appId) {
+                    const allIframes = document.querySelectorAll(`#app-content iframe[data-app-id="${appId}"]`);
+
+                    if (allIframes.length > 0) {
+                        allIframes.forEach(iframe => {
+                            if (iframe.contentWindow) {
+                                iframe.contentWindow.postMessage({
+                                    action: 'callJS',
+                                    functionName: 'onVerifierStateUpdate',
+                                    args: statusJson
+                                }, '*');
+                            }
+                        });
+                    }
+                } else {
+                    console.warn('[Desktop] Skillverifier app not found for state update');
+                }
+            } catch (error) {
+                console.error('[Desktop] Error in onVerifierStateUpdate:', error);
+            }
+        };    </script>
+
+    <style>
+        /* Desktop-specific styles - CSS variables inherited from default.css */
+
+        body {
+            overflow: hidden;
+        }
+
+        .container-fluid {
+            display: flex;
+            height: 100vh;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+
+        /* Standalone app window: hide chrome, fill with app content */
+        body.app-standalone nav.sidebar,
+        body.app-standalone .sidebar-divider,
+        body.app-standalone header.top-bar { display: none !important; }
+        body.app-standalone main.main-content { width: 100%; }
+        body.app-standalone #app-content {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            display: block !important;
+        }
+        body.app-standalone #app-content iframe {
+            width: 100% !important; height: 100% !important;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 180px;
+            min-width: 180px;
+            background: var(--bg-secondary);
+            display: flex;
+            flex-direction: column;
+            transition: width 0.2s ease, min-width 0.2s ease;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .sidebar.collapsed {
+            width: 50px;
+            min-width: 50px;
+        }
+
+        /* Sidebar Divider (clickable border) */
+        .sidebar-divider {
+            width: 3px;
+            min-width: 3px;
+            background: var(--border-color);
+            cursor: pointer;
+            position: relative;
+            transition: background 0.15s;
+            flex-shrink: 0;
+        }
+
+        .sidebar-divider:hover {
+            background: var(--text-secondary);
+        }
+
+        /* Virtual hover area (invisible) */
+        .sidebar-divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 18px;   /* Virtual hover area width */
+            height: 80px;  /* Virtual hover area height */
+        }
+
+        /* Grip: centered with expanded hit area */
+        .sidebar-divider::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 12px;   /* Grip width */
+            height: 32px;  /* Grip height */
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            background-color: var(--text-secondary);
+            background-clip: padding-box;
+            border-radius: 2px;
+            opacity: 0.4;
+        }
+
+        .sidebar-divider:hover::after {
+            opacity: 0.85;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        .sidebar.collapsed .sidebar-header {
+            padding: 14px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .sidebar.collapsed .sidebar-header h1 {
+            font-size: 0;
+            justify-content: center;
+        }
+
+        .sidebar.collapsed .sidebar-header h1 img {
+            margin-right: 0;
+            width: 22px;
+            height: 22px;
+            font-size: initial;
+        }
+
+        .sidebar.collapsed .sidebar-header h1 .brand-text {
+            display: none;
+        }
+
+        .sidebar.collapsed .sidebar-header p {
+            display: none;
+        }
+
+        .sidebar-header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            margin: 0;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+        }
+
+        .sidebar-header h1 img {
+            width: 24px;
+            height: 24px;
+            margin-right: 8px;
+        }
+
+        .brand-text {
+            display: inline-flex;
+            align-items: baseline;
+            line-height: 1;
+        }
+
+        .brand-skill {
+            color: var(--brand-skill-color, #ffffff);
+            font-weight: 300;
+            font-size: 0.95em;
+            letter-spacing: 0px;
+            transform: scaleX(1.25);
+            display: inline-block;
+        }
+
+        .brand-up {
+            color: #d97706;
+            font-weight: 800;
+            font-size: 0.65em;
+            position: relative;
+            top: -6px;
+            margin-left: 7px;
+            letter-spacing: 0.5px;
+        }
+
+        .sidebar-header p {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin: 5px 0 0 0;
+        }
+
+        .sidebar-menu {
+            flex: 1;
+            padding: 10px 0;
+            overflow-y: auto;
+        }
+
+        .menu-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 20px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+
+        .menu-item:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .menu-item.active {
+            background: var(--bg-tertiary);
+            color: var(--accent-text);
+            border-left-color: var(--accent-text);
+        }
+
+        .menu-item svg {
+            width: 18px;
+            height: 18px;
+            margin-right: 12px;
+            fill: currentColor;
+            flex-shrink: 0;
+        }
+
+        .app-menu-icon {
+            width: 18px;
+            height: 18px;
+            margin-right: 12px;
+            flex-shrink: 0;
+            object-fit: contain;
+        }
+
+        .sidebar.collapsed .menu-item {
+            padding: 12px 0;
+            justify-content: center;
+            border-left: none;
+        }
+
+        .sidebar.collapsed .menu-item svg,
+        .sidebar.collapsed .menu-item .app-menu-icon {
+            margin-right: 0;
+        }
+
+        .sidebar.collapsed .menu-item span {
+            display: none;
+        }
+
+        /* Hide text during sidebar animation */
+        .sidebar.animating .menu-item span,
+        .sidebar.animating .sidebar-header p,
+        .sidebar.animating .menu-section-title {
+            visibility: hidden;
+        }
+
+        .sidebar.collapsed .menu-section-title {
+            display: none;
+        }
+
+        .sidebar.collapsed .menu-separator {
+            margin: 10px 8px;
+        }
+
+
+        .menu-separator {
+            height: 1px;
+            background: var(--border-color);
+            margin: 10px 15px;
+        }
+
+        .menu-section-title {
+            padding: 10px 20px 5px;
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            letter-spacing: 0.5px;
+        }
+
+        .back-to-desktop {
+            color: var(--accent-text);
+        }
+
+        .exit-app {
+            color: var(--error);
+        }
+
+        /* Taskbar running app entry */
+        .taskbar-app-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 20px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+            position: relative;
+        }
+
+        .taskbar-app-item:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .taskbar-app-item.active {
+            background: var(--bg-tertiary);
+            color: var(--accent-text);
+            border-left-color: var(--accent-text);
+        }
+
+        .taskbar-app-item .taskbar-app-icon {
+            width: 18px;
+            height: 18px;
+            margin-right: 10px;
+            flex-shrink: 0;
+            object-fit: contain;
+        }
+
+        .taskbar-app-item .taskbar-app-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 13px;
+        }
+
+        .taskbar-app-item .taskbar-app-close {
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.15s;
+            flex-shrink: 0;
+            margin-left: 6px;
+            border-radius: 3px;
+            color: var(--text-secondary);
+        }
+
+        .taskbar-app-item:hover .taskbar-app-close {
+            opacity: 0.6;
+        }
+
+        .taskbar-app-item .taskbar-app-close:hover {
+            opacity: 1;
+            color: var(--error);
+            background: var(--bg-primary);
+        }
+
+        .sidebar.collapsed .taskbar-app-item {
+            padding: 10px 0;
+            justify-content: center;
+            border-left: none;
+        }
+
+        .sidebar.collapsed .taskbar-app-item .taskbar-app-name,
+        .sidebar.collapsed .taskbar-app-item .taskbar-app-close {
+            display: none;
+        }
+
+        .sidebar.collapsed .taskbar-app-item .taskbar-app-icon {
+            margin-right: 0;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Top Bar */
+        .top-bar {
+            height: 50px;
+            min-height: 50px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+        }
+
+        .top-bar-left {
+            display: flex;
+            align-items: center;
+        }
+
+        .hamburger-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 5px;
+            margin-right: 15px;
+            display: none;
+        }
+
+        .top-bar-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .top-bar-right {
+            display: flex;
+            align-items: center;
+        }
+
+        .close-app-btn,
+        .minimize-app-btn,
+        .popout-app-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            border-radius: 4px;
+            transition: all 0.2s;
+            display: none;
+            margin-right: 10px;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+
+        /* Show button when JavaScript sets display: block */
+        .close-app-btn[style*="display: block"],
+        .minimize-app-btn[style*="display: block"],
+        .popout-app-btn[style*="display: block"] {
+            display: flex !important;
+        }
+
+        .close-app-btn svg,
+        .minimize-app-btn svg {
+            display: block;
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+        }
+
+        .close-app-btn:hover {
+            background: var(--error);
+            color: white;
+        }
+
+        .minimize-app-btn:hover,
+        .popout-app-btn:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .clock {
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-family: 'D2Coding', monospace;
+        }
+
+        /* Desktop Content Area */
+        .content-area {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        /* Desktop Grid */
+        .desktop-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 120px));
+            justify-content: start;
+        }
+
+        /* App Icon */
+        .app-icon {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 15px 10px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            color: var(--text-primary);
+            margin-right: 20px;
+            margin-bottom: 20px;
+        }
+
+        .app-icon:nth-child(5n) {
+            margin-right: 0;
+        }
+
+        .app-icon:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .app-icon:focus {
+            outline: none !important;
+        }
+
+        .app-icon:focus-visible {
+            outline: none !important;
+        }
+
+        .app-icon.custom-focused {
+            box-shadow: 0 0 0 1.5px var(--text-secondary) !important;
+            border-radius: 12px;
+        }
+
+        .app-icon-image {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 10px;
+            border-radius: 12px;
+            background: var(--bg-tertiary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .app-icon-image svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .app-icon-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .app-icon-name {
+            font-size: 12px;
+            text-align: center;
+            word-wrap: break-word;
+            max-width: 100px;
+        }
+
+        /* App Content Area */
+        #app-content {
+            padding: 0;
+            height: 100%;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        #app-content.active {
+            display: block;
+        }
+
+        /* When app-content is "hidden" but preserving iframe state,
+           keep layout dimensions intact to prevent scroll position reset */
+        #app-content.preserve-hidden {
+            visibility: hidden !important;
+            pointer-events: none !important;
+            position: absolute !important;
+            z-index: -1 !important;
+        }
+
+        /* Iframe visibility management - prevent flicker during page transitions */
+        #app-content iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        #app-content iframe.iframe-visible {
+            visibility: visible;
+            pointer-events: auto;
+        }
+
+        /* App Dashboard Style */
+        .app-dashboard {
+            padding: 20px;
+        }
+
+        .app-section {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .app-section h3 {
+            font-size: 16px;
+            margin-bottom: 15px;
+            color: var(--accent-text);
+            display: flex;
+            align-items: center;
+        }
+
+        .app-section h3 svg {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            fill: currentColor;
+        }
+
+        /* Form Elements */
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+        }
+
+        .form-control {
+            width: 100%;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 10px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+        }
+
+        .form-control::placeholder {
+            color: var(--text-secondary);
+            opacity: 0.7;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--accent-primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-primary-hover);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border-color);
+        }
+
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            margin-right: 15px;
+            margin-bottom: 15px;
+        }
+
+        .stat-card:last-child {
+            margin-right: 0;
+        }
+
+        .stat-card .stat-value {
+            font-size: 28px;
+            font-weight: 600;
+            color: var(--accent-text);
+        }
+
+        .stat-card .stat-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 5px;
+        }
+
+        .stat-card.warning .stat-value {
+            color: var(--warning);
+        }
+
+        .stat-card.error .stat-value {
+            color: var(--error);
+        }
+
+        .stat-card.success .stat-value {
+            color: var(--success);
+        }
+
+        /* Results - File List Style */
+        .result-file {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-left: 3px solid var(--border-color);
+            border-radius: 6px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+
+        .result-file.has-errors {
+            border-left-color: var(--error);
+        }
+
+        .result-file.has-warnings {
+            border-left-color: var(--warning);
+        }
+
+        .result-file.no-errors {
+            border-left-color: var(--success);
+        }
+
+        .result-file-header {
+            font-weight: 600;
+            font-size: 14px;
+            padding: 12px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background-color 0.2s;
+            user-select: none;
+            color: var(--text-primary);
+        }
+
+        .result-file-header:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .result-file-name {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .result-file-name span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .expand-icon {
+            width: 16px;
+            height: 16px;
+            margin-right: 10px;
+            transition: transform 0.2s;
+            flex-shrink: 0;
+            fill: currentColor;
+        }
+
+        .result-file.expanded .expand-icon {
+            transform: rotate(90deg);
+        }
+
+        .file-badges {
+            display: flex;
+            flex-shrink: 0;
+        }
+
+        .file-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-right: 8px;
+        }
+
+        .file-badge:last-child {
+            margin-right: 0;
+        }
+
+        .file-badge.badge-error {
+            background-color: var(--error);
+            color: white;
+        }
+
+        .file-badge.badge-warning {
+            background-color: var(--warning);
+            color: #000;
+        }
+
+        .file-badge.badge-success {
+            background-color: var(--success);
+            color: white;
+        }
+
+        .error-list {
+            display: none;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .result-file.expanded .error-list {
+            display: block;
+        }
+
+        .result-error, .result-warning {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin-left: 3px;
+        }
+
+        .result-error:hover, .result-warning:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .result-error:last-child, .result-warning:last-child {
+            border-bottom: none;
+        }
+
+        .error-type-label {
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .error-type-label.error {
+            color: var(--error);
+        }
+
+        .error-type-label.warning {
+            color: var(--warning);
+        }
+
+        .error-message {
+            font-size: 13px;
+            color: var(--text-primary);
+            margin-top: 4px;
+        }
+
+        .error-details {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* Terminal Log */
+        .terminal-log {
+            background: #0d1117;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'D2Coding', monospace;
+            font-size: 13px;
+            max-height: 300px;
+            overflow-y: auto;
+            overflow-x: auto;
+        }
+
+        .terminal-log .log-line {
+            margin: 2px 0;
+            white-space: nowrap;
+            color: #c9d1d9;
+        }
+
+        /* Code Viewer */
+        .code-viewer {
+            display: none;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            margin: 10px 0 0 0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .code-viewer.show {
+            display: block;
+        }
+
+        .code-header {
+            background-color: #2d2d30;
+            padding: 8px 15px;
+            border-bottom: 1px solid #3e3e42;
+            font-size: 12px;
+            color: #cccccc;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-family: 'D2Coding', 'Consolas', 'Monaco', 'Courier New', monospace;
+        }
+
+        .code-content {
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .code-line {
+            display: flex;
+            font-family: 'D2Coding', 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            padding: 0 15px;
+        }
+
+        .code-line:hover {
+            background-color: #2a2a2a;
+        }
+
+        .code-line.error-line {
+            background-color: #4b1818;
+        }
+
+        .line-number {
+            color: #858585;
+            text-align: right;
+            padding-right: 15px;
+            min-width: 50px;
+            user-select: none;
+            font-family: 'D2Coding', 'Consolas', 'Monaco', 'Courier New', monospace;
+        }
+
+        .line-code {
+            flex: 1;
+            white-space: pre;
+            overflow: visible;
+            font-family: 'D2Coding', 'Consolas', 'Monaco', 'Courier New', monospace;
+        }
+
+        /* Filter Row */
+        .filter-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .filter-row .form-control {
+            flex: 1;
+            margin-right: 10px;
+        }
+
+        .filter-row .btn {
+            flex-shrink: 0;
+            margin-right: 10px;
+        }
+
+        .filter-row .btn:last-child {
+            margin-right: 0;
+        }
+
+        .result-file.hidden {
+            display: none !important;
+        }
+
+        .result-error.filter-hidden,
+        .result-warning.filter-hidden {
+            display: none !important;
+        }
+
+        mark {
+            background-color: #fff3cd;
+            color: #000;
+            padding: 0;
+            border-radius: 2px;
+            font-weight: 600;
+        }
+
+        /* Filter Dialog */
+        .filter-dialog-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 9998;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .filter-dialog-overlay.show {
+            display: flex;
+        }
+
+        .filter-dialog {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0;
+            min-width: 400px;
+            max-width: 500px;
+            max-height: 80vh;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .filter-dialog-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .filter-dialog-header h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .filter-dialog-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+        }
+
+        .filter-dialog-close:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .filter-dialog-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .filter-section {
+            margin-bottom: 20px;
+        }
+
+        .filter-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .filter-section-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: var(--text-primary);
+        }
+
+        .filter-section-title.errors {
+            color: var(--error);
+        }
+
+        .filter-section-title.warnings {
+            color: var(--warning);
+        }
+
+        .filter-section-title.clean {
+            color: var(--success);
+        }
+
+        .filter-section-actions {
+            display: flex;
+            margin-bottom: 8px;
+        }
+
+        .filter-action-link {
+            font-size: 13px;
+            color: var(--accent-text);
+            cursor: pointer;
+            text-decoration: none;
+            margin-right: 15px;
+        }
+
+        .filter-action-link:last-child {
+            margin-right: 0;
+        }
+
+        .filter-action-link:hover {
+            text-decoration: underline;
+            opacity: 0.8;
+        }
+
+        .filter-checkbox-item {
+            display: flex;
+            align-items: center;
+            padding: 6px 0;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .filter-checkbox-item:hover {
+            background: var(--bg-tertiary);
+            margin: 0 -10px;
+            padding: 6px 10px;
+            border-radius: 4px;
+        }
+
+        .filter-checkbox-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+
+        .filter-checkbox-item label {
+            cursor: pointer;
+            font-size: 13px;
+            margin: 0;
+            flex: 1;
+        }
+
+        .filter-checkbox-item .filter-count {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-left: 8px;
+        }
+
+        .filter-dialog-footer {
+            display: flex;
+            justify-content: flex-end;
+            padding: 15px 20px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .filter-dialog-footer .btn {
+            margin-left: 10px;
+        }
+
+        /* Settings Page */
+        .settings-container {
+            display: none;
+            padding: 20px;
+        }
+
+        .settings-container.active {
+            display: block;
+        }
+
+        .settings-section {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .settings-section h3 {
+            font-size: 16px;
+            margin-bottom: 15px;
+            color: var(--accent-text);
+        }
+
+        .settings-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .settings-row:last-child {
+            border-bottom: none;
+        }
+
+        .settings-label {
+            font-size: 14px;
+        }
+
+        .settings-value {
+            display: flex;
+            align-items: center;
+        }
+
+        .settings-select {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .empty-state h3 {
+            font-size: 18px;
+            margin-bottom: 10px;
+            color: var(--text-primary);
+        }
+
+        .empty-state p {
+            font-size: 14px;
+        }
+
+        /* Ctrl+Tab App Switcher */
+        #app-switcher {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.55);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+        }
+        #app-switcher.visible {
+            display: flex;
+        }
+        #app-switcher-panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px 24px;
+            min-width: 320px;
+            max-width: 80vw;
+        }
+        #app-switcher-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-bottom: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        #app-switcher-list {
+            display: flex;
+            flex-wrap: wrap;
+        }
+        .app-switcher-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 80px;
+            padding: 10px 6px;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            margin-right: 4px;
+            margin-bottom: 4px;
+        }
+        .app-switcher-item:last-child {
+            margin-right: 0;
+        }
+        .app-switcher-item.selected {
+            border-color: var(--accent-color, #0d6efd);
+            background: var(--bg-hover, rgba(13,110,253,0.1));
+        }
+        .app-switcher-item img {
+            width: 40px;
+            height: 40px;
+            margin-bottom: 6px;
+            object-fit: contain;
+        }
+        .app-switcher-item span {
+            font-size: 11px;
+            color: var(--text-primary);
+            text-align: center;
+            line-height: 1.3;
+            word-break: break-word;
+            max-width: 72px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Filter Dialog -->
+    <div class="filter-dialog-overlay" id="filter-dialog-overlay" onclick="closeFilterDialogOnOverlay(event)">
+        <div class="filter-dialog" onclick="event.stopPropagation()">
+            <div class="filter-dialog-header">
+                <h3 id="filter-dialog-title">Filter by Type</h3>
+                <button class="filter-dialog-close" onclick="closeFilterDialog()">&times;</button>
+            </div>
+            <div class="filter-dialog-body">
+                <div class="filter-section">
+                    <div class="filter-section-title errors">Errors</div>
+                    <div class="filter-section-actions">
+                        <a class="filter-action-link" onclick="selectAllErrors(true)">Select All</a>
+                        <a class="filter-action-link" onclick="selectAllErrors(false)">Deselect All</a>
+                    </div>
+                    <div id="error-filter-list"></div>
+                </div>
+                <div class="filter-section">
+                    <div class="filter-section-title warnings">Warnings</div>
+                    <div class="filter-section-actions">
+                        <a class="filter-action-link" onclick="selectAllWarnings(true)">Select All</a>
+                        <a class="filter-action-link" onclick="selectAllWarnings(false)">Deselect All</a>
+                    </div>
+                    <div id="warning-filter-list"></div>
+                </div>
+                <div class="filter-section">
+                    <div class="filter-section-title clean">Clean Files</div>
+                    <div class="filter-checkbox-item" onclick="toggleCleanFilesCheckbox(event)">
+                        <input type="checkbox" id="filter-clean-files" checked>
+                        <label>Show files with no errors</label>
+                    </div>
+                </div>
+            </div>
+            <div class="filter-dialog-footer">
+                <button class="btn btn-secondary" onclick="closeFilterDialog()">Cancel</button>
+                <button class="btn btn-primary" onclick="applyFilterDialog()">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <h1>
+                    <img src="/common/resource/img/favicon.svg" alt="Logo" class="sidebar-logo">
+                    <span class="brand-text"><span class="brand-skill">Skill</span><span class="brand-up">UP</span></span>
+                </h1>
+                <p data-i18n="sidebarSubtitle">Desktop</p>
+            </div>
+            <div class="sidebar-menu">
+                <!-- Desktop Menu (always visible) -->
+                <div id="desktop-menu">
+                    <a class="menu-item active" data-page="home" onclick="showPage('home')">
+                        <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="2"/><line x1="6" y1="17" x2="18" y2="17" stroke="currentColor" stroke-width="2"/></svg>
+                        <span data-i18n="menu.home">Home</span>
+                    </a>
+                    <a class="menu-item" data-page="settings" onclick="showPage('settings')">
+                        <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+                        <span data-i18n="menu.settings">Settings</span>
+                    </a>
+                </div>
+
+                <!-- Running Apps Taskbar (always visible, dynamically populated) -->
+                <div id="taskbar-apps" style="display: none;">
+                    <div class="menu-separator"></div>
+                    <div class="menu-section-title" data-i18n="menu.running_apps">Running Apps</div>
+                    <div id="taskbar-app-list"></div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Sidebar Divider -->
+        <div class="sidebar-divider" id="sidebar-divider" onclick="toggleSidebar()"></div>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top Bar -->
+            <header class="top-bar">
+                <div class="top-bar-left">
+                    <button class="hamburger-btn">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+                        </svg>
+                    </button>
+                    <img id="top-bar-icon" src="" alt="" style="width:22px;height:22px;margin-right:8px;display:none;">
+                    <span class="top-bar-title" id="page-title" data-i18n="title.desktop">Desktop</span>
+                </div>
+                <div class="top-bar-right">
+                    <button class="popout-app-btn" id="popout-app-btn" onclick="openInNewWindow()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 19H5V5h7V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
+                        </svg>
+                    </button>
+                    <button class="minimize-app-btn" id="minimize-app-btn" onclick="backToDesktop()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 13H5v-2h14v2z"/>
+                        </svg>
+                    </button>
+                    <button class="close-app-btn" id="close-app-btn" onclick="exitApp()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                        </svg>
+                    </button>
+                    <span class="clock" id="clock">00:00:00</span>
+                    <div id="topbar-avatar" style="width:30px;height:30px;border-radius:50%;overflow:hidden;background:var(--bg-tertiary);display:flex;align-items:center;justify-content:center;margin-left:12px;flex-shrink:0;cursor:default;">
+                        <img id="topbar-avatar-img" src="/common/resource/img/default-avatar.svg" alt="me" style="width:100%;height:100%;object-fit:cover;">
+                    </div>
+                </div>
+            </header>
+
+            <!-- Content Area -->
+            <div class="content-area" id="content-area">
+                <!-- Home Page - Desktop Grid -->
+                <div id="page-home" class="page active">
+                    <div class="desktop-grid" id="app-grid">
+                        <!-- Apps will be loaded here dynamically -->
+                    </div>
+                    <div class="empty-state" id="empty-state" style="display: none;">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/>
+                        </svg>
+                        <h3 data-i18n="empty.no_apps">No Apps Found</h3>
+                        <p data-i18n="empty.no_apps_desc">Add apps to the app folder to get started.</p>
+                    </div>
+                </div>
+
+                <!-- Settings Page -->
+                <div id="page-settings" class="page" style="display: none; outline: none;" tabindex="-1">
+                    <div class="settings-section">
+                        <h3 data-i18n="settings.general">General</h3>
+                        <div class="settings-row">
+                            <span class="settings-label" data-i18n="settings.language">Language</span>
+                            <div class="settings-value">
+                                <select class="settings-select" id="language-select" onchange="changeLanguage(this.value)">
+                                    <option value="en">English</option>
+                                    <option value="ko">한국어</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="settings-row">
+                            <span class="settings-label" data-i18n="settings.theme">Theme</span>
+                            <div class="settings-value">
+                                <select class="settings-select" id="theme-select" onchange="changeTheme(this.value)">
+                                    <option value="default">Default (Dark)</option>
+                                    <option value="white">White (Light)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <h3 data-i18n="settings.account">Account</h3>
+                        <div class="settings-row">
+                            <span class="settings-label" data-i18n="settings.account_photo">Photo</span>
+                            <div class="settings-value">
+                                <div id="account-avatar-preview" style="width:64px;height:64px;border-radius:50%;overflow:hidden;background:var(--bg-tertiary);display:flex;align-items:center;justify-content:center;margin-right:12px;cursor:pointer;flex-shrink:0;" onclick="document.getElementById('account-photo-input').click()">
+                                    <img id="account-avatar-img" src="/common/resource/img/default-avatar.svg" alt="avatar" style="width:100%;height:100%;object-fit:cover;">
+                                </div>
+                                <input type="file" id="account-photo-input" accept="image/*" style="display:none;" onchange="onAccountPhotoSelected(event)">
+                                <div>
+                                    <button class="btn btn-secondary" onclick="document.getElementById('account-photo-input').click()" style="font-size:13px;padding:6px 14px;margin-right:8px;" data-i18n="settings.account_change_photo">Change</button>
+                                    <button class="btn btn-secondary" id="account-remove-photo-btn" onclick="removeAccountPhoto()" style="font-size:13px;padding:6px 14px;display:none;" data-i18n="settings.account_remove_photo">Remove</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="settings-row">
+                            <span class="settings-label" data-i18n="settings.account_name">Name</span>
+                            <div class="settings-value">
+                                <input type="text" id="account-name-input" class="form-control" style="width:220px;padding:6px 10px;font-size:14px;" placeholder="">
+                                <button class="btn btn-primary" onclick="saveAccountName()" style="font-size:13px;padding:6px 14px;margin-left:10px;" data-i18n="settings.account_save">Save</button>
+                            </div>
+                        </div>
+                        <div class="settings-row">
+                            <span class="settings-label" data-i18n="settings.account_id">ID</span>
+                            <div class="settings-value">
+                                <span id="account-id-display" style="font-family:'D2Coding',monospace;color:var(--text-secondary);font-size:14px;"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <h3 data-i18n="settings.global_hotkey">Global Hotkey</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 16px; font-size: 13px;" data-i18n="settings.hotkey_desc">
+                            Register a global hotkey to launch Skillup Desktop from anywhere.
+                        </p>
+                        <div class="settings-row">
+                            <span class="settings-label" data-i18n="settings.hotkey_combination">Hotkey Combination</span>
+                            <div class="settings-value">
+                                <span id="hotkey-display" style="font-family: 'D2Coding', monospace; background: var(--bg-tertiary); padding: 4px 12px; border-radius: 4px;">Ctrl + Alt + S</span>
+                            </div>
+                        </div>
+                        <div class="settings-row">
+                            <span class="settings-label" data-i18n="settings.enable_hotkey">Enable Global Hotkey</span>
+                            <div class="settings-value">
+                                <div class="form-check form-switch" style="margin: 0; margin-right: 12px;">
+                                    <input class="form-check-input" type="checkbox" id="hotkey-toggle" onchange="toggleHotkey(this.checked)" style="width: 48px; height: 24px; cursor: pointer;">
+                                </div>
+                                <span id="hotkey-status-text" style="color: var(--text-secondary); font-size: 13px;">Disabled</span>
+                            </div>
+                        </div>
+                        <div id="hotkey-desktop-info" style="padding: 12px; background: var(--bg-tertiary); border-radius: 6px; margin-top: 12px; display: none;">
+                            <small style="color: var(--text-secondary); font-size: 12px;">
+                                <strong data-i18n="settings.desktop_env">Desktop Environment:</strong> <span id="desktop-env-name">Unknown</span><br>
+                                <strong data-i18n="settings.current_command">Current Command:</strong> <span id="hotkey-command" style="font-family: 'D2Coding', monospace; word-break: break-all;">-</span>
+                            </small>
+                        </div>
+                        <small style="color: var(--text-secondary); margin-top: 12px; display: block; font-size: 12px;" data-i18n="settings.hotkey_note">
+                            Note: This feature works on GNOME desktop environment. For KDE/XFCE, please register the hotkey manually in system settings.
+                        </small>
+                    </div>
+
+                    <div class="settings-section">
+                        <h3 data-i18n="settings.about">About</h3>
+                        <div class="settings-row">
+                            <span class="settings-label" data-i18n="settings.build">Build</span>
+                            <div class="settings-value">
+                                <span id="app-build" style="color: var(--text-secondary); font-size: 13px;">-</span>
+                            </div>
+                        </div>
+                        <div class="settings-row">
+                            <span class="settings-label" data-i18n="settings.version">Version</span>
+                            <div class="settings-value">
+                                <span id="app-version" style="color: var(--text-secondary); font-size: 13px;">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- App Content Area (for running apps) -->
+                <div id="app-content" class="page" style="display: none;">
+                    <!-- App content will be loaded here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // ============================================================================
+        // Internationalization
+        // ============================================================================
+        const i18n = {
+            en: {
+                'sidebarSubtitle': 'Desktop',
+                'menu.home': 'Home',
+                'menu.settings': 'Settings',
+                'menu.back_to_desktop': 'Desktop',
+                'menu.exit_app': 'Exit App',
+                'menu.running_apps': 'Running Apps',
+                'title.desktop': 'Desktop',
+                'title.settings': 'Settings',
+                'empty.no_apps': 'No Apps Found',
+                'empty.no_apps_desc': 'Add apps to the app folder to get started.',
+                'settings.general': 'General',
+                'settings.language': 'Language',
+                'settings.theme': 'Theme',
+                'settings.global_hotkey': 'Global Hotkey',
+                'settings.hotkey_desc': 'Register a global hotkey to launch Skillup Desktop from anywhere.',
+                'settings.hotkey_combination': 'Hotkey Combination',
+                'settings.enable_hotkey': 'Enable Global Hotkey',
+                'settings.hotkey_enabled': 'Enabled',
+                'settings.hotkey_disabled': 'Disabled',
+                'settings.desktop_env': 'Desktop Environment:',
+                'settings.current_command': 'Current Command:',
+                'settings.hotkey_note': 'Note: This feature works on GNOME desktop environment. For KDE/XFCE, please register the hotkey manually in system settings.',
+                'settings.account': 'Account',
+                'settings.account_photo': 'Photo',
+                'settings.account_change_photo': 'Change',
+                'settings.account_remove_photo': 'Remove',
+                'settings.account_name': 'Name',
+                'settings.account_save': 'Save',
+                'settings.account_id': 'ID',
+                'settings.account_remove_photo_confirm_title': 'Remove Photo',
+                'settings.account_remove_photo_confirm_text': 'Are you sure you want to remove the profile photo?',
+                'settings.about': 'About',
+                'settings.build': 'Build',
+                'settings.version': 'Version',
+                'dialog.ok': 'OK',
+                'dialog.yes': 'Yes',
+                'dialog.no': 'No',
+                'app.launch_failed_title': 'Failed to Launch App',
+                'app.launch_failed_text': 'The app could not be started.'
+            },
+            ko: {
+                'sidebarSubtitle': '데스크탑',
+                'menu.home': '바탕화면',
+                'menu.settings': '환경설정',
+                'menu.back_to_desktop': '바탕화면',
+                'menu.exit_app': '앱 종료',
+                'menu.running_apps': '실행 중',
+                'title.desktop': '바탕화면',
+                'title.settings': '환경설정',
+                'empty.no_apps': '앱이 없습니다',
+                'empty.no_apps_desc': '시작하려면 앱 폴더에 앱을 추가하세요.',
+                'settings.general': '일반',
+                'settings.language': '언어',
+                'settings.theme': '테마',
+                'settings.global_hotkey': '전역 단축키',
+                'settings.hotkey_desc': '어디서나 Skillup 데스크탑을 실행할 수 있는 전역 단축키를 등록합니다.',
+                'settings.hotkey_combination': '단축키 조합',
+                'settings.enable_hotkey': '전역 단축키 활성화',
+                'settings.hotkey_enabled': '활성화됨',
+                'settings.hotkey_disabled': '비활성화됨',
+                'settings.desktop_env': '데스크탑 환경:',
+                'settings.current_command': '현재 명령:',
+                'settings.hotkey_note': '참고: 이 기능은 GNOME 데스크톱 환경에서 작동합니다. KDE/XFCE의 경우 시스템 설정에서 수동으로 단축키를 등록해주세요.',
+                'settings.account': '계정',
+                'settings.account_photo': '사진',
+                'settings.account_change_photo': '변경',
+                'settings.account_remove_photo': '제거',
+                'settings.account_name': '이름',
+                'settings.account_save': '저장',
+                'settings.account_id': '아이디',
+                'settings.account_remove_photo_confirm_title': '사진 제거',
+                'settings.account_remove_photo_confirm_text': '프로필 사진을 제거하시겠습니까?',
+                'settings.about': '정보',
+                'settings.build': '빌드',
+                'settings.version': '버전',
+                'dialog.ok': '확인',
+                'dialog.yes': '예',
+                'dialog.no': '아니오',
+                'app.launch_failed_title': '앱 실행 실패',
+                'app.launch_failed_text': '앱을 시작할 수 없습니다.'
+            }
+        };
+
+        let currentLanguage = 'en';
+        let currentPage = 'home';  // Track current page
+        let currentApp = null;
+        let apps = [];
+        let runningApps = [];  // Ordered list of launched app IDs for Ctrl+Tab switching
+        let sidebarCollapsed = false;
+
+        // ============================================================================
+        // Sidebar Toggle
+        // ============================================================================
+        function toggleSidebar() {
+            sidebarCollapsed = !sidebarCollapsed;
+            const sidebar = document.querySelector('.sidebar');
+
+            // Add animating class to hide text during animation
+            sidebar.classList.add('animating');
+
+            if (sidebarCollapsed) {
+                sidebar.classList.add('collapsed');
+            } else {
+                sidebar.classList.remove('collapsed');
+            }
+
+            // Remove animating class after animation completes (0.2s)
+            setTimeout(() => {
+                sidebar.classList.remove('animating');
+            }, 200);
+        }
+
+        // ============================================================================
+        // API Functions
+        // ============================================================================
+        async function apiCall(action, data = {}) {
+            try {
+                const response = await fetch(`/api/${action}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                return await response.json();
+            } catch (error) {
+                console.error(`API error (${action}):`, error);
+                return null;
+            }
+        }
+
+        // ============================================================================
+        // Initialization
+        // ============================================================================
+        async function init() {
+            // Load config
+            const config = await apiCall('get_config');
+            if (config && config.language) {
+                currentLanguage = config.language;
+                document.getElementById('language-select').value = currentLanguage;
+            }
+
+            // Set theme select value and update stylesheet if needed
+            if (config && config.theme) {
+                document.getElementById('theme-select').value = config.theme;
+
+                // Update theme stylesheet if different from default
+                const themeStylesheet = document.getElementById('theme-stylesheet');
+                if (themeStylesheet && config.theme !== 'default') {
+                    themeStylesheet.href = `/common/style/${config.theme}.css`;
+                }
+
+                // Update iframe theme if active (shouldn't be on init, but just in case)
+                if (appContentIframe) {
+                    sendToIframe('setTheme', { theme: config.theme });
+                }
+            }
+
+            // Apply translations
+            applyTranslations();
+
+            // Initialize home page icon
+            const homeMenuItem = document.querySelector('#desktop-menu [data-page="home"]');
+            if (homeMenuItem) {
+                const svgElement = homeMenuItem.querySelector('svg');
+                if (svgElement) {
+                    setTopBarIconSVG(svgElement.cloneNode(true));
+                }
+            }
+
+            // Display build and version
+            if (config && config.build) {
+                const buildEl = document.getElementById('app-build');
+                if (buildEl) buildEl.textContent = config.build;
+            }
+            if (config && config.version) {
+                const versionEl = document.getElementById('app-version');
+                if (versionEl) versionEl.textContent = config.version;
+            }
+
+            // Load apps
+            await loadApps();
+
+            // Auto-launch app if specified
+            if (config && config.auto_launch_app) {
+                await launchApp(config.auto_launch_app);
+            }
+
+            // Start clock
+            updateClock();
+
+            // Load account info (topbar avatar + settings form)
+            loadAccount();
+        }
+
+        async function loadApps() {
+            const result = await apiCall('get_apps');
+            if (result && result.apps) {
+                apps = result.apps;
+                renderApps();
+            }
+        }
+
+        function renderApps() {
+            const grid = document.getElementById('app-grid');
+            const emptyState = document.getElementById('empty-state');
+
+            grid.innerHTML = '';
+
+            if (apps.length === 0) {
+                emptyState.style.display = 'block';
+                return;
+            }
+
+            emptyState.style.display = 'none';
+
+            apps.forEach(app => {
+                const iconDiv = document.createElement('div');
+                iconDiv.className = 'app-icon';
+                iconDiv.tabIndex = 0;
+                iconDiv.setAttribute('role', 'button');
+                iconDiv.onclick = () => launchApp(app.id);
+                iconDiv.onfocus = () => {
+                    iconDiv.classList.add('custom-focused');
+                };
+
+                iconDiv.onblur = () => {
+                    iconDiv.classList.remove('custom-focused');
+                };
+
+                iconDiv.onkeydown = (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        launchApp(app.id);
+                    } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                        // Handle arrow key navigation
+                        const icons = Array.from(grid.querySelectorAll('.app-icon'));
+                        const idx = icons.indexOf(iconDiv);
+                        if (idx === -1) return;
+
+                        const cols = Math.floor(grid.offsetWidth / (icons[0] ? icons[0].offsetWidth : 1)) || 1;
+                        let next = -1;
+                        if (e.key === 'ArrowRight') next = idx + 1;
+                        else if (e.key === 'ArrowLeft') next = idx - 1;
+                        else if (e.key === 'ArrowDown') next = idx + cols;
+                        else if (e.key === 'ArrowUp') next = idx - cols;
+
+                        if (next >= 0 && next < icons.length) {
+                            e.preventDefault();
+                            icons[next].focus();
+                        }
+                    }
+                };
+
+                iconDiv.innerHTML = `
+                    <div class="app-icon-image">
+                        <img src="/app/${app.id}/icon.svg" alt="${app.name}" onerror="this.parentElement.innerHTML='<svg viewBox=\\'0 0 24 24\\' fill=\\'#4cc9f0\\'><path d=\\'M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z\\'/></svg>'">
+                    </div>
+                    <span class="app-icon-name">${app.name}</span>
+                `;
+
+                grid.appendChild(iconDiv);
+            });
+
+            // Auto-focus first icon for keyboard navigation
+            if (apps.length > 0) {
+                const firstIcon = grid.querySelector('.app-icon');
+                if (firstIcon) {
+                    firstIcon.focus();
+                }
+            }
+
+            // Click on grid or content area background to restore focus to first icon
+            const contentArea = document.getElementById('content-area');
+            contentArea.addEventListener('click', (e) => {
+                // Check if click is on grid or content area but not on an icon
+                if (e.target === grid || e.target === contentArea) {
+                    const firstIcon = grid.querySelector('.app-icon');
+                    if (firstIcon) {
+                        firstIcon.focus();
+                    }
+                }
+            });
+        }
+
+        // ============================================================================
+        // Navigation
+        // ============================================================================
+        function showPage(pageName) {
+            // Track current page
+            currentPage = pageName;
+
+            // Remember last active menu for current app before switching away
+            if (currentApp && currentAppMenu) {
+                lastAppMenu[currentApp.id] = currentAppMenu;
+            }
+            currentApp = null;
+            currentAppMenu = null;
+            appContentIframe = null;
+            currentContentType = null;
+
+            // Hide all pages including app-content
+            document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
+            const appContent = document.getElementById('app-content');
+            if (Object.keys(iframeCache).length > 0) {
+                appContent.classList.add('preserve-hidden');
+            } else {
+                appContent.style.display = 'none';
+            }
+
+            // Hide all iframes
+            appContent.querySelectorAll('iframe').forEach(iframe => {
+                iframe.classList.remove('iframe-visible');
+            });
+
+            // Show selected page
+            const page = document.getElementById(`page-${pageName}`);
+            if (page) {
+                page.style.display = 'block';
+            }
+
+            // Hide close, minimize and popout buttons
+            document.getElementById('close-app-btn').style.display = 'none';
+            document.getElementById('minimize-app-btn').style.display = 'none';
+            document.getElementById('popout-app-btn').style.display = 'none';
+
+            // Update desktop menu + taskbar active state
+            setTaskbarActive(null);
+            document.querySelectorAll('#desktop-menu .menu-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.dataset.page === pageName) {
+                    item.classList.add('active');
+                }
+            });
+
+            // Update title and icon
+            const titleKey = `title.${pageName === 'home' ? 'desktop' : pageName}`;
+            document.getElementById('page-title').textContent = i18n[currentLanguage][titleKey] || pageName;
+
+            // Show icon from sidebar menu for desktop and settings pages
+            const menuItem = document.querySelector(`#desktop-menu [data-page="${pageName}"]`);
+            if (menuItem) {
+                const svgElement = menuItem.querySelector('svg');
+                if (svgElement) {
+                    setTopBarIconSVG(svgElement.cloneNode(true));
+                } else {
+                    setTopBarIcon(null);
+                }
+            } else {
+                setTopBarIcon(null);
+            }
+
+            // Load hotkey status when switching to settings page
+            if (pageName === 'settings') {
+                loadHotkeyStatus();
+                loadAccount();
+                // Auto-focus settings page for keyboard scrolling
+                const settingsPage = document.getElementById('page-settings');
+                if (settingsPage) {
+                    setTimeout(() => settingsPage.focus({ preventScroll: true }), 0);
+                }
+            }
+        }
+
+        // ============================================================================
+        // App Management
+        // ============================================================================
+        let currentAppMenu = null;
+        let lastAppMenu = {};  // Remember last active menu per app: { appId: menuId }
+
+        function setTopBarIcon(iconSrc) {
+            const img = document.getElementById('top-bar-icon');
+            const svgWrapper = document.getElementById('top-bar-svg');
+            if (iconSrc) {
+                img.src = iconSrc;
+                img.style.display = 'inline-block';
+                if (svgWrapper) svgWrapper.style.display = 'none';
+            } else {
+                img.style.display = 'none';
+                if (svgWrapper) svgWrapper.style.display = 'none';
+            }
+        }
+
+        function setTopBarIconSVG(svgElement) {
+            const img = document.getElementById('top-bar-icon');
+            if (svgElement) {
+                // Set viewBox and styling for SVG
+                svgElement.setAttribute('width', '22');
+                svgElement.setAttribute('height', '22');
+                svgElement.style.flexShrink = '0';
+                svgElement.style.color = 'currentColor';
+
+                // Ensure child elements with explicit colors use currentColor
+                svgElement.querySelectorAll('*').forEach(el => {
+                    // For elements with stroke but no fill, keep fill="none"
+                    const hasStroke = el.getAttribute('stroke');
+                    const hasFill = el.getAttribute('fill');
+
+                    if (hasStroke && hasFill === 'none') {
+                        // Keep fill="none" for stroke-only elements
+                        if (hasStroke !== 'currentColor') {
+                            el.setAttribute('stroke', 'currentColor');
+                        }
+                    } else if (hasStroke && !hasFill) {
+                        // Add stroke color if missing
+                        el.setAttribute('stroke', 'currentColor');
+                    } else if (!hasFill && !hasStroke) {
+                        // No explicit styling, use currentColor fill
+                        el.setAttribute('fill', 'currentColor');
+                    }
+                });
+
+                // Replace img with svg wrapper
+                const iconContainer = img.parentElement;
+                img.style.display = 'none';
+
+                let svgWrapper = iconContainer.querySelector('#top-bar-svg');
+                if (svgWrapper) {
+                    svgWrapper.replaceChild(svgElement, svgWrapper.firstChild);
+                } else {
+                    svgWrapper = document.createElement('div');
+                    svgWrapper.id = 'top-bar-svg';
+                    svgWrapper.style.display = 'inline-flex';
+                    svgWrapper.style.alignItems = 'center';
+                    svgWrapper.style.marginRight = '8px';
+                    svgWrapper.appendChild(svgElement);
+                    iconContainer.insertBefore(svgWrapper, img);
+                }
+                svgWrapper.style.display = 'inline-flex';
+            } else {
+                img.style.display = 'none';
+                const svgWrapper = img.parentElement.querySelector('#top-bar-svg');
+                if (svgWrapper) {
+                    svgWrapper.style.display = 'none';
+                }
+            }
+        }
+
+        // ============================================================================
+        // Taskbar: Manage running apps in sidebar
+        // ============================================================================
+        function updateTaskbar() {
+            const taskbarApps = document.getElementById('taskbar-apps');
+            const taskbarList = document.getElementById('taskbar-app-list');
+
+            if (runningApps.length === 0) {
+                taskbarApps.style.display = 'none';
+                return;
+            }
+
+            taskbarApps.style.display = 'block';
+            taskbarList.innerHTML = '';
+
+            runningApps.forEach(appId => {
+                const appInfo = apps.find(a => a.id === appId);
+                if (!appInfo) return;
+
+                const item = document.createElement('a');
+                item.className = 'taskbar-app-item' + (currentApp && currentApp.id === appId ? ' active' : '');
+                item.dataset.appId = appId;
+
+                const iconSrc = `/app/${appId}/${appInfo.icon || 'icon.svg'}`;
+                item.innerHTML = `<img class="taskbar-app-icon" src="${iconSrc}" onerror="this.src='/common/resource/img/favicon.svg'" alt=""><span class="taskbar-app-name">${appInfo.name}</span><span class="taskbar-app-close"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></span>`;
+
+                // Click app name/icon to switch to it
+                item.onclick = (e) => {
+                    // If close button was clicked, don't switch
+                    if (e.target.closest('.taskbar-app-close')) return;
+                    launchApp(appId);
+                };
+
+                // Close button
+                const closeBtn = item.querySelector('.taskbar-app-close');
+                closeBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    exitAppById(appId);
+                };
+
+                taskbarList.appendChild(item);
+            });
+        }
+
+        function setTaskbarActive(appId) {
+            document.querySelectorAll('.taskbar-app-item').forEach(item => {
+                item.classList.toggle('active', item.dataset.appId === appId);
+            });
+            // Also update desktop menu active state
+            document.querySelectorAll('#desktop-menu .menu-item').forEach(item => {
+                item.classList.toggle('active', !appId && item.dataset.page === 'home');
+            });
+        }
+
+        async function launchApp(appId) {
+            const appInfo = apps.find(a => a.id === appId);
+            if (appInfo && appInfo.new_window === 'single') {
+                const lang = currentLanguage || 'en';
+                const menuId = (appInfo.menu_items && appInfo.menu_items.length > 0)
+                    ? appInfo.menu_items[0].id : 'dashboard';
+                const url = `/app/${appId}/${menuId}.html?standalone=1&lang=${lang}`;
+                const title = appInfo.name || 'Skillup';
+                // If popup already open, focus it
+                const focusResult = await apiCall('open_window', { url, title, mode: 'single' });
+                if (focusResult && focusResult.focused) {
+                    return;
+                }
+                // No existing popup — launch inside desktop as normal (fall through)
+            }
+
+            const result = await apiCall('launch_app', { app_id: appId });
+            if (result && result.success) {
+                currentApp = apps.find(a => a.id === appId);
+                _loadAppHandlers(appId);
+
+                // Track running apps: keep launch order fixed
+                if (!runningApps.includes(appId)) {
+                    runningApps.push(appId);
+                }
+
+                // Update taskbar to show running apps
+                updateTaskbar();
+                setTaskbarActive(appId);
+
+                // Update title and icon
+                document.getElementById('page-title').textContent = currentApp ? currentApp.name : appId;
+                setTopBarIcon(currentApp ? `/app/${currentApp.id}/${currentApp.icon || 'icon.svg'}` : null);
+
+                // Show close, minimize buttons always; popout only if new_window != 'false'
+                document.getElementById('close-app-btn').style.display = 'block';
+                document.getElementById('minimize-app-btn').style.display = 'block';
+                const newWindowMode = currentApp ? currentApp.new_window : 'false';
+                document.getElementById('popout-app-btn').style.display =
+                    (newWindowMode === 'false') ? 'none' : 'block';
+
+                // Hide pages, show app content
+                document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
+
+                // Show app content (restore from either display:none or preserve-hidden)
+                const appContent = document.getElementById('app-content');
+                appContent.classList.remove('preserve-hidden');
+                appContent.style.display = 'block';
+
+                // Check if we have cached iframes for this app
+                const hasCachedIframes = Object.keys(iframeCache).some(key => key.startsWith(appId + '_'));
+
+                if (hasCachedIframes && lastAppMenu[appId]) {
+                    // Restore last active menu - iframe already in DOM with preserved state
+                    handleAppMenuClick(lastAppMenu[appId]);
+                } else if (currentApp && currentApp.menu_items && currentApp.menu_items.length > 0) {
+                    // First launch - render initial app view
+                    handleAppMenuClick(currentApp.menu_items[0].id);
+                } else {
+                    renderAppView(appId, 'dashboard');
+                }
+            } else {
+                const lang = i18n[currentLanguage] || i18n['en'];
+                showMessageBox({
+                    title: lang['app.launch_failed_title'],
+                    text: lang['app.launch_failed_text']
+                });
+            }
+        }
+
+        async function backToDesktop() {
+            // Return to desktop - keep iframes alive for state preservation
+            // Remember last active menu for this app
+            if (currentApp && currentAppMenu) {
+                lastAppMenu[currentApp.id] = currentAppMenu;
+            }
+
+            currentApp = null;
+            currentAppMenu = null;
+
+            // Clear active iframe reference (but keep iframes in DOM and cache)
+            appContentIframe = null;
+            currentContentType = null;
+
+            // Update taskbar: deactivate current app, highlight Home
+            setTaskbarActive(null);
+
+            // Hide close, minimize and popout buttons
+            document.getElementById('close-app-btn').style.display = 'none';
+            document.getElementById('minimize-app-btn').style.display = 'none';
+            document.getElementById('popout-app-btn').style.display = 'none';
+
+            // Hide app content - use visibility instead of display:none
+            // to preserve iframe layout and scroll positions
+            const appContent = document.getElementById('app-content');
+            if (Object.keys(iframeCache).length > 0) {
+                // Has cached iframes - preserve layout with visibility hidden
+                appContent.classList.add('preserve-hidden');
+            } else {
+                appContent.style.display = 'none';
+            }
+
+            // Hide all iframes (none should be visible while on desktop)
+            appContent.querySelectorAll('iframe').forEach(iframe => {
+                iframe.classList.remove('iframe-visible');
+            });
+
+            // Show home page
+            document.getElementById('page-home').style.display = 'block';
+
+            // Desktop menu active state is handled by setTaskbarActive(null) above
+
+            // Update title and icon - show home icon from sidebar
+            document.getElementById('page-title').textContent = i18n[currentLanguage]['title.desktop'] || 'Desktop';
+            const homeMenuItem = document.querySelector('#desktop-menu [data-page="home"]');
+            if (homeMenuItem) {
+                const svgElement = homeMenuItem.querySelector('svg');
+                if (svgElement) {
+                    setTopBarIconSVG(svgElement.cloneNode(true));
+                } else {
+                    setTopBarIcon(null);
+                }
+            } else {
+                setTopBarIcon(null);
+            }
+        }
+
+        function clearAppIframes(appId) {
+            // Remove only this app's iframes from DOM and cache
+            const appContent = document.getElementById('app-content');
+            Object.keys(iframeCache).forEach(key => {
+                if (key.startsWith(appId + '_')) {
+                    const iframe = iframeCache[key];
+                    if (iframe && iframe.parentElement) {
+                        iframe.parentElement.removeChild(iframe);
+                    }
+                    delete iframeCache[key];
+                }
+            });
+            delete lastAppMenu[appId];
+
+            // If no cached iframes remain, switch from preserve-hidden to display:none
+            if (Object.keys(iframeCache).length === 0) {
+                appContent.classList.remove('preserve-hidden');
+                appContent.style.display = 'none';
+            }
+        }
+
+        async function exitApp() {
+            // Clean up this app's iframes before returning to desktop
+            const closingAppId = currentApp ? currentApp.id : null;
+
+            // Terminate app process
+            await apiCall('close_app');
+
+            // Return to desktop UI
+            await backToDesktop();
+
+            // Remove closed app's iframes (after backToDesktop to avoid visual glitch)
+            if (closingAppId) {
+                clearAppIframes(closingAppId);
+                // Remove from running apps
+                const idx = runningApps.indexOf(closingAppId);
+                if (idx !== -1) runningApps.splice(idx, 1);
+                // Update taskbar to reflect removed app
+                updateTaskbar();
+            }
+        }
+
+        async function exitAppById(appId) {
+            // Close a specific app by ID (called from taskbar close button)
+            const wasCurrentApp = currentApp && currentApp.id === appId;
+
+            // If this is the current app, use normal exitApp flow
+            if (wasCurrentApp) {
+                await exitApp();
+                return;
+            }
+
+            // Close a background app
+            const appInfo = apps.find(a => a.id === appId);
+            if (appInfo) {
+                await apiCall('close_app', { app_id: appId });
+                clearAppIframes(appId);
+                const idx = runningApps.indexOf(appId);
+                if (idx !== -1) runningApps.splice(idx, 1);
+                delete lastAppMenu[appId];
+                updateTaskbar();
+            }
+        }
+
+        async function openInNewWindow() {
+            if (!currentApp || !currentAppMenu) return;
+            const lang = currentLanguage || 'en';
+            const rawMode = currentApp.new_window || 'true';
+            const url = `/app/${currentApp.id}/${currentAppMenu}.html?standalone=1&lang=${lang}`;
+            const title = currentApp.name || 'Skillup';
+
+            if (rawMode === 'single') {
+                // Focus existing standalone window if already open
+                const focusResult = await apiCall('open_window', { url, title, mode: 'single' });
+                if (focusResult && focusResult.focused) return;
+
+                // Apply standalone UI (hide sidebar/topbar) BEFORE detaching this page to new window
+                document.body.classList.add('app-standalone');
+                // Detach: this page (now standalone) moves to new window; main view reloads desktop
+                await apiCall('detach_to_new_window', { url, title });
+            } else if (rawMode === 'true') {
+                // Apply standalone UI BEFORE detaching this page to new window
+                document.body.classList.add('app-standalone');
+                // Detach: this page moves to a new window; main view reloads desktop.
+                // multi=true allows creating additional new windows each time popout is pressed.
+                await apiCall('detach_to_new_window', { url, title, multi: true });
+            } else {
+                await apiCall('open_window', { url, title, mode: 'true' });
+            }
+        }
+
+        function handleAppMenuClick(menuId) {
+            currentAppMenu = menuId;
+
+            // Render the view (menu items are now inside each app's HTML)
+            if (currentApp) {
+                renderAppView(currentApp.id, menuId);
+            }
+        }
+
+        window.appContentIframe = null;
+        let currentContentType = null;  // 'view' or 'content'
+        let iframeCache = {};  // Cache iframes by key: appId_viewId
+
+        async function renderAppView(appId, viewId) {
+            const appContent = document.getElementById('app-content');
+
+            // Build view path directly - assume individual view files exist
+            // Path format: /app/{appId}/{viewId}.html
+            const viewPath = `/app/${appId}/${viewId}.html`;
+
+            renderAppViewIframe(appId, viewId, viewPath, 'view');
+        }
+
+        function renderAppViewIframe(appId, viewId, contentPath, type) {
+            const appContent = document.getElementById('app-content');
+            const cacheKey = `${appId}_${viewId}`;
+
+            if (type === 'view') {
+                // Individual view files - use cached iframe if available
+
+                // Check if we have cached iframe for this view
+                let iframe = iframeCache[cacheKey];
+
+                if (iframe && iframe.parentElement === appContent) {
+                    // Reuse cached iframe - instant switch, no flicker
+                    showIframe(iframe);
+                    appContentIframe = iframe;
+                    currentContentType = 'view';
+                    // Send language, theme, and active tab state to cached iframe
+                    sendToIframe('setLanguage', { language: currentLanguage });
+                    sendToIframe('setTheme', { theme: document.getElementById('theme-select').value || 'default' });
+                    sendToIframe('setActiveTab', { viewId });
+                } else {
+                    // Create new iframe and cache it
+                    iframe = document.createElement('iframe');
+                    iframe.id = `app-iframe-${cacheKey}`;
+                    iframe.dataset.appId = appId;
+                    iframe.dataset.viewId = viewId;
+                    iframe.dataset.cacheKey = cacheKey;
+                    iframe.style.border = 'none';
+                    iframe.src = contentPath;
+
+                    appContent.appendChild(iframe);
+                    iframeCache[cacheKey] = iframe;
+                    appContentIframe = iframe;
+                    currentContentType = 'view';
+
+                    // Wait for iframe to fully load before showing
+                    iframe.onload = () => {
+                        // Wait a bit for rendering to complete
+                        setTimeout(() => {
+                            showIframe(iframe);
+                            sendToIframe('setLanguage', { language: currentLanguage });
+                            sendToIframe('setTheme', { theme: document.getElementById('theme-select').value || 'default' });
+                        }, 100);
+                    };
+                }
+            } else {
+                // Single content.html - reuse iframe, switch views via message
+                if (!appContentIframe || appContentIframe.dataset.appId !== appId || currentContentType !== 'content') {
+                    const contentCacheKey = `${appId}_content`;
+                    let iframe = iframeCache[contentCacheKey];
+
+                    if (iframe && iframe.parentElement === appContent) {
+                        // Reuse cached content.html iframe
+                        showIframe(iframe);
+                        appContentIframe = iframe;
+                        currentContentType = 'content';
+                        // Send language and theme settings to cached iframe
+                        sendToIframe('setLanguage', { language: currentLanguage });
+                        sendToIframe('setTheme', { theme: document.getElementById('theme-select').value || 'default' });
+                        sendToIframe('showView', { viewId: viewId });
+                    } else {
+                        // Create new content.html iframe
+                        iframe = document.createElement('iframe');
+                        iframe.id = `app-iframe-${contentCacheKey}`;
+                        iframe.dataset.appId = appId;
+                        iframe.dataset.cacheKey = contentCacheKey;
+                        iframe.style.border = 'none';
+                        iframe.src = contentPath;
+
+                        appContent.appendChild(iframe);
+                        iframeCache[contentCacheKey] = iframe;
+                        appContentIframe = iframe;
+                        currentContentType = 'content';
+
+                        iframe.onload = () => {
+                            setTimeout(() => {
+                                showIframe(iframe);
+                                sendToIframe('setLanguage', { language: currentLanguage });
+                                sendToIframe('setTheme', { theme: document.getElementById('theme-select').value || 'default' });
+                                sendToIframe('showView', { viewId: viewId });
+                            }, 100);
+                        };
+                    }
+                } else {
+                    // Already showing content.html, just switch view
+                    sendToIframe('showView', { viewId: viewId });
+                }
+            }
+        }
+
+        // Helper function to show iframe and hide all others
+        function showIframe(targetIframe) {
+            const appContent = document.getElementById('app-content');
+            const allIframes = appContent.querySelectorAll('iframe');
+
+            // Hide all iframes first
+            allIframes.forEach(iframe => {
+                iframe.classList.remove('iframe-visible');
+            });
+
+            // Show only the target iframe
+            targetIframe.classList.add('iframe-visible');
+
+            // Request focus inside the iframe
+            if (targetIframe.contentWindow) {
+                targetIframe.contentWindow.postMessage({ action: 'requestFocus' }, '*');
+            }
+
+            // Intercept Ctrl+Tab in iframe's contentWindow
+            try {
+                if (targetIframe.contentWindow) {
+                    const iframeDoc = targetIframe.contentWindow.document;
+                    if (iframeDoc) {
+                        iframeDoc.addEventListener('keydown', handleIframeKeydown, true);
+                        iframeDoc.addEventListener('keyup', handleIframeKeyup, true);
+                    }
+                }
+            } catch (e) {
+                // CORS - can't access iframe content, that's ok
+            }
+        }
+
+        // Handler for keydown events from iframes
+        function handleIframeKeydown(e) {
+            if (e.ctrlKey && e.key === 'Tab') {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                showSwitcher(e.shiftKey);
+            } else if (switcherActive && e.key === 'Escape') {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                document.getElementById('app-switcher').classList.remove('visible');
+                switcherActive = false;
+                switcherIndex = -1;
+            }
+        }
+
+        // Handler for keyup events from iframes
+        function handleIframeKeyup(e) {
+            if (switcherActive && e.key === 'Control') {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                commitSwitcher();
+            }
+        }
+
+        function sendToIframe(action, data = {}) {
+            if (appContentIframe && appContentIframe.contentWindow) {
+                appContentIframe.contentWindow.postMessage({ action, ...data }, '*');
+            }
+        }
+
+        // ============================================================================
+        // desktopBus: app-specific message handler registry
+        // Apps register handlers via desktopBus.on(action, fn) in desktop_handlers.js
+        // ============================================================================
+        window.desktopBus = (function() {
+            const _handlers = {};
+            return {
+                on: function(action, fn) { _handlers[action] = fn; },
+                off: function(action) { delete _handlers[action]; },
+                has: function(action) { return !!_handlers[action]; },
+                dispatch: function(action, data, event) {
+                    if (_handlers[action]) { _handlers[action](data, event); return true; }
+                    return false;
+                }
+            };
+        })();
+
+        // Load desktop_handlers.js for an app (if it exists), then call onLoad()
+        function _loadAppHandlers(appId, onLoad) {
+            const url = `/app/${appId}/web/desktop_handlers.js`;
+            // Remove previously loaded script for any app
+            const old = document.getElementById('_app_handlers_script');
+            if (old) old.remove();
+            const script = document.createElement('script');
+            script.id = '_app_handlers_script';
+            script.src = url;
+            script.onload = onLoad || null;
+            script.onerror = onLoad || null; // file may not exist — proceed anyway
+            document.head.appendChild(script);
+        }
+
+        // Listen for messages from iframe
+        window.addEventListener('message', (event) => {
+            const data = event.data;
+            if (!data || !data.action) return;
+
+            // App-specific handlers registered via desktopBus
+            if (desktopBus.dispatch(data.action, data, event)) return;
+
+            // Common platform actions
+            switch (data.action) {
+                case 'contentReady':
+                    // Iframe content is ready (for content.html mode)
+                    if (currentAppMenu) {
+                        sendToIframe('showView', { viewId: currentAppMenu });
+                    }
+                    sendToIframe('setLanguage', { language: currentLanguage });
+                    sendToIframe('setTheme', { theme: document.getElementById('theme-select').value || 'default' });
+                    break;
+
+                case 'viewReady':
+                    // Individual view is ready
+                    sendToIframe('setLanguage', { language: currentLanguage });
+                    sendToIframe('setTheme', { theme: document.getElementById('theme-select').value || 'default' });
+                    break;
+
+                case 'api':
+                    handleIframeApiCall(data);
+                    break;
+
+                case 'showMessageBox':
+                    window.showMessageBox({ title: data.title, text: data.text });
+                    break;
+
+                case 'switchView':
+                    if (data.viewId && currentApp) {
+                        handleAppMenuClick(data.viewId);
+                    }
+                    break;
+
+                case 'desktopModal.close':
+                    window.desktopModal.close();
+                    break;
+            }
+        });
+
+        async function handleIframeApiCall(data) {
+            const result = await apiCall(data.apiAction, data.apiData || {});
+            if (appContentIframe && appContentIframe.contentWindow) {
+                appContentIframe.contentWindow.postMessage({
+                    messageId: data.messageId,
+                    result: result
+                }, '*');
+            }
+        }
+
+        // ============================================================================
+        // App-Specific Functions (Removed - Now Handled by Individual Apps)
+        // ============================================================================
+        // Skill Verifier state and functions have been moved to app/skillverifier/web/
+        // Desktop should remain app-independent and only handle iframe loading
+        // ============================================================================
+
+        // ============================================================================
+        // Settings
+        // ============================================================================
+        async function changeLanguage(lang) {
+            currentLanguage = lang;
+            await apiCall('set_config', { language: lang });
+            applyTranslations();
+
+            // Update page title based on current page
+            const titleKey = `title.${currentPage === 'home' ? 'desktop' : currentPage}`;
+            document.getElementById('page-title').textContent = i18n[currentLanguage][titleKey] || currentPage;
+
+            // Update iframe language if active
+            if (appContentIframe) {
+                sendToIframe('setLanguage', { language: lang });
+            }
+
+            // Reload apps to update names
+            await loadApps();
+
+            // Update taskbar app names for new language
+            updateTaskbar();
+
+            // Update hotkey status text if on settings page
+            if (document.getElementById('page-settings').style.display !== 'none') {
+                await loadHotkeyStatus();
+            }
+        }
+
+        async function changeTheme(theme) {
+            // Update theme stylesheet
+            const themeStylesheet = document.getElementById('theme-stylesheet');
+            if (themeStylesheet) {
+                themeStylesheet.href = `/common/style/${theme}.css`;
+            }
+
+            // Update iframe theme if active
+            if (appContentIframe) {
+                sendToIframe('setTheme', { theme: theme });
+            }
+
+            // Save theme preference
+            await apiCall('set_config', { theme: theme });
+        }
+
+        function applyTranslations() {
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.dataset.i18n;
+                if (i18n[currentLanguage] && i18n[currentLanguage][key]) {
+                    el.textContent = i18n[currentLanguage][key];
+                }
+            });
+        }
+
+        // ============================================================================
+        // Hotkey Management
+        // ============================================================================
+        async function loadHotkeyStatus() {
+            try {
+                const data = await apiCall('hotkey_status');
+                if (!data) return;
+
+                const toggle = document.getElementById('hotkey-toggle');
+                const statusText = document.getElementById('hotkey-status-text');
+                const desktopInfo = document.getElementById('hotkey-desktop-info');
+                const desktopName = document.getElementById('desktop-env-name');
+                const hotkeyCommand = document.getElementById('hotkey-command');
+
+                // Update toggle state
+                toggle.checked = data.registered;
+
+                // Update status text
+                if (data.registered) {
+                    statusText.textContent = i18n[currentLanguage]['settings.hotkey_enabled'];
+                    statusText.style.color = 'var(--success)';
+                } else {
+                    statusText.textContent = i18n[currentLanguage]['settings.hotkey_disabled'];
+                    statusText.style.color = 'var(--text-secondary)';
+                }
+
+                // Update desktop environment info
+                desktopName.textContent = data.desktop.toUpperCase();
+                hotkeyCommand.textContent = data.command || '-';
+
+                // Show/hide desktop info
+                if (data.registered) {
+                    desktopInfo.style.display = 'block';
+                } else {
+                    desktopInfo.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Failed to load hotkey status:', error);
+            }
+        }
+
+        async function toggleHotkey(enable) {
+            const toggle = document.getElementById('hotkey-toggle');
+            const statusText = document.getElementById('hotkey-status-text');
+
+            // Disable toggle during request
+            toggle.disabled = true;
+
+            try {
+                const data = await apiCall('toggle_hotkey', { enable: enable });
+
+                // Re-enable toggle
+                toggle.disabled = false;
+
+                if (data && data.success) {
+                    // Update status text
+                    if (enable) {
+                        statusText.textContent = i18n[currentLanguage]['settings.hotkey_enabled'];
+                        statusText.style.color = 'var(--success)';
+                    } else {
+                        statusText.textContent = i18n[currentLanguage]['settings.hotkey_disabled'];
+                        statusText.style.color = 'var(--text-secondary)';
+                    }
+
+                    // Reload status to get updated info
+                    loadHotkeyStatus();
+                } else {
+                    // Revert toggle on failure
+                    toggle.checked = !enable;
+
+                    // Show error message
+                    console.error('Failed to toggle hotkey:', data ? data.message : 'Unknown error');
+
+                    // Show error in status text temporarily
+                    const originalText = statusText.textContent;
+                    const originalColor = statusText.style.color;
+                    statusText.textContent = data ? data.message : 'Error';
+                    statusText.style.color = 'var(--error)';
+                    setTimeout(() => {
+                        statusText.textContent = originalText;
+                        statusText.style.color = originalColor;
+                    }, 3000);
+                }
+            } catch (error) {
+                toggle.disabled = false;
+                toggle.checked = !enable;
+                console.error('Error toggling hotkey:', error);
+
+                // Show error in status text
+                const originalText = statusText.textContent;
+                const originalColor = statusText.style.color;
+                statusText.textContent = 'Network error: ' + error.message;
+                statusText.style.color = 'var(--error)';
+                setTimeout(() => {
+                    statusText.textContent = originalText;
+                    statusText.style.color = originalColor;
+                }, 3000);
+            }
+        }
+
+        // ============================================================================
+        // Clock
+        // ============================================================================
+        let clockIntervalId = null;
+
+        function updateClock() {
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            document.getElementById('clock').textContent = `${hours}:${minutes}:${seconds}`;
+
+            // Schedule next update to align with the next second
+            // This ensures smoother transitions even when main thread is busy
+            if (clockIntervalId) {
+                clearTimeout(clockIntervalId);
+            }
+            const msUntilNextSecond = 1000 - now.getMilliseconds();
+            clockIntervalId = setTimeout(updateClock, msUntilNextSecond);
+        }
+
+        // ============================================================================
+        // Account Management
+        // ============================================================================
+        let _pendingPhotoDataUri = null;  // Holds newly selected photo before save
+
+        async function loadAccount() {
+            try {
+                const data = await apiCall('get_account');
+                if (!data || !data.success) return;
+
+                // Populate settings fields
+                const nameInput = document.getElementById('account-name-input');
+                const idDisplay = document.getElementById('account-id-display');
+                if (nameInput) nameInput.value = data.name || data.id;
+                if (idDisplay) idDisplay.textContent = data.id;
+
+                // Load avatar photo
+                await refreshAccountPhoto();
+            } catch (e) {
+                console.error('[Account] Failed to load account:', e);
+            }
+        }
+
+        async function refreshAccountPhoto() {
+            try {
+                const data = await apiCall('get_account_photo', { size: 'small' });
+                const src = (data && data.data_uri) ? data.data_uri : '/common/resource/img/default-avatar.svg';
+
+                // Update both topbar and settings avatars
+                const topbarImg = document.getElementById('topbar-avatar-img');
+                const settingsImg = document.getElementById('account-avatar-img');
+                if (topbarImg) topbarImg.src = src;
+                if (settingsImg) settingsImg.src = src;
+
+                // Show/hide remove button
+                const removeBtn = document.getElementById('account-remove-photo-btn');
+                if (removeBtn) removeBtn.style.display = (data && data.data_uri) ? 'inline-block' : 'none';
+            } catch (e) {
+                console.error('[Account] Failed to load photo:', e);
+            }
+        }
+
+        function onAccountPhotoSelected(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                const dataUri = e.target.result;
+                _pendingPhotoDataUri = dataUri;
+
+                // Preview immediately
+                const settingsImg = document.getElementById('account-avatar-img');
+                if (settingsImg) settingsImg.src = dataUri;
+
+                // Auto-save photo
+                const nameInput = document.getElementById('account-name-input');
+                const name = nameInput ? nameInput.value.trim() : null;
+                const result = await apiCall('save_account', { name: name || null, photo: dataUri });
+                if (result && result.success) {
+                    _pendingPhotoDataUri = null;
+                    await refreshAccountPhoto();
+                }
+            };
+            reader.readAsDataURL(file);
+
+            // Reset input so same file can be re-selected
+            event.target.value = '';
+        }
+
+        async function saveAccountName() {
+            const nameInput = document.getElementById('account-name-input');
+            if (!nameInput) return;
+            const name = nameInput.value.trim();
+            if (!name) return;
+
+            await apiCall('save_account', { name: name });
+        }
+
+        async function removeAccountPhoto() {
+            const confirmed = await showConfirmDialog(
+                i18n[currentLanguage]['settings.account_remove_photo_confirm_title'],
+                i18n[currentLanguage]['settings.account_remove_photo_confirm_text'],
+                { yesStyle: 'danger' }
+            );
+            if (!confirmed) return;
+
+            const result = await apiCall('clear_account_photo');
+            if (result && result.success) {
+                _pendingPhotoDataUri = null;
+                // Reset to default
+                const settingsImg = document.getElementById('account-avatar-img');
+                const topbarImg = document.getElementById('topbar-avatar-img');
+                const defaultSrc = '/common/resource/img/default-avatar.svg';
+                if (settingsImg) settingsImg.src = defaultSrc;
+                if (topbarImg) topbarImg.src = defaultSrc;
+
+                const removeBtn = document.getElementById('account-remove-photo-btn');
+                if (removeBtn) removeBtn.style.display = 'none';
+            }
+        }
+
+        // ============================================================================
+        // Ctrl+Tab App Switcher
+        // ============================================================================
+        let switcherActive = false;
+        let switcherIndex = -1;
+        // iframeTabTrap: install/remove a Tab-key blocker on an iframe document
+        // Exposed on desktopBus so desktop_handlers.js files can use it
+        (function() {
+            let _doc = null, _handler = null;
+            desktopBus.installIframeTabTrap = function(sourceWindow) {
+                desktopBus.removeIframeTabTrap();
+                try {
+                    const iframeDoc = sourceWindow && sourceWindow.document;
+                    if (!iframeDoc) return;
+                    _handler = function(e) {
+                        if (e.key === 'Tab') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.stopImmediatePropagation();
+                        }
+                    };
+                    iframeDoc.addEventListener('keydown', _handler, true);
+                    _doc = iframeDoc;
+                } catch(e) {}
+            };
+            desktopBus.removeIframeTabTrap = function() {
+                if (_doc && _handler) {
+                    try { _doc.removeEventListener('keydown', _handler, true); } catch(e) {}
+                    _doc = null; _handler = null;
+                }
+            };
+        })();
+
+        function getSwitcherApps() {
+            // Return app objects for currently running apps, in order
+            return runningApps.map(id => apps.find(a => a.id === id)).filter(Boolean);
+        }
+
+        function showSwitcher(reverse) {
+            const list = getSwitcherApps();
+            if (list.length === 0) return;
+
+            if (!switcherActive) {
+                switcherActive = true;
+                // Start from current app position (or last), then move
+                const curId = currentApp ? currentApp.id : null;
+                switcherIndex = curId ? list.findIndex(a => a.id === curId) : list.length - 1;
+                if (switcherIndex === -1) switcherIndex = list.length - 1;
+            }
+
+            // Advance selection
+            if (reverse) {
+                switcherIndex = (switcherIndex - 1 + list.length) % list.length;
+            } else {
+                switcherIndex = (switcherIndex + 1) % list.length;
+            }
+
+            renderSwitcher(list);
+            document.getElementById('app-switcher').classList.add('visible');
+        }
+
+        function renderSwitcher(list) {
+            const container = document.getElementById('app-switcher-list');
+            container.innerHTML = '';
+            list.forEach((app, i) => {
+                const item = document.createElement('div');
+                item.className = 'app-switcher-item' + (i === switcherIndex ? ' selected' : '');
+                const iconSrc = app.icon ? `/app/${app.id}/${app.icon}` : '/common/resource/img/favicon.svg';
+                item.innerHTML = `<img src="${iconSrc}" onerror="this.src='/common/resource/img/favicon.svg'"><span>${app.name}</span>`;
+                item.onclick = () => {
+                    switcherIndex = i;
+                    commitSwitcher();
+                };
+                container.appendChild(item);
+            });
+        }
+
+        async function commitSwitcher() {
+            const list = getSwitcherApps();
+            document.getElementById('app-switcher').classList.remove('visible');
+            switcherActive = false;
+
+            if (list.length === 0 || switcherIndex < 0 || switcherIndex >= list.length) return;
+            const target = list[switcherIndex];
+            switcherIndex = -1;
+            if (!currentApp || currentApp.id !== target.id) {
+                await launchApp(target.id);
+            }
+        }
+
+        // Handle Ctrl+Tab on window (higher priority than document)
+        window.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Tab') {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                showSwitcher(e.shiftKey);
+            } else if (switcherActive && e.key === 'Escape') {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                document.getElementById('app-switcher').classList.remove('visible');
+                switcherActive = false;
+                switcherIndex = -1;
+            }
+        }, true);
+
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Tab') {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                showSwitcher(e.shiftKey);
+            } else if (switcherActive && e.key === 'Escape') {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                document.getElementById('app-switcher').classList.remove('visible');
+                switcherActive = false;
+                switcherIndex = -1;
+            }
+        }, true);
+
+        // Handle Ctrl+Tab keyup on window
+        window.addEventListener('keyup', function(e) {
+            if (switcherActive && e.key === 'Control') {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                commitSwitcher();
+            }
+        }, true);
+
+        document.addEventListener('keyup', function(e) {
+            if (switcherActive && e.key === 'Control') {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                commitSwitcher();
+            }
+        }, true);
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', init);
+
+        // ibus 1.5.3 workaround: track Korean/English IME state and request
+        // ibus restart when user tries to toggle Korean after returning from GTK apps.
+        (function() {
+            var _imeActive = false;
+
+            var _ALPHA_CODES = new Set([
+                'KeyA','KeyB','KeyC','KeyD','KeyE','KeyF','KeyG','KeyH','KeyI',
+                'KeyJ','KeyK','KeyL','KeyM','KeyN','KeyO','KeyP','KeyQ','KeyR',
+                'KeyS','KeyT','KeyU','KeyV','KeyW','KeyX','KeyY','KeyZ'
+            ]);
+
+            function setImeActive(active) {
+                if (active !== _imeActive) {
+                    _imeActive = active;
+                    if (typeof callPython === 'function') {
+                        callPython('ibus_notify_korean', { ime_active: _imeActive });
+                    }
+                }
+            }
+
+            function onCompositionStart() {
+                setImeActive(true);
+            }
+
+            function onKeydown(e) {
+                if (_ALPHA_CODES.has(e.code) && e.keyCode !== 229) {
+                    setImeActive(false);
+                }
+
+                var isToggle = (e.key === 'Hangul' || e.key === 'HangulMode' ||
+                                (e.key === ' ' && e.shiftKey));
+                if (isToggle && !_imeActive) {
+                    e.preventDefault();
+                    if (typeof callPython === 'function') {
+                        callPython('ibus_restart_request', { reason: 'toggle_key' });
+                    }
+                }
+            }
+
+            function installOnDoc(doc) {
+                doc.addEventListener('compositionstart', onCompositionStart, true);
+                doc.addEventListener('keydown', onKeydown, true);
+            }
+
+            installOnDoc(document);
+
+            function installOnIframe(iframe) {
+                try {
+                    installOnDoc(iframe.contentWindow.document);
+                } catch(ex) {}
+            }
+
+            var _iframeObserver = new MutationObserver(function() {
+                var iframes = document.querySelectorAll('iframe.iframe-visible');
+                iframes.forEach(function(iframe) {
+                    if (iframe._ibusTrackerInstalled) return;
+                    installOnIframe(iframe);
+                    iframe.addEventListener('load', function() { installOnIframe(iframe); });
+                    iframe._ibusTrackerInstalled = true;
+                });
+            });
+
+            document.addEventListener('DOMContentLoaded', function() {
+                var appContent = document.getElementById('app-content');
+                if (appContent) {
+                    _iframeObserver.observe(appContent, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+                }
+            });
+        })();
+    </script>
+
+    <!-- Skillup Common Scripts -->
+    <script src="/common/script/qwebchannel.js"></script>
+    <script>
+        // Desktop mode - initialize global flags before loading common.js
+        window.skillupInitialized = true;
+        window.isInIframe = false;
+        window.isInWebBrowser = false;
+        // Initialize QWebChannel immediately for desktop
+        if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined') {            new QWebChannel(qt.webChannelTransport, function(channel) {
+                window.qwebchannelBridge = channel.objects.bridge;
+                // Connect callJS signal
+                if (window.qwebchannelBridge && window.qwebchannelBridge.callJS) {
+                    window.qwebchannelBridge.callJS.connect(function(functionName, jsonArgs) {                        try {
+                            const args = JSON.parse(jsonArgs);
+
+                            // First try to call function in desktop window scope
+                            if (typeof window[functionName] === 'function') {
+                                window[functionName](args);
+                            } else {
+                                // If not found in desktop scope, forward to currently visible app iframe
+                                const appContent = document.getElementById('app-content');
+                                const visibleIframe = appContent ? appContent.querySelector('iframe.iframe-visible') : null;
+
+                                if (visibleIframe && visibleIframe.contentWindow) {
+                                    visibleIframe.contentWindow.postMessage({
+                                        action: 'callJS',
+                                        functionName: functionName,
+                                        args: args
+                                    }, '*');
+                                } else {
+                                    console.warn('[Desktop] Function not found:', functionName);
+                                }
+                            }
+                        } catch (error) {
+                            console.error('[Desktop] callJS error:', error);
+                        }
+                    });                }
+            });
+        }
+    </script>
+    <script src="/common/bootstrap/5.3.3/bootstrap.bundle.min.js"></script>
+    <script src="/common/script/common.js"></script>
+
+    <script>
+        // ============================================================================
+        // QWebChannel callJS Forwarding to App Iframes
+        // ============================================================================
+        // Handler is defined in <head> section before common.js loads    </script>
+
+<!-- Ctrl+Tab App Switcher -->
+<div id="app-switcher">
+    <div id="app-switcher-panel">
+        <div id="app-switcher-label">Switch App</div>
+        <div id="app-switcher-list"></div>
+    </div>
+</div>
+
+<!-- desktopModal: common modal for iframe apps -->
+<div id="desktop-modal-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:10000;pointer-events:none;">
+    <div id="desktop-modal-box" style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:16px 20px 20px;min-width:320px;max-width:90vw;max-height:90vh;display:flex;flex-direction:column;position:absolute;pointer-events:all;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+        <div id="desktop-modal-title" style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:10px;flex-shrink:0;"></div>
+        <div id="desktop-modal-body" style="font-size:13px;color:var(--text-secondary);overflow-y:auto;flex:1;"></div>
+        <div id="desktop-modal-footer" style="display:flex;justify-content:flex-end;flex-shrink:0;"></div>
+    </div>
+</div>
+
+<!-- Message Box Dialog -->
+<div id="msgbox-dialog" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:24px;min-width:300px;max-width:420px;">
+        <div id="msgbox-dialog-title" style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:12px;"></div>
+        <div id="msgbox-dialog-text" style="font-size:13px;color:var(--text-secondary);margin-bottom:24px;line-height:1.5;white-space:pre-wrap;"></div>
+        <div style="display:flex;justify-content:flex-end;">
+            <button id="msgbox-dialog-ok" class="btn btn-primary" style="font-size:13px;padding:6px 20px;" data-i18n="dialog.ok">OK</button>
+        </div>
+    </div>
+</div>
+
+<!-- Confirm Dialog -->
+<div id="confirm-dialog" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:24px;min-width:300px;max-width:420px;">
+        <div id="confirm-dialog-title" style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:12px;"></div>
+        <div id="confirm-dialog-text" style="font-size:13px;color:var(--text-secondary);margin-bottom:24px;line-height:1.5;white-space:pre-wrap;"></div>
+        <div style="display:flex;justify-content:flex-end;">
+            <button id="confirm-dialog-no" class="btn btn-secondary" style="font-size:13px;padding:6px 16px;margin-right:8px;" data-i18n="dialog.no">No</button>
+            <button id="confirm-dialog-yes" class="btn btn-primary" style="font-size:13px;padding:6px 16px;" data-i18n="dialog.yes">Yes</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ============================================================================
+    // Message Box & Confirm Dialog
+    // ============================================================================
+
+    // showMessageBox: called via callJS from Python (lib/msgbox.py show())
+    window.showMessageBox = function(args) {
+        const title = args.title || '';
+        const text = args.text || '';
+        document.getElementById('msgbox-dialog-title').textContent = title;
+        document.getElementById('msgbox-dialog-text').textContent = text;
+        const dialog = document.getElementById('msgbox-dialog');
+        dialog.style.display = 'flex';
+
+        const btn = document.getElementById('msgbox-dialog-ok');
+        const close = () => {
+            dialog.style.display = 'none';
+            btn.removeEventListener('click', close);
+            document.removeEventListener('keydown', onKeydown, true);
+        };
+        const onKeydown = (e) => {
+            if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                close();
+            } else if (e.key === 'Tab') {
+                // dialog has only one focusable element, keep focus on it
+                e.preventDefault();
+                btn.focus();
+            }
+        };
+        btn.addEventListener('click', close);
+        document.addEventListener('keydown', onKeydown, true);
+        btn.focus();
+    };
+
+    // showConfirmBox: called via callJS from Python (lib/msgbox.py confirm())
+    window.showConfirmBox = function(args) {
+        const confirmId = args.confirm_id;
+        showConfirmDialog(args.title || '', args.text || '').then(function(confirmed) {
+            apiCall('confirm_result', { confirm_id: confirmId, confirmed: confirmed });
+        });
+    };
+
+    // showConfirmDialog: reusable JS confirm dialog, returns Promise<bool>
+    // options.yesStyle: 'danger' for red yes button, default is blue (primary)
+    window.showConfirmDialog = function(title, text, options) {
+        return new Promise(function(resolve) {
+            document.getElementById('confirm-dialog-title').textContent = title;
+            document.getElementById('confirm-dialog-text').textContent = text;
+            const yesBtn = document.getElementById('confirm-dialog-yes');
+            yesBtn.classList.remove('btn-primary', 'btn-danger');
+            yesBtn.classList.add((options && options.yesStyle === 'danger') ? 'btn-danger' : 'btn-primary');
+            const dialog = document.getElementById('confirm-dialog');
+            dialog.style.display = 'flex';
+
+            const onYes = function() {
+                dialog.style.display = 'none';
+                cleanup();
+                resolve(true);
+            };
+            const onNo = function() {
+                dialog.style.display = 'none';
+                cleanup();
+                resolve(false);
+            };
+            const noBtn = document.getElementById('confirm-dialog-no');
+            const onKeydown = function(e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    // activate focused button (yes or no)
+                    if (document.activeElement === noBtn) onNo();
+                    else onYes();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    onNo();
+                } else if (e.key === 'Tab') {
+                    // cycle focus between yes and no buttons
+                    e.preventDefault();
+                    if (document.activeElement === yesBtn) noBtn.focus();
+                    else yesBtn.focus();
+                }
+            };
+            const cleanup = function() {
+                document.getElementById('confirm-dialog-yes').removeEventListener('click', onYes);
+                document.getElementById('confirm-dialog-no').removeEventListener('click', onNo);
+                document.removeEventListener('keydown', onKeydown, true);
+            };
+
+            document.getElementById('confirm-dialog-yes').addEventListener('click', onYes);
+            document.getElementById('confirm-dialog-no').addEventListener('click', onNo);
+            document.addEventListener('keydown', onKeydown, true);
+            yesBtn.focus();
+        });
+    };
+
+        // ============================================================================
+        // desktopModal: common modal infrastructure for iframe apps
+        // ============================================================================
+        window.desktopModal = (function() {
+            let _config = null;
+            let _keydownHandler = null;
+            let _bodyClickHandler = null;
+            let _dragState = null;
+            let _iframeKeyHandler = null;
+            let _iframeDoc = null;
+
+            // Intercept all keyboard events inside the currently active iframe
+            // so the modal (in the parent frame) handles them exclusively.
+            // Keys the modal dialog itself needs to handle inside the iframe
+            const _MODAL_PASSTHROUGH_KEYS = new Set(['Escape','Enter','Tab','F3']);
+
+            function _installIframeKeyBlock() {
+                _removeIframeKeyBlock();
+                try {
+                    const iframe = document.querySelector('iframe.iframe-visible');
+                    if (!iframe || !iframe.contentWindow) return;
+                    const doc = iframe.contentWindow.document;
+                    _iframeKeyHandler = function(e) {
+                        if (_MODAL_PASSTHROUGH_KEYS.has(e.key)) return; // let modal inputs handle these
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                    };
+                    doc.addEventListener('keydown', _iframeKeyHandler, true);
+                    _iframeDoc = doc;
+                } catch(err) {}
+            }
+
+            function _removeIframeKeyBlock() {
+                if (_iframeDoc && _iframeKeyHandler) {
+                    try { _iframeDoc.removeEventListener('keydown', _iframeKeyHandler, true); } catch(e) {}
+                    _iframeDoc = null;
+                    _iframeKeyHandler = null;
+                }
+            }
+
+            function _getFocusable() {
+                const box = document.getElementById('desktop-modal-box');
+                return Array.from(box.querySelectorAll(
+                    'button:not([disabled]),input:not([disabled]),select:not([disabled]),' +
+                    'textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+                ));
+            }
+
+            // Position the modal box.
+            // position values: 'center' | 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
+            // For corner positions the box is first shown off-screen, measured, then placed.
+            function _positionBox(boxEl, position) {
+                const MARGIN = 24;
+                if (position === 'center') {
+                    boxEl.style.left = '50%';
+                    boxEl.style.top = '50%';
+                    boxEl.style.transform = 'translate(-50%, -50%)';
+                    return;
+                }
+                // Corner placement: need real size, so show invisible then measure
+                boxEl.style.transform = 'none';
+                boxEl.style.visibility = 'hidden';
+                boxEl.style.left = '0px';
+                boxEl.style.top = '0px';
+                requestAnimationFrame(function() {
+                    const bw = boxEl.offsetWidth, bh = boxEl.offsetHeight;
+                    const vw = window.innerWidth, vh = window.innerHeight;
+                    let left, top;
+                    if (position === 'bottom-right') {
+                        left = vw - bw - MARGIN; top = vh - bh - MARGIN;
+                    } else if (position === 'bottom-left') {
+                        left = MARGIN; top = vh - bh - MARGIN;
+                    } else if (position === 'top-right') {
+                        left = vw - bw - MARGIN; top = MARGIN;
+                    } else if (position === 'top-left') {
+                        left = MARGIN; top = MARGIN;
+                    } else {
+                        left = vw / 2 - bw / 2; top = vh / 2 - bh / 2;
+                    }
+                    boxEl.style.left = Math.max(0, left) + 'px';
+                    boxEl.style.top = Math.max(0, top) + 'px';
+                    boxEl.style.visibility = '';
+                });
+            }
+
+            function _setupDrag(boxEl) {
+                boxEl.style.cursor = 'move';
+                boxEl.style.userSelect = 'none';
+
+                function onPointerDown(e) {
+                    if (e.button !== 0) return;
+                    const tag = e.target.tagName;
+                    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' ||
+                        tag === 'BUTTON' || tag === 'A' || tag === 'LABEL') return;
+                    const rect = boxEl.getBoundingClientRect();
+                    _dragState = { startX: e.clientX, startY: e.clientY, startLeft: rect.left, startTop: rect.top };
+                    boxEl.setPointerCapture(e.pointerId);
+                    e.preventDefault();
+                }
+                function onPointerMove(e) {
+                    if (!_dragState) return;
+                    const dx = e.clientX - _dragState.startX;
+                    const dy = e.clientY - _dragState.startY;
+                    let left = _dragState.startLeft + dx;
+                    let top = _dragState.startTop + dy;
+                    const bw = boxEl.offsetWidth, bh = boxEl.offsetHeight;
+                    left = Math.max(0, Math.min(left, window.innerWidth - bw));
+                    top = Math.max(0, Math.min(top, window.innerHeight - bh));
+                    boxEl.style.left = left + 'px';
+                    boxEl.style.top = top + 'px';
+                    boxEl.style.transform = 'none';
+                }
+                function onPointerUp() { _dragState = null; }
+
+                boxEl.addEventListener('pointerdown', onPointerDown);
+                boxEl.addEventListener('pointermove', onPointerMove);
+                boxEl.addEventListener('pointerup', onPointerUp);
+                boxEl.addEventListener('pointercancel', onPointerUp);
+
+                return function cleanup() {
+                    boxEl.removeEventListener('pointerdown', onPointerDown);
+                    boxEl.removeEventListener('pointermove', onPointerMove);
+                    boxEl.removeEventListener('pointerup', onPointerUp);
+                    boxEl.removeEventListener('pointercancel', onPointerUp);
+                    boxEl.style.cursor = '';
+                    boxEl.style.userSelect = '';
+                    _dragState = null;
+                };
+            }
+
+            let _dragCleanup = null;
+
+            function close() {
+                const overlay = document.getElementById('desktop-modal-overlay');
+                overlay.style.display = 'none';
+                if (_keydownHandler) {
+                    document.removeEventListener('keydown', _keydownHandler, true);
+                    _keydownHandler = null;
+                }
+                if (_bodyClickHandler) {
+                    document.getElementById('desktop-modal-body').removeEventListener('click', _bodyClickHandler);
+                    _bodyClickHandler = null;
+                }
+                if (_dragCleanup) { _dragCleanup(); _dragCleanup = null; }
+                _removeIframeKeyBlock();
+                const cb = _config && _config.onClose;
+                _config = null;
+                if (cb) cb();
+            }
+
+            function open(config) {
+                // close any existing modal first
+                if (_config) close();
+
+                _config = config;
+                const titleEl = document.getElementById('desktop-modal-title');
+                const boxEl = document.getElementById('desktop-modal-box');
+                titleEl.textContent = config.title || '';
+                document.getElementById('desktop-modal-body').innerHTML = config.html || '';
+
+                const bodyEl = document.getElementById('desktop-modal-body');
+                const footer = document.getElementById('desktop-modal-footer');
+                footer.innerHTML = '';
+                const buttons = config.buttons != null ? config.buttons : [{ label: 'OK', primary: true }];
+                bodyEl.style.marginBottom = buttons.length > 0 ? '16px' : '0';
+                let firstPrimary = null;
+                buttons.forEach(function(btnDef) {
+                    const btn = document.createElement('button');
+                    btn.className = 'btn ' + (btnDef.danger ? 'btn-danger' : btnDef.primary ? 'btn-primary' : 'btn-secondary');
+                    btn.style.cssText = 'font-size:13px;padding:6px 16px;margin-left:8px;';
+                    btn.textContent = btnDef.label;
+                    if (btnDef.id) btn.id = btnDef.id;
+                    btn.addEventListener('click', function() {
+                        if (btnDef.onClick) btnDef.onClick();
+                        else close();
+                    });
+                    footer.appendChild(btn);
+                    if (btnDef.primary && !firstPrimary) firstPrimary = btn;
+                });
+
+                if (config.onBodyClick) {
+                    _bodyClickHandler = config.onBodyClick;
+                    document.getElementById('desktop-modal-body').addEventListener('click', _bodyClickHandler);
+                }
+
+                const overlay = document.getElementById('desktop-modal-overlay');
+
+                // draggable mode: no background dimming, box positioned freely
+                if (config.draggable) {
+                    overlay.style.background = 'transparent';
+                    overlay.onclick = null;
+                    _positionBox(boxEl, config.position || 'center');
+                    _dragCleanup = _setupDrag(boxEl);
+                } else {
+                    overlay.style.background = 'rgba(0,0,0,0.5)';
+                    overlay.onclick = function(e) { if (e.target === overlay) close(); };
+                    _positionBox(boxEl, config.position || 'center');
+                    _dragCleanup = null;
+                }
+
+                overlay.style.display = 'block';
+
+                _keydownHandler = function(e) {
+                    const focusable = _getFocusable();
+                    if (e.key === 'Tab') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                        if (focusable.length === 0) return;
+                        const idx = focusable.indexOf(document.activeElement);
+                        const next = e.shiftKey
+                            ? (idx <= 0 ? focusable.length - 1 : idx - 1)
+                            : (idx >= focusable.length - 1 ? 0 : idx + 1);
+                        focusable[next].focus();
+                    } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                        close();
+                    } else if (e.key === 'Enter') {
+                        const activeEl = document.activeElement;
+                        if (!activeEl || !footer.contains(activeEl)) {
+                            const primary = footer.querySelector('.btn-primary') || footer.querySelector('button');
+                            if (primary) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                e.stopImmediatePropagation();
+                                primary.click();
+                            }
+                        }
+                    }
+                };
+                document.addEventListener('keydown', _keydownHandler, true);
+
+                // Block all keyboard input from active iframe — delay one tick so the
+                // triggering keydown (e.g. Ctrl+F) finishes before the block is installed.
+                setTimeout(_installIframeKeyBlock, 0);
+
+                // initial focus
+                if (firstPrimary) firstPrimary.focus();
+                else { const focusable = _getFocusable(); if (focusable.length > 0) focusable[0].focus(); }
+            }
+
+            return { open: open, close: close, isOpen: function() { return _config !== null; } };
+        })();
+</script>
+</body>
+</html>

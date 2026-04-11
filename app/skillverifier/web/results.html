@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Results - Skillup Verifier</title>
+
+    <!-- Skillup AppInit - Must be loaded first -->
+    <script src="/common/script/appinit.js" onerror="this.onerror=null; this.src='../../../../web/common/script/appinit.js';"></script>
+</head>
+<body>
+    <!-- App-specific CSS -->
+    <link rel="stylesheet" href="skillverifier.css" onerror="this.onerror=null; this.href='/app/skillverifier/skillverifier.css';">
+
+    <!-- App-specific JS - loaded after initialization -->
+    <script src="skillverifier.js" onerror="this.onerror=null; this.src='/app/skillverifier/skillverifier.js';"></script>
+
+    <!-- Filter Dialog -->
+    <div class="filter-dialog-overlay" id="filter-dialog-overlay" onclick="closeFilterDialogOnOverlay(event)">
+        <div class="filter-dialog" onclick="event.stopPropagation()">
+            <div class="filter-dialog-header">
+                <h3 data-i18n="filterDialogTitle">Filter by Error/Warning Types</h3>
+                <button class="filter-dialog-close" onclick="closeFilterDialog()">&times;</button>
+            </div>
+
+            <div class="filter-dialog-body">
+                <div class="filter-section">
+                    <div class="filter-section-title errors" data-i18n="filterSectionErrors">Errors</div>
+                    <div class="filter-section-actions">
+                        <a class="filter-action-link" onclick="selectAllInSection('errors', true)" data-i18n="filterSelectAll">Select All</a>
+                        <a class="filter-action-link" onclick="selectAllInSection('errors', false)" data-i18n="filterDeselectAll">Deselect All</a>
+                    </div>
+                    <div class="filter-checkbox-list" id="error-filter-list">
+                        <!-- Error checkboxes will be dynamically generated -->
+                    </div>
+                </div>
+
+                <div class="filter-section">
+                    <div class="filter-section-title warnings" data-i18n="filterSectionWarnings">Warnings</div>
+                    <div class="filter-section-actions">
+                        <a class="filter-action-link" onclick="selectAllInSection('warnings', true)" data-i18n="filterSelectAll">Select All</a>
+                        <a class="filter-action-link" onclick="selectAllInSection('warnings', false)" data-i18n="filterDeselectAll">Deselect All</a>
+                    </div>
+                    <div class="filter-checkbox-list" id="warning-filter-list">
+                        <!-- Warning checkboxes will be dynamically generated -->
+                    </div>
+                </div>
+
+                <div class="filter-section">
+                    <div class="filter-section-title clean" data-i18n="filterSectionClean">Clean Files</div>
+                    <div class="filter-checkbox-list" id="clean-filter-list">
+                        <div class="filter-checkbox-item">
+                            <input type="checkbox" id="filter-clean-files" checked>
+                            <label for="filter-clean-files" data-i18n="filterShowCleanFiles">Show files with no errors</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="filter-dialog-footer">
+                <button class="btn btn-secondary" onclick="closeFilterDialog()" data-i18n="btnCancel">Cancel</button>
+                <button class="btn btn-primary" onclick="applyFilterDialog()" data-i18n="btnApply">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="content-container">
+        <div id="stats-container"></div>
+        <div class="app-section">
+            <h3>
+                <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+                <span data-i18n="results">Results</span>
+            </h3>
+            <div id="filter-container"></div>
+            <div id="results-container">
+                <p style="color: var(--text-secondary)" data-i18n="noResults">No results yet. Run verification first.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Define which Python action to call for state
+        window.getAppStateAction = () => 'verify_status';
+
+        // Filter state
+        let errorTypeFilters = {};  // {errorType: true/false}
+        let warningTypeFilters = {};  // {warningType: true/false}
+        let showCleanFiles = true;  // Show clean files by default
+
+        // Mock data for web browser mode (debugging)
+        let verifierState = null;
+        if (isInWebBrowser) {
+            verifierState = {
+                files: ['/path/to/sample.il', '/path/to/test.il'],
+                defineFile: '',
+                dataDb: '',
+                results: [
+                    {
+                        filepath: '/path/to/sample.il',
+                        errors: [
+                            { type: 'error', line: 10, function: 'myFunc', message: 'Undeclared variable: foo' },
+                            { type: 'warning', line: 25, function: 'myFunc', message: 'Unused parameter: bar' }
+                        ],
+                        source: '; Sample SKILL code\nprocedure(myFunc(x y)\n  let((result)\n    result = x + y\n    foo = result  ; error: undeclared\n    result\n  )\n)'
+                    },
+                    {
+                        filepath: '/path/to/test.il',
+                        errors: [],
+                        source: '; Clean file\nprocedure(testFunc(a b)\n  a + b\n)'
+                    }
+                ],
+                logs: [
+                    { type: 'info', message: '\x1b[92m[info ]\x1b[0m Found 2 files to verify' },
+                    { type: 'info', message: '\x1b[92m[info ]\x1b[0m verify /path/to/sample.il' },
+                    { type: 'error', message: '\x1b[91m[error]\x1b[0m\x1b[91m[E01]\x1b[0m line \x1b[93m10\x1b[0m, in function \x1b[93mmyFunc\x1b[0m, Undeclared variable: foo' },
+                    { type: 'info', message: '\x1b[92m[info ]\x1b[0m verify /path/to/test.il' },
+                    { type: 'info', message: '\x1b[92m[info ]\x1b[0m Verification complete: 2 files, 1 errors' }
+                ],
+                running: false
+            };
+            window.appState = verifierState;
+        }
+
+        // Callback when state is loaded from Python backend
+        window.onAppStateLoaded = function(state) {
+            verifierState = state;
+            updateResultsView();
+        };
+
+        function updateResultsView() {
+            if (!verifierState) return;
+
+            const statsContainer = document.getElementById('stats-container');
+            const filterContainer = document.getElementById('filter-container');
+            const resultsContainer = document.getElementById('results-container');
+            const t = i18n[currentLanguage] || i18n.en;
+
+            if (!verifierState.results || verifierState.results.length === 0) {
+                resultsContainer.innerHTML = `<p style="color: var(--text-secondary)">${t.noResults}</p>`;
+                statsContainer.innerHTML = createStatsGrid({
+                    totalFiles: 0,
+                    errors: 0,
+                    warnings: 0
+                });
+                filterContainer.innerHTML = createFilterRow();
+                return;
+            }
+
+            let totalErrors = 0;
+            let totalWarnings = 0;
+            let fileListHtml = '';
+
+            verifierState.results.forEach((result, index) => {
+                const errors = result.errors || [];
+                const errorCount = errors.filter(e => e.type === 'error').length;
+                const warningCount = errors.filter(e => e.type === 'warning').length;
+                totalErrors += errorCount;
+                totalWarnings += warningCount;
+
+                fileListHtml += createResultFile(result, index);
+            });
+
+            statsContainer.innerHTML = createStatsGrid({
+                totalFiles: verifierState.results.length,
+                errors: totalErrors,
+                warnings: totalWarnings
+            });
+            filterContainer.innerHTML = createFilterRow();
+            resultsContainer.innerHTML = fileListHtml;
+        }
+
+        function toggleResultFile(index) {
+            const fileDiv = document.querySelector(`.result-file[data-index="${index}"]`);
+            if (fileDiv) {
+                fileDiv.classList.toggle('expanded');
+            }
+        }
+
+        function expandAllResults() {
+            const btn = document.getElementById('expand-all-btn');
+            const t = i18n[currentLanguage] || i18n.en;
+            const visibleFiles = document.querySelectorAll('.result-file:not(.hidden)');
+            let anyExpanded = false;
+
+            visibleFiles.forEach(file => {
+                if (file.classList.contains('expanded')) anyExpanded = true;
+            });
+
+            visibleFiles.forEach(file => {
+                if (anyExpanded) file.classList.remove('expanded');
+                else file.classList.add('expanded');
+            });
+
+            btn.textContent = anyExpanded ? t.expandAll : t.collapseAll;
+        }
+
+        function applyResultsFilter() {
+            const filterInput = document.getElementById('filter-input');
+            if (!filterInput) return;
+
+            const searchText = filterInput.value.trim();
+            const searchLower = searchText.toLowerCase();
+
+            document.querySelectorAll('.result-file').forEach(file => {
+                const fileNameSpan = file.querySelector('.result-file-name span');
+                const originalFileName = fileNameSpan.getAttribute('data-original-name') || fileNameSpan.textContent;
+
+                // Store original name on first use
+                if (!fileNameSpan.hasAttribute('data-original-name')) {
+                    fileNameSpan.setAttribute('data-original-name', originalFileName);
+                }
+
+                // Check if file name matches
+                const fileNameLower = originalFileName.toLowerCase();
+                const matches = !searchText || fileNameLower.includes(searchLower);
+
+                // Toggle visibility
+                file.classList.toggle('hidden', !matches);
+
+                // Apply highlighting
+                if (searchText && matches) {
+                    fileNameSpan.innerHTML = highlightText(originalFileName, searchText);
+                } else {
+                    fileNameSpan.textContent = originalFileName;
+                }
+            });
+        }
+
+        // Open filter dialog
+        function openFilterDialog() {
+            // Build filter checkboxes from current results
+            buildFilterCheckboxes();
+
+            // Show dialog
+            document.getElementById('filter-dialog-overlay').classList.add('show');
+        }
+
+        // Close filter dialog
+        function closeFilterDialog() {
+            document.getElementById('filter-dialog-overlay').classList.remove('show');
+        }
+
+        // Close filter dialog when clicking on overlay (not dialog content)
+        function closeFilterDialogOnOverlay(event) {
+            if (event.target === event.currentTarget) {
+                closeFilterDialog();
+            }
+        }
+
+        // Build filter checkboxes from current results
+        function buildFilterCheckboxes() {
+            const errorTypes = {};
+            const warningTypes = {};
+
+            // Count occurrences of each error/warning type
+            if (verifierState && verifierState.results) {
+                verifierState.results.forEach(function(file) {
+                    if (file.errors) {
+                        file.errors.forEach(function(error) {
+                            if (error.type === 'error') {
+                                const msg = error.message || 'Unknown error';
+                                errorTypes[msg] = (errorTypes[msg] || 0) + 1;
+                            } else if (error.type === 'warning') {
+                                const msg = error.message || 'Unknown warning';
+                                warningTypes[msg] = (warningTypes[msg] || 0) + 1;
+                            }
+                        });
+                    }
+                });
+            }
+
+            // Initialize filters if empty (first time)
+            if (Object.keys(errorTypeFilters).length === 0) {
+                Object.keys(errorTypes).forEach(function(type) {
+                    errorTypeFilters[type] = true;
+                });
+            }
+            if (Object.keys(warningTypeFilters).length === 0) {
+                Object.keys(warningTypes).forEach(function(type) {
+                    warningTypeFilters[type] = true;
+                });
+            }
+
+            // Build error checkboxes
+            const errorList = document.getElementById('error-filter-list');
+            errorList.innerHTML = '';
+
+            const sortedErrors = Object.keys(errorTypes).sort();
+            sortedErrors.forEach(function(errorType) {
+                const count = errorTypes[errorType];
+                const checked = errorTypeFilters[errorType] !== false;
+
+                const item = document.createElement('div');
+                item.className = 'filter-checkbox-item';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = 'error-' + btoa(errorType).replace(/[^a-zA-Z0-9]/g, '');
+                checkbox.checked = checked;
+                checkbox.setAttribute('data-error-type', errorType);
+
+                const label = document.createElement('label');
+                label.setAttribute('for', checkbox.id);
+                label.textContent = errorType;
+
+                const countSpan = document.createElement('span');
+                countSpan.className = 'filter-count';
+                countSpan.textContent = '(' + count + ')';
+                label.appendChild(countSpan);
+
+                item.appendChild(checkbox);
+                item.appendChild(label);
+
+                errorList.appendChild(item);
+            });
+
+            // Build warning checkboxes
+            const warningList = document.getElementById('warning-filter-list');
+            warningList.innerHTML = '';
+
+            const sortedWarnings = Object.keys(warningTypes).sort();
+            sortedWarnings.forEach(function(warningType) {
+                const count = warningTypes[warningType];
+                const checked = warningTypeFilters[warningType] !== false;
+
+                const item = document.createElement('div');
+                item.className = 'filter-checkbox-item';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = 'warning-' + btoa(warningType).replace(/[^a-zA-Z0-9]/g, '');
+                checkbox.checked = checked;
+                checkbox.setAttribute('data-warning-type', warningType);
+
+                const label = document.createElement('label');
+                label.setAttribute('for', checkbox.id);
+                label.textContent = warningType;
+
+                const countSpan = document.createElement('span');
+                countSpan.className = 'filter-count';
+                countSpan.textContent = '(' + count + ')';
+                label.appendChild(countSpan);
+
+                item.appendChild(checkbox);
+                item.appendChild(label);
+
+                warningList.appendChild(item);
+            });
+        }
+
+        // Select/deselect all in a section
+        function selectAllInSection(section, selectAll) {
+            const listId = section === 'errors' ? 'error-filter-list' : 'warning-filter-list';
+            const checkboxes = document.querySelectorAll('#' + listId + ' input[type="checkbox"]');
+
+            checkboxes.forEach(function(checkbox) {
+                checkbox.checked = selectAll;
+            });
+        }
+
+        // Apply filter dialog
+        function applyFilterDialog() {
+            // Save filter state from checkboxes
+            document.querySelectorAll('#error-filter-list input[type="checkbox"]').forEach(function(checkbox) {
+                const errorType = checkbox.getAttribute('data-error-type');
+                errorTypeFilters[errorType] = checkbox.checked;
+            });
+
+            document.querySelectorAll('#warning-filter-list input[type="checkbox"]').forEach(function(checkbox) {
+                const warningType = checkbox.getAttribute('data-warning-type');
+                warningTypeFilters[warningType] = checkbox.checked;
+            });
+
+            // Save clean files filter
+            showCleanFiles = document.getElementById('filter-clean-files').checked;
+
+            // Close dialog
+            closeFilterDialog();
+
+            // Re-apply filters
+            applyResultsFilters();
+        }
+
+        // Apply all filters (search + type filters + clean files)
+        function applyResultsFilters() {
+            const searchText = document.getElementById('filter-input')?.value.toLowerCase() || '';
+
+            document.querySelectorAll('.result-file').forEach(function(fileItem) {
+                const filename = fileItem.getAttribute('data-filename') || '';
+                const isCleanFile = fileItem.classList.contains('no-errors');
+
+                // Check if clean files should be shown
+                if (isCleanFile && !showCleanFiles) {
+                    fileItem.classList.add('hidden');
+                    return;
+                }
+
+                // Filter individual error items
+                const errorItems = fileItem.querySelectorAll('.result-error, .result-warning');
+                let visibleErrorCount = 0;
+                let visibleWarningCount = 0;
+
+                errorItems.forEach(function(errorItem) {
+                    const errorType = errorItem.classList.contains('result-error') ? 'error' : 'warning';
+                    const errorMessageEl = errorItem.querySelector('.error-message');
+                    const errorMessage = errorMessageEl ? errorMessageEl.textContent : '';
+
+                    // Check if this error type is enabled
+                    let typeEnabled = true;
+                    if (errorType === 'error' && errorTypeFilters[errorMessage] === false) {
+                        typeEnabled = false;
+                    } else if (errorType === 'warning' && warningTypeFilters[errorMessage] === false) {
+                        typeEnabled = false;
+                    }
+
+                    // Check search text match
+                    let searchMatch = true;
+                    if (searchText) {
+                        const errorText = errorItem.textContent.toLowerCase();
+                        searchMatch = errorText.indexOf(searchText) !== -1;
+                    }
+
+                    if (typeEnabled && searchMatch) {
+                        errorItem.classList.remove('filter-hidden');
+                        if (errorType === 'error') visibleErrorCount++;
+                        else visibleWarningCount++;
+                    } else {
+                        errorItem.classList.add('filter-hidden');
+                    }
+                });
+
+                // Hide entire file if no visible errors and it's not a clean file
+                if (!isCleanFile && visibleErrorCount === 0 && visibleWarningCount === 0) {
+                    fileItem.classList.add('hidden');
+                } else if (!isCleanFile) {
+                    fileItem.classList.remove('hidden');
+                } else if (isCleanFile && showCleanFiles) {
+                    fileItem.classList.remove('hidden');
+                }
+            });
+        }
+
+        function toggleCodeViewer(errorDiv, fileIndex, errorLine) {
+            const existingViewer = errorDiv.querySelector('.code-viewer');
+
+            if (existingViewer) {
+                existingViewer.classList.toggle('show');
+                return;
+            }
+
+            const file = verifierState.results[fileIndex];
+            if (!file || !file.source) return;
+
+            const lines = file.source.split('\n');
+            const lineNumber = parseInt(errorLine, 10);
+            const startLine = Math.max(1, lineNumber - 10);
+            const endLine = Math.min(lines.length, lineNumber + 10);
+
+            const codeViewer = document.createElement('div');
+            codeViewer.className = 'code-viewer show';
+
+            const codeHeader = document.createElement('div');
+            codeHeader.className = 'code-header';
+            codeHeader.innerHTML = `<span>${file.filepath} (Lines ${startLine}-${endLine})</span>`;
+
+            const openBtn = document.createElement('button');
+            openBtn.className = 'btn btn-secondary';
+            openBtn.innerHTML = 'VSCode';
+            openBtn.style.padding = '4px 8px';
+            openBtn.style.fontSize = '12px';
+            openBtn.onclick = (e) => {
+                e.stopPropagation();
+                openInVSCode(file.filepath, lineNumber);
+            };
+            codeHeader.appendChild(openBtn);
+            codeViewer.appendChild(codeHeader);
+
+            const codeContent = document.createElement('div');
+            codeContent.className = 'code-content';
+
+            for (let i = startLine - 1; i < endLine; i++) {
+                const line = lines[i];
+                const currentLineNum = i + 1;
+
+                const lineDiv = document.createElement('div');
+                lineDiv.className = 'code-line' + (currentLineNum === lineNumber ? ' error-line' : '');
+
+                const lineNumSpan = document.createElement('span');
+                lineNumSpan.className = 'line-number';
+                lineNumSpan.textContent = currentLineNum;
+                lineDiv.appendChild(lineNumSpan);
+
+                const lineCodeSpan = document.createElement('span');
+                lineCodeSpan.className = 'line-code';
+                lineCodeSpan.textContent = line || ' ';
+                lineDiv.appendChild(lineCodeSpan);
+
+                codeContent.appendChild(lineDiv);
+            }
+
+            codeViewer.appendChild(codeContent);
+            errorDiv.appendChild(codeViewer);
+        }
+
+        function openInVSCode(filepath, line) {
+            callPython('open_vscode', { filepath, line: line || 1 });
+        }
+
+        function onStateUpdate() {
+            updateResultsView();
+        }
+
+        function onLanguageChange() {
+            updateResultsView();
+        }
+
+        // Called when this view becomes visible (tab switched)
+        function onViewActivated() {
+            updateResultsView();
+        }
+
+        // Real-time update handler called from Python via postMessage (forwarded from desktop.html)
+        window.onVerifierStateUpdate = function(statusOrJson) {
+            try {
+                // Handle both parsed object (from postMessage) and JSON string (legacy)
+                const status = typeof statusOrJson === 'string' ? JSON.parse(statusOrJson) : statusOrJson;
+
+                // Direct assignment (fastest)
+                verifierState = status;
+                window.appState = status;
+
+                // Update UI
+                updateResultsView();
+            } catch (error) {
+                console.error('[Results] Failed to parse state update:', error, error.stack);
+            }
+        };
+
+        // Note: updateResultsView is now called from onAppStateLoaded callback
+        // (triggered by common.js after state is loaded from Python backend)
+    </script>
+</body>
+</html>

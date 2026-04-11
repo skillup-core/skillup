@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+# account.db, ...
+desktop/data/
+
+# skillbook_custom.db
+app/skillbook/data/skillbook_custom.db

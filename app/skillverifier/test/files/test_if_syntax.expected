@@ -1,0 +1,6 @@
+# Expected errors for test_if_syntax.il
+# Format: line|func|type|var
+#
+33|test6|if_syntax|if
+38|test7|if_syntax|if
+48|test9|if_syntax|if

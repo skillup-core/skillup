@@ -1,0 +1,6 @@
+# Expected errors for test_fixed.il
+# Format: line|func|type|var
+#
+2|child1|undeclared(function)|parent1
+6|child2|undeclared(function)|parent1
+18|fn1|undeclared(variable)|var2

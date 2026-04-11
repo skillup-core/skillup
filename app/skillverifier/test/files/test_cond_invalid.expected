@@ -1,0 +1,6 @@
+# Expected errors for test_cond_invalid.il
+# Format: line|func|type|var
+#
+6|testCondInvalid1|cond_syntax|cond
+14|testCondInvalid2|cond_syntax|cond
+23|testCondInvalid3|cond_syntax|cond

@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify - Skillup Verifier</title>
+
+    <!-- Skillup AppInit - Must be loaded first -->
+    <script src="/common/script/appinit.js" onerror="this.onerror=null; this.src='../../../../web/common/script/appinit.js';"></script>
+</head>
+<body>
+    <!-- App-specific CSS -->
+    <link rel="stylesheet" href="skillverifier.css" onerror="this.onerror=null; this.href='/app/skillverifier/skillverifier.css';">
+
+    <!-- App-specific JS - loaded after initialization -->
+    <script src="skillverifier.js" onerror="this.onerror=null; this.src='/app/skillverifier/skillverifier.js';"></script>
+
+    <div class="content-container">
+        <div class="app-section">
+            <h3>
+                <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                <span data-i18n="filesToVerify">Files to Verify</span>
+            </h3>
+            <div id="verify-form-container"></div>
+        </div>
+        <div class="app-section">
+            <h3>
+                <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10z"/></svg>
+                <span data-i18n="logs">Logs</span>
+            </h3>
+            <div id="progress-container" style="margin-bottom: 15px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span id="progress-text" style="font-size: 13px; color: var(--text-secondary);" data-i18n="ready">Ready</span>
+                    <span id="progress-percentage" style="font-size: 13px; color: var(--text-secondary);"></span>
+                </div>
+                <div style="background: var(--bg-tertiary); border-radius: 4px; height: 8px; overflow: hidden;">
+                    <div id="progress-bar" style="background: var(--accent-primary); height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                </div>
+            </div>
+            <div class="terminal-log" id="verify-log">
+                <div class="log-line" style="color: var(--text-secondary)">Ready</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Define which Python action to call for state
+        window.getAppStateAction = () => 'verify_status';
+
+        // Mock data for web browser mode (debugging)
+        let verifierState = null;
+        if (isInWebBrowser) {
+            verifierState = {
+                files: [],
+                defineFile: '',
+                dataDb: '',
+                results: [],
+                logs: [],
+                running: false
+            };
+            window.appState = verifierState;
+        }
+
+        // Callback when state is loaded from Python backend
+        window.onAppStateLoaded = function(state) {
+            verifierState = state;
+            updateVerifyView();
+        };
+
+        function updateVerifyView() {
+            if (!verifierState) {
+                // State not loaded yet - this is normal during initial page load
+                // onAppStateLoaded will call updateVerifyView once state is ready
+                return;
+            }
+
+            const formContainer = document.getElementById('verify-form-container');
+            const t = i18n[currentLanguage] || i18n.en;
+
+            // Render form
+            formContainer.innerHTML = createVerifyForm();
+
+            // Update button state
+            const btn = document.getElementById('btn-start-verify');
+            if (btn) {
+                if (verifierState.running) {
+                    btn.disabled = true;
+                    btn.textContent = t.verifying;
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = t.startVerify;
+                }
+            }
+
+            updateVerifyLog();
+        }
+
+        function updateVerifyLog() {
+            const logElement = document.getElementById('verify-log');
+            if (!logElement) return;
+
+            // Safe check for logs
+            if (!verifierState || !verifierState.logs || verifierState.logs.length === 0) {
+                logElement.innerHTML = '<div class="log-line" style="color: var(--text-secondary)">Ready</div>';
+            } else {
+                logElement.innerHTML = verifierState.logs
+                    .map(log => `<div class="log-line">${ansiToHtml(log.message)}</div>`)
+                    .join('');
+                logElement.scrollTop = logElement.scrollHeight;
+            }
+
+            updateProgressBar();
+        }
+
+        function updateProgressBar() {
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            const progressPercentage = document.getElementById('progress-percentage');
+
+            if (!progressBar || !verifierState) return;
+
+            const t = i18n[currentLanguage] || i18n.en;
+
+            if (verifierState.running) {
+                // Update progress bar when verification is running
+                const total = verifierState.total_files || verifierState.total || 0;
+                const processed = verifierState.processed_files || verifierState.progress || 0;
+                const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
+
+                progressBar.style.width = percentage + '%';
+                progressPercentage.textContent = percentage + '%';
+
+                if (processed > 0 && total > 0) {
+                    progressText.textContent = `${t.verifying || 'Verifying'} (${processed}/${total})`;
+                } else {
+                    progressText.textContent = t.verifying || 'Verifying...';
+                }
+            } else {
+                // Check if verification just completed (has results)
+                const hasResults = verifierState.results && verifierState.results.length > 0;
+
+                if (hasResults) {
+                    // Show completed state
+                    progressBar.style.width = '100%';
+                    progressPercentage.textContent = '100%';
+                    progressText.textContent = t.completed || 'Completed';
+                } else {
+                    // Show ready state
+                    progressBar.style.width = '0%';
+                    progressPercentage.textContent = '';
+                    progressText.textContent = t.ready || 'Ready';
+                }
+            }
+        }
+
+        async function startVerification() {
+            const filesInput = document.getElementById('verify-files').value;
+            const defineFile = document.getElementById('verify-define').value;
+            const dataDb = document.getElementById('verify-datadb').value;
+
+            if (!filesInput.trim()) {
+                return;
+            }
+
+            const files = filesInput.split(',').map(f => f.trim()).filter(f => f);
+
+            // Disable button immediately when verification starts
+            const btn = document.getElementById('btn-start-verify');
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            const progressPercentage = document.getElementById('progress-percentage');
+
+            const t = i18n[currentLanguage] || i18n.en;
+
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = t.verifying;
+            }
+
+            // Update progress bar immediately when verification starts
+            if (progressBar) progressBar.style.width = '0%';
+            if (progressPercentage) progressPercentage.textContent = '0%';
+            if (progressText) progressText.textContent = t.verifying || 'Verifying...';
+
+            try {
+                const result = await callPython('verify', {
+                    paths: files,
+                    define_file: defineFile,
+                    data_db: dataDb
+                });
+
+                if (result && result.success) {
+                    // Verification started - waiting for real-time updates via callJS
+                } else {
+                    console.error('Verification failed:', result?.error);
+                    // Re-enable button on error
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = t.startVerify;
+                    }
+                    // Reset progress bar on error
+                    if (progressBar) progressBar.style.width = '0%';
+                    if (progressPercentage) progressPercentage.textContent = '';
+                    if (progressText) progressText.textContent = t.ready || 'Ready';
+                }
+            } catch (error) {
+                console.error('Verification error:', error);
+                // Re-enable button on error
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = t.startVerify;
+                }
+                // Reset progress bar on error
+                if (progressBar) progressBar.style.width = '0%';
+                if (progressPercentage) progressPercentage.textContent = '';
+                if (progressText) progressText.textContent = t.ready || 'Ready';
+            }
+        }
+
+        async function addDirectory() {
+            try {
+                // Call desktop API (not app-specific) with language parameter
+                const result = await callPython('select_directory', {
+                    language: currentLanguage
+                });
+                if (result && result.success && result.path) {
+                    const filesInput = document.getElementById('verify-files');
+                    if (filesInput) {
+                        const currentValue = filesInput.value.trim();
+                        if (currentValue) {
+                            filesInput.value = currentValue + ', ' + result.path;
+                        } else {
+                            filesInput.value = result.path;
+                        }
+                        saveFormInputs();
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to select directory:', error);
+            }
+        }
+
+        async function addFile() {
+            try {
+                // Call desktop API (not app-specific) with language parameter
+                const result = await callPython('select_file', {
+                    language: currentLanguage
+                });
+                if (result && result.success && result.path) {
+                    const filesInput = document.getElementById('verify-files');
+                    if (filesInput) {
+                        const currentValue = filesInput.value.trim();
+                        if (currentValue) {
+                            filesInput.value = currentValue + ', ' + result.path;
+                        } else {
+                            filesInput.value = result.path;
+                        }
+                        saveFormInputs();
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to select file:', error);
+            }
+        }
+
+        function onStateUpdate() {
+            updateVerifyView();
+        }
+
+        function onLanguageChange() {
+            updateVerifyView();
+        }
+
+        // Called when this view becomes visible (tab switched)
+        function onViewActivated() {
+            updateVerifyView();
+        }
+
+        // Real-time update handler called from Python via postMessage (forwarded from desktop.html)
+        window.onVerifierStateUpdate = function(statusOrJson) {
+            try {
+                // Handle both parsed object (from postMessage) and JSON string (legacy)
+                const status = typeof statusOrJson === 'string' ? JSON.parse(statusOrJson) : statusOrJson;
+
+                // Direct assignment (fastest, safety in updateVerifyLog)
+                verifierState = status;
+                window.appState = status;
+
+                // Update UI
+                updateVerifyLog();
+
+                // If verification completed, update entire view
+                if (!status.running) {
+                    updateVerifyView();
+                }
+            } catch (error) {
+                console.error('[Verify] Failed to parse state update:', error, error.stack);
+            }
+        };
+
+        // Note: updateVerifyView is now called from onAppStateLoaded callback
+        // (triggered by common.js after state is loaded from Python backend)
+    </script>
+</body>
+</html>

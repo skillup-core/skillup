@@ -1,0 +1,7 @@
+# Expected errors for test_nested_if2.il
+# Format: line|func|type|var
+#
+2|test|undeclared(variable)|a
+3|test|undeclared(variable)|b
+4|test|undeclared(variable)|x
+6|test|undeclared(variable)|x

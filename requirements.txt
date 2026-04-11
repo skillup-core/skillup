@@ -1,0 +1,20 @@
+# Skillup — external dependencies
+# Python 3.7+ required
+# All core functionality uses the standard library (sqlite3, json, configparser, threading, etc.)
+
+# ── Desktop UI (install ONE) ──────────────────────────────────────────────────
+# Python 3.7–3.10  →  PySide2 recommended
+# PySide2>=5.15.0
+#
+# Python 3.9+      →  PySide6 recommended
+# PySide6>=6.0.0
+#
+# If both are installed, PySide2 takes precedence.
+
+# ── Optional ──────────────────────────────────────────────────────────────────
+# Profile photo resize (64x64 and 320x320); falls back to original size if absent
+Pillow>=8.0.0
+
+# Global hotkey and clipboard support — Linux X11 only
+# Hotkey and clipboard features are silently disabled if not installed
+python-xlib>=0.33

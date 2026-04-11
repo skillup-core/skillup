@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkillBot - SKILL Automation</title>
+    <script src="/common/script/appinit.js" onerror="this.onerror=null; this.src='../../../../desktop/common/script/appinit.js';"></script>
+
+    <!-- Bootstrap (for tooltips) -->
+    <link rel="stylesheet" href="/common/bootstrap/5.3.3/bootstrap.min.css">
+    <script src="/common/bootstrap/5.3.3/bootstrap.bundle.min.js"></script>
+
+    <!-- CodeMirror 5 (local, offline) -->
+    <link  rel="stylesheet" href="/common/codemirror/5.65.16/codemirror.min.css">
+    <link  rel="stylesheet" href="/common/codemirror/5.65.16/theme/dracula.min.css">
+    <link  rel="stylesheet" href="/common/codemirror/5.65.16/theme/eclipse.min.css">
+    <script src="/common/codemirror/5.65.16/codemirror.min.js"></script>
+    <script src="editor_skill_mode.js"></script>
+    <script src="/common/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+    <script src="/common/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+    <script src="/common/codemirror/5.65.16/addon/comment/comment.min.js"></script>
+    <script src="/common/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
+    <!-- Additional language modes -->
+    <script src="/common/codemirror/5.65.16/mode/python/python.min.js"></script>
+    <script src="/common/codemirror/5.65.16/mode/xml/xml.min.js"></script>
+    <script src="/common/codemirror/5.65.16/mode/css/css.min.js"></script>
+    <script src="/common/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+    <script src="/common/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+    <script src="/common/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
+
+    <link rel="stylesheet" href="editor.css">
+</head>
+<body>
+
+<!-- ── Toolbar ── -->
+<div class="sb-toolbar">
+    <button class="sb-btn sb-btn-menu" id="btnMenu" onclick="toggleToolbarMenu()"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block"><circle cx="7" cy="2" r="1.3" fill="currentColor"/><circle cx="7" cy="7" r="1.3" fill="currentColor"/><circle cx="7" cy="12" r="1.3" fill="currentColor"/></svg></button>
+    <button class="sb-btn sb-btn-run" id="btnRun" onclick="runCode()" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="Run (Ctrl+F5)" data-en="Run (Ctrl+F5)" data-ko="실행 (Ctrl+F5)">▶</button>
+    <button class="sb-btn sb-btn-debug" id="btnDebug" onclick="debugStart()" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="Debug (F5)" data-en="Debug (F5)" data-ko="디버그 (F5)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block"><!-- pause bar --><rect x="0.5" y="1" width="3" height="14" rx="1.2" fill="currentColor"/><!-- play triangle outline --><polygon points="5,1 15,8 5,15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></button>
+    <button class="sb-btn sb-btn-breakpoint" id="btnBreakpoint" onclick="if(editor&&EXP.isILFile())toggleBreakpoint(editor.getCursor().line+1)" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="Toggle Breakpoint (F9)" data-en="Toggle Breakpoint (F9)" data-ko="중단점 설정/해제 (F9)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block"><circle cx="8" cy="8" r="6" fill="currentColor"/></svg></button>
+    <div class="sb-debug-controls" id="debugToolbar">
+        <button class="sb-btn" onclick="debugContinue()" id="btnDbgContinue" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="Continue (F5)" data-en="Continue (F5)" data-ko="계속 (F5)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block"><polygon points="2,1 14,8 2,15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></button>
+        <button class="sb-btn" onclick="debugNext()" id="btnDbgNext" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="Next (F10)" data-en="Next (F10)" data-ko="다음 (F10)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block"><!-- bar on left --><line x1="2" y1="2" x2="2" y2="14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><!-- step arrow: horizontal then down --><polyline points="5,5 11,5 11,11" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><!-- arrowhead down --><polygon points="8,11 11,15 14,11" fill="currentColor"/></svg></button>
+        <button class="sb-btn" onclick="debugStop()" id="btnDbgStop" style="color:#e74c3c;" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="Stop (Shift+F5)" data-en="Stop (Shift+F5)" data-ko="중지 (Shift+F5)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block"><!-- stop square outline --><rect x="2" y="2" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
+        <div class="sb-debug-info" id="debugInfo"></div>
+    </div>
+    <div class="sb-spacer"></div>
+    <button class="sb-ciw-btn" id="ciwCombo" onclick="onCiwBtnClick()">
+        <svg class="sb-ciw-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/><line x1="8" y1="1" x2="8" y2="3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="12.5" x2="8" y2="15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="1" y1="8" x2="3.5" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="12.5" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span class="sb-ciw-arrow">▼</span>
+    </button>
+</div>
+
+<!-- ── Workspace (explorer + main) ── -->
+<div class="sb-workspace">
+
+<!-- File Explorer Panel -->
+<div class="sb-explorer-panel" id="explorerPanel">
+    <div class="sb-explorer-header">
+        <span data-en="EXPLORER" data-ko="탐색기" style="flex:1">EXPLORER</span>
+        <button id="explorerOpenBtn" onclick="explorerOpenFolder()" style="background:none;border:none;cursor:pointer;padding:2px 4px;color:var(--text-secondary,#888);display:flex;align-items:center;border-radius:3px;" title="">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h2.764c.958 0 1.76.56 2.12 1.344l.108.244.633.029A1.5 1.5 0 0 1 9.5 5H14.5A1.5 1.5 0 0 1 16 6.5v6A1.5 1.5 0 0 1 14.5 14h-13A1.5 1.5 0 0 1 0 12.5V5A1.5 1.5 0 0 1 1 3.5zM1 5v7.5a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5V6.5a.5.5 0 0 0-.5-.5H9.5a.5.5 0 0 1-.447-.276l-.276-.553-.107-.214A1.5 1.5 0 0 0 7.336 4H2.5A.5.5 0 0 0 2 4.5V5h-1z"/></svg>
+        </button>
+    </div>
+    <div class="sb-explorer-body" id="explorerBody"></div>
+</div>
+
+<!-- Explorer resizer -->
+<div class="sb-exp-resizer" id="expResizer"></div>
+
+<!-- Main layout -->
+<div class="sb-main layout-bottom" id="sbMain">
+
+    <!-- Editor panel -->
+    <div class="sb-editor-panel" id="editorPanel">
+        <div class="sb-tab-bar" id="editorTabBar"></div>
+        <!-- File-changed-on-disk notification bar (hidden by default) -->
+        <div class="sb-disk-change-bar" id="diskChangeBar" style="display:none;">
+            <span class="sb-disk-change-msg" id="diskChangeMsg"></span>
+            <div class="sb-disk-change-actions">
+                <button class="sb-btn sb-btn-primary" id="diskChangeBtnReload"
+                    data-en="Reload" data-ko="다시 로딩"></button>
+                <button class="sb-btn" id="diskChangeBtnKeep"
+                    data-en="Keep Editing" data-ko="계속 편집"></button>
+            </div>
+        </div>
+        <div class="sb-editor-wrap">
+            <textarea id="codeEditor"></textarea>
+        </div>
+    </div>
+
+    <!-- Resizer -->
+    <div class="sb-resizer" id="resizer"></div>
+
+    <!-- Output panel -->
+    <div class="sb-output-panel" id="outputPanel">
+        <div class="sb-panel-header">
+            <span data-en="Output" data-ko="Output">Output</span>
+            <div class="sb-panel-header-actions">
+                <button class="sb-btn" onclick="clearOutput()" style="font-size:10px;padding:0;line-height:1;" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="Clear Output" data-en="Clear Output" data-ko="Output 지우기">🗑</button>
+                <button class="sb-layout-toggle" id="btnLayoutToggle" onclick="toggleLayout()" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="Toggle Layout" data-en="Toggle Layout" data-ko="레이아웃 토글">⊕</button>
+                <button class="sb-btn" id="outputCollapseBtn" onclick="toggleOutputCollapse()" style="font-size:10px;padding:0;line-height:1;margin-left:6px;" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="Collapse" data-en="Collapse" data-ko="접기">⌄</button>
+            </div>
+        </div>
+        <div class="sb-output" id="output">
+            <div class="out-entry out-info">
+                <div class="out-text" data-en="SkillBot ready. Press Ctrl+F5 to run, F5 to debug (Virtuoso CIW will be found automatically)." data-ko="SkillBot 준비 완료. Ctrl+F5로 실행, F5를 눌러 디버그하세요 (Virtuoso CIW가 자동으로 연결됩니다).">SkillBot ready. Press Ctrl+F5 to run, F5 to debug (Virtuoso CIW will be found automatically).</div>
+            </div>
+        </div>
+    </div>
+</div><!-- /.sb-main -->
+</div><!-- /.sb-workspace -->
+
+<!-- ── Debug Variables Panel ── -->
+<div class="sb-debug-vars" id="debugVarsPanel">
+    <div class="sb-debug-vars-header">
+        <span data-en="Variables" data-ko="변수">Variables</span>
+    </div>
+    <div id="debugVarsContent"></div>
+    <input class="sb-debug-eval-input" id="debugEvalInput" placeholder="Evaluate expression..." onkeydown="if(event.key==='Enter')debugEvalExpr()">
+</div>
+
+<!-- ── Intellisense ── -->
+<div id="isk-dropdown"></div>
+<div id="isk-signature"></div>
+
+<!-- ── CIW Selection Modal ── -->
+<div id="ciwSelectOverlay" onclick="hideCiwSelect()"></div>
+<div id="ciwSelectModal">
+    <div class="ciw-modal-title" data-en="Select CIW Window" data-ko="CIW 창 선택">Select CIW Window</div>
+    <div class="ciw-modal-desc">
+        <span id="ciwSelectDescMulti" data-en="Multiple Virtuoso CIW windows were found. " data-ko="Virtuoso CIW 창이 여러 개 발견되었습니다. ">Multiple Virtuoso CIW windows were found. </span><span data-en="Select the one to use for debugging." data-ko="디버깅에 사용할 창을 선택하세요.">Select the one to use for debugging.</span>
+    </div>
+    <ul class="ciw-list" id="ciwList"></ul>
+    <div class="ciw-modal-footer">
+        <button class="sb-btn" onclick="hideCiwSelect()" data-en="Cancel" data-ko="취소">Cancel</button>
+    </div>
+</div>
+
+<!-- ── Connection Help Modal ── -->
+<div id="helpOverlay" onclick="hideConnectionHelp()"></div>
+<div id="connectionHelp">
+    <div class="help-title" data-en="How to Use SkillBot Debugger" data-ko="SkillBot 디버거 사용 방법">How to Use SkillBot Debugger</div>
+
+    <div class="help-step">
+        <div class="help-step-label">
+            <span class="help-step-num">1</span>
+            <span data-en="Load the SKILL module in Cadence CIW (once per session)" data-ko="Cadence CIW에서 SKILL 모듈 로드 (세션당 1회)">Load the SKILL module in Cadence CIW (once per session)</span>
+        </div>
+        <div class="help-step-desc" data-en="Copy and run this command in the Cadence CIW (Command Input Window):" data-ko="Cadence CIW (Command Input Window)에서 이 명령어를 복사하여 실행하세요:">Copy and run this command in the Cadence CIW (Command Input Window):</div>
+        <div class="help-code" id="helpCiwLoad" style="padding-right:70px;">
+            load("<span id="helpIlPath"></span>")
+            <button class="help-copy-btn" onclick="copyCiwCmd('load')">Copy</button>
+        </div>
+    </div>
+
+    <div class="help-step">
+        <div class="help-step-label">
+            <span class="help-step-num">2</span>
+            <span data-en="Press F5 to start debugging (Ctrl+F5 to run)" data-ko="F5를 눌러 디버그 시작 (Ctrl+F5로 실행)">Press F5 to start debugging (Ctrl+F5 to run)</span>
+        </div>
+        <div class="help-step-desc" data-en="SkillBot will automatically find the Virtuoso CIW window and start the debug session. No manual connection needed." data-ko="SkillBot이 자동으로 Virtuoso CIW 창을 찾아 디버그 세션을 시작합니다. 수동 연결이 필요 없습니다.">SkillBot will automatically find the Virtuoso CIW window and start the debug session. No manual connection needed.</div>
+    </div>
+
+    <div class="help-footer">
+        <button class="sb-btn" onclick="hideConnectionHelp()" data-en="Close" data-ko="닫기">Close</button>
+    </div>
+</div>
+
+<!-- ── Toolbar Popup Menu ── -->
+<div id="toolbarPopup">
+    <div class="tb-popup-item" id="tbMenuFile" onmouseenter="tbPopupHover('file')">
+        <span data-en="File" data-ko="파일">File</span>
+    </div>
+    <div class="tb-popup-item" id="tbMenuDebug" onmouseenter="tbPopupHover('debug')">
+        <span data-en="Debug" data-ko="디버그">Debug</span>
+    </div>
+</div>
+<div class="sb-ctx-menu" id="tbSubMenuFile">
+    <div class="sb-ctx-item" onclick="openNewTab();hideToolbarMenu()" data-en="New Tab" data-ko="새 탭">New Tab</div>
+    <div class="sb-ctx-sep"></div>
+    <div class="sb-ctx-item" onclick="openPreferences();hideToolbarMenu()" data-en="Preferences" data-ko="환경설정">Preferences</div>
+</div>
+<div class="sb-ctx-menu" id="tbSubMenuDebug">
+    <div class="sb-ctx-item" onclick="clearAllBreakpoints();hideToolbarMenu()" data-en="Clear All Breakpoints" data-ko="모든 중단점 삭제">Clear All Breakpoints</div>
+</div>
+
+<!-- ── File Explorer Context Menu ── -->
+<div class="sb-ctx-menu" id="tabCtxMenu">
+    <div class="sb-ctx-item" id="tabCtxClose" onclick="EXP.tabCtxClose()" data-en="Close" data-ko="닫기">Close</div>
+    <div class="sb-ctx-sep"></div>
+    <div class="sb-ctx-item" id="tabCtxCopyPath" onclick="EXP.tabCtxCopyPath()" data-en="Copy File Path" data-ko="파일 경로 복사">Copy File Path</div>
+</div>
+
+<div class="sb-ctx-menu" id="explorerCtxMenu">
+    <div class="sb-ctx-item" onclick="EXP.promptNewFile()" data-en="New File" data-ko="새 파일">New File</div>
+    <div class="sb-ctx-sep" data-ctx="file"></div>
+    <div class="sb-ctx-item" data-ctx="file" id="ctxRenameItem" onclick="EXP.ctxRename()" data-en="Rename" data-ko="이름 바꾸기">Rename</div>
+    <div class="sb-ctx-sep" data-ctx="file"></div>
+    <div class="sb-ctx-item" data-ctx="file" onclick="EXP.ctxDelete()" style="color:#e74c3c;" data-en="Delete" data-ko="삭제">Delete</div>
+</div>
+
+<!-- ── Preferences Dialog ── -->
+<div id="prefsOverlay" onclick="hidePreferences()"></div>
+<div id="prefsDialog">
+    <div class="prefs-title" data-en="Preferences" data-ko="환경설정">Preferences</div>
+    <div class="prefs-body">
+        <div class="prefs-row">
+            <label class="prefs-label" for="prefsFontSize" data-en="Editor Font Size" data-ko="편집기 글꼴 크기">Editor Font Size</label>
+            <select id="prefsFontSize" class="prefs-select"></select>
+        </div>
+    </div>
+    <div class="prefs-footer">
+        <button class="prefs-btn prefs-btn-primary" onclick="applyPreferences()" data-en="OK" data-ko="확인">OK</button>
+        <button class="prefs-btn" onclick="resetPreferences()" data-en="Default" data-ko="디폴트">Default</button>
+        <button class="prefs-btn" onclick="hidePreferences()" data-en="Cancel" data-ko="취소">Cancel</button>
+    </div>
+</div>
+
+<script src="editor.js"></script>
+</body>
+</html>

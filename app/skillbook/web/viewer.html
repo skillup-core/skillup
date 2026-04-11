@@ -1,0 +1,3174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SKILL Book - Function Reference</title>
+    <!-- Skillup AppInit - Must be loaded first to initialize callPython and theme -->
+    <script src="/common/script/appinit.js" onerror="this.onerror=null; this.src='../../../../web/common/script/appinit.js';"></script>
+    <!-- Markdown rendering -->
+    <script src="/common/marked/16.x/marked.min.js" onerror="this.onerror=null; this.src='../../../desktop/common/marked/16.x/marked.min.js';"></script>
+    <script src="/common/highlight.js/11.x/highlight.min.js" onerror="this.onerror=null; this.src='../../../desktop/common/highlight.js/11.x/highlight.min.js';"></script>
+    <link id="hljs-theme-dark" rel="stylesheet" href="/common/highlight.js/11.x/styles/github-dark.min.css" onerror="this.onerror=null; this.href='../../../desktop/common/highlight.js/11.x/styles/github-dark.min.css';">
+    <link id="hljs-theme-light" rel="stylesheet" href="/common/highlight.js/11.x/styles/github.min.css" onerror="this.onerror=null; this.href='../../../desktop/common/highlight.js/11.x/styles/github.min.css';" disabled>
+    <!-- Skillbook specific styles -->
+    <link rel="stylesheet" href="skillbook.css">
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .skillbook-navbar {
+            position: relative;
+            z-index: 100;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            padding: 10px 12px;
+            display: flex;
+            align-items: center;
+            flex-wrap: nowrap;
+            overflow: visible;
+            border-radius: 8px 8px 0 0;
+            border: 1px solid var(--border-color);
+            border-bottom: none;
+            margin: 8px 8px 0 8px;
+            flex-shrink: 0;
+        }
+
+        .skillbook-search-box {
+            position: relative;
+            flex: 1;
+            min-width: 150px;
+            max-width: 250px;
+            flex-shrink: 1;
+            margin-right: 8px;
+            z-index: 1000;
+        }
+
+        .skillbook-search-input {
+            width: 100%;
+            padding: 6px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-size: 14px;
+            height: 32px;
+            box-sizing: border-box;
+            font-family: var(--font-mono);
+        }
+
+        .skillbook-search-input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .skillbook-autocomplete {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: var(--bg-secondary);
+            border: 1px solid var(--accent-primary);
+            border-top: none;
+            border-radius: 0 0 6px 6px;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+            z-index: 1001;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        .skillbook-autocomplete.active {
+            display: block;
+        }
+
+        .skillbook-autocomplete-item {
+            padding: 5px 12px;
+            cursor: pointer;
+            color: var(--text-primary);
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-family: var(--font-mono);
+            border: none;
+            line-height: 1.4;
+        }
+
+        .skillbook-autocomplete-item:hover {
+            background: var(--accent-primary);
+            color: #fff;
+        }
+
+        .skillbook-autocomplete-item.selected {
+            background: var(--accent-primary);
+            color: #fff;
+        }
+
+        .skillbook-nav-buttons {
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+            margin-right: 8px;
+        }
+
+        .skillbook-nav-buttons > * {
+            margin-right: 8px;
+        }
+
+        .skillbook-nav-buttons > *:last-child {
+            margin-right: 0;
+        }
+
+        .skillbook-nav-button {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 5px 7px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 32px;
+        }
+
+        .skillbook-nav-button:hover:not(:disabled) {
+            background: var(--accent-primary);
+            border-color: var(--accent-primary);
+            color: #fff;
+        }
+
+        .skillbook-nav-button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .skillbook-filter-button {
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 8px;
+            flex-shrink: 0;
+            padding: 5px 7px;
+            transition: all 0.2s;
+            height: 32px;
+        }
+
+        .skillbook-filter-button:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .skillbook-filter-button.active {
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+            background: var(--bg-tertiary);
+        }
+
+        .skillbook-position {
+            color: var(--text-secondary);
+            font-size: 11px;
+            white-space: nowrap;
+            min-width: 60px;
+            text-align: center;
+            flex-shrink: 0;
+            margin-right: 8px;
+        }
+
+        .skillbook-lang-select {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            cursor: pointer;
+            flex-shrink: 0;
+            margin-left: auto;
+        }
+
+        .skillbook-filter-dialog {
+            outline: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .skillbook-filter-dialog-inner {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            min-width: 280px;
+            max-width: 400px;
+            max-height: 70vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .skillbook-filter-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: var(--text-primary);
+        }
+
+        .skillbook-filter-list {
+            overflow-y: auto;
+            flex: 1;
+            margin-bottom: 12px;
+        }
+
+        .skillbook-filter-item {
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 13px;
+            border-radius: 4px;
+            color: var(--text-primary);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: transparent;
+            border: none;
+            text-align: left;
+            width: 100%;
+            transition: background 0.2s;
+        }
+
+        .skillbook-filter-item:hover {
+            background: var(--bg-hover);
+        }
+
+        .skillbook-filter-item.active {
+            background: var(--accent-primary);
+            color: #fff;
+        }
+
+        .skillbook-filter-item.selected {
+            background: var(--accent-primary);
+            color: #fff;
+        }
+
+        .skillbook-filter-count {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-left: 8px;
+        }
+
+        .skillbook-filter-close-btn {
+            align-self: flex-end;
+            padding: 5px 14px;
+            font-size: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .skillbook-filter-close-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .skillbook-history-button {
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 8px;
+            flex-shrink: 0;
+            padding: 5px 7px;
+            transition: all 0.2s;
+            height: 32px;
+        }
+
+        .skillbook-history-button:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .skillbook-history-button.active {
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+            background: var(--bg-tertiary);
+        }
+
+        .skillbook-history-dialog {
+            outline: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .skillbook-history-dialog-inner {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            min-width: 280px;
+            max-width: 400px;
+            max-height: 70vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .skillbook-history-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: var(--text-primary);
+        }
+
+        .skillbook-history-list {
+            overflow-y: auto;
+            flex: 1;
+            margin-bottom: 12px;
+        }
+
+        .skillbook-history-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 10px;
+            font-size: 13px;
+            font-family: var(--font-mono);
+            border-radius: 4px;
+            color: var(--text-primary);
+            background: transparent;
+            border: none;
+            text-align: left;
+            width: 100%;
+            transition: background 0.15s ease;
+            cursor: pointer;
+            gap: 8px;
+        }
+
+        .skillbook-history-item-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+
+        .skillbook-history-item-delete {
+            flex-shrink: 0;
+            padding: 1px 5px;
+            font-size: 11px;
+            font-weight: 600;
+            background: rgba(150, 120, 120, 0.2);
+            border: 1px solid rgba(150, 100, 100, 0.4);
+            border-radius: 3px;
+            color: rgba(180, 100, 100, 0.7);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            opacity: 0;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        .skillbook-history-item:hover .skillbook-history-item-delete,
+        .skillbook-history-item.selected .skillbook-history-item-delete {
+            opacity: 1;
+            background: rgba(150, 120, 120, 0.3);
+            border-color: rgba(150, 100, 100, 0.6);
+            color: rgba(200, 80, 80, 0.8);
+        }
+
+        .skillbook-history-item-delete:hover {
+            background: rgba(150, 120, 120, 0.4);
+            border-color: rgba(150, 100, 100, 0.8);
+            color: rgba(220, 80, 80, 1);
+        }
+
+        .skillbook-history-item:hover,
+        .skillbook-history-item.selected {
+            background: var(--accent-primary);
+            color: #fff;
+        }
+
+        .skillbook-history-item.selected .skillbook-history-item-delete {
+            color: rgba(255, 150, 150, 0.9);
+            border-color: rgba(255, 200, 200, 0.5);
+            background: rgba(255, 150, 150, 0.2);
+        }
+
+        .skillbook-history-item.selected .skillbook-history-item-delete:hover {
+            background: rgba(255, 150, 150, 0.3);
+            border-color: rgba(255, 200, 200, 0.8);
+            color: rgba(255, 180, 180, 1);
+        }
+
+        .skillbook-history-empty {
+            color: var(--text-secondary);
+            font-size: 13px;
+            padding: 8px 10px;
+        }
+
+        .skillbook-history-close-btn {
+            align-self: flex-end;
+            padding: 5px 14px;
+            font-size: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .skillbook-history-close-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .skillbook-settings-button {
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 8px;
+            flex-shrink: 0;
+            padding: 5px 7px;
+            transition: all 0.2s;
+            height: 32px;
+        }
+
+        .skillbook-settings-button:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .skillbook-settings-button.active {
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+            background: var(--bg-tertiary);
+        }
+
+        .skillbook-settings-dialog {
+            outline: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .skillbook-settings-dialog-inner {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            min-width: 280px;
+            max-width: 400px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .skillbook-settings-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: var(--text-primary);
+        }
+
+        .skillbook-settings-body {
+            margin-bottom: 16px;
+        }
+
+        .skillbook-settings-body label {
+            display: flex;
+            flex-direction: column;
+            color: var(--text-primary);
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        .skillbook-settings-label-text {
+            margin-bottom: 6px;
+        }
+
+        .skillbook-settings-body select {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            margin-top: 6px;
+        }
+
+        .skillbook-settings-shortcuts {
+            margin-bottom: 16px;
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+        }
+
+        .skillbook-settings-shortcuts-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .skillbook-settings-shortcuts-list {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .skillbook-settings-shortcut-item {
+            font-size: 12px;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+            font-family: var(--font-mono);
+            line-height: 1.5;
+        }
+
+        .skillbook-settings-shortcut-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .skillbook-settings-footer {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .skillbook-settings-footer button {
+            padding: 5px 14px;
+            font-size: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-left: 8px;
+        }
+
+        .skillbook-settings-footer button:first-child {
+            margin-left: 0;
+        }
+
+        .skillbook-settings-footer button:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .skillbook-settings-footer button:first-child {
+            background: var(--accent-primary);
+            color: #fff;
+            border-color: var(--accent-primary);
+        }
+
+        .skillbook-settings-footer button:first-child:hover {
+            opacity: 0.9;
+        }
+
+        .skillbook-container {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .skillbook-main-wrapper {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            margin: 0 8px 8px 8px;
+        }
+
+        .skillbook-content {
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-secondary);
+            border-radius: 0 0 8px 8px;
+            border: 1px solid var(--border-color);
+            border-top: none;
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            outline: none;
+        }
+
+        .skb-signature-section {
+            padding: 12px;
+            flex-shrink: 0;
+            overflow: visible;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            background: var(--bg-secondary);
+            z-index: 10;
+        }
+
+        .skb-scrollable-section {
+            padding: 12px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .skillbook-error {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 200px;
+            color: var(--error);
+            font-size: 16px;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .skillbook-status {
+            display: none;
+        }
+
+        /* ── Favorite button (heart) ── */
+        .skillbook-favorite-button {
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 8px;
+            flex-shrink: 0;
+            padding: 5px 7px;
+            transition: all 0.2s;
+            height: 32px;
+        }
+
+        .skillbook-favorite-button:hover {
+            background: var(--bg-hover);
+            color: #e05a7a;
+        }
+
+        .skillbook-favorite-button.active {
+            border-color: #e05a7a;
+            color: #e05a7a;
+            background: var(--bg-tertiary);
+        }
+
+        /* Heart icon inline in function header */
+        .skb-heart-icon {
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            vertical-align: middle;
+            margin: 0 4px 0 2px;
+            color: var(--text-secondary);
+            transition: color 0.15s, transform 0.15s;
+            flex-shrink: 0;
+        }
+
+        .skb-heart-icon:hover {
+            color: #e05a7a;
+            transform: scale(1.2);
+        }
+
+        .skb-heart-icon.filled {
+            color: #e05a7a;
+        }
+
+        /* ── Favorites dialog ── */
+        .skillbook-favorites-dialog {
+            outline: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .skillbook-favorites-dialog-inner {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            min-width: 280px;
+            max-width: 400px;
+            max-height: 70vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .skillbook-favorites-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: var(--text-primary);
+        }
+
+        .skillbook-favorites-list {
+            overflow-y: auto;
+            flex: 1;
+            margin-bottom: 12px;
+        }
+
+        .skillbook-favorites-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 10px;
+            font-size: 13px;
+            font-family: var(--font-mono);
+            border-radius: 4px;
+            color: var(--text-primary);
+            background: transparent;
+            border: none;
+            text-align: left;
+            width: 100%;
+            transition: background 0.15s ease;
+            cursor: pointer;
+        }
+
+        .skillbook-favorites-item-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+
+        .skillbook-favorites-item-delete {
+            flex-shrink: 0;
+            padding: 1px 5px;
+            font-size: 11px;
+            font-weight: 600;
+            background: rgba(150, 120, 120, 0.2);
+            border: 1px solid rgba(150, 100, 100, 0.4);
+            border-radius: 3px;
+            color: rgba(180, 100, 100, 0.7);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            opacity: 0;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        .skillbook-favorites-item:hover .skillbook-favorites-item-delete,
+        .skillbook-favorites-item.selected .skillbook-favorites-item-delete {
+            opacity: 1;
+            background: rgba(150, 120, 120, 0.3);
+            border-color: rgba(150, 100, 100, 0.6);
+            color: rgba(200, 80, 80, 0.8);
+        }
+
+        .skillbook-favorites-item-delete:hover {
+            background: rgba(150, 120, 120, 0.4);
+            border-color: rgba(150, 100, 100, 0.8);
+            color: rgba(220, 80, 80, 1);
+        }
+
+        .skillbook-favorites-item:hover,
+        .skillbook-favorites-item.selected {
+            background: var(--accent-primary);
+            color: #fff;
+        }
+
+        .skillbook-favorites-item.selected .skillbook-favorites-item-delete {
+            color: rgba(255, 150, 150, 0.9);
+            border-color: rgba(255, 200, 200, 0.5);
+            background: rgba(255, 150, 150, 0.2);
+        }
+
+        .skillbook-favorites-empty {
+            color: var(--text-secondary);
+            font-size: 13px;
+            padding: 8px 10px;
+        }
+
+        .skillbook-favorites-close-btn {
+            align-self: flex-end;
+            padding: 5px 14px;
+            font-size: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .skillbook-favorites-close-btn:hover {
+            background: var(--bg-hover);
+        }
+
+        /* ── Comments section ── */
+        .skb-comments-section {
+            margin-top: 24px;
+            border-top: 1px solid var(--border-color);
+            padding-top: 16px;
+        }
+
+        .skb-comments-heading {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .skb-comment-list {
+            margin-bottom: 16px;
+        }
+
+        .skb-comment {
+            display: flex;
+            margin-bottom: 10px;
+        }
+
+        .skb-comment-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--accent-primary);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+            flex-shrink: 0;
+            margin-right: 8px;
+            margin-top: 2px;
+            text-transform: uppercase;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .skb-comment-avatar img {
+            display: block;
+        }
+
+        .skb-comment-avatar span {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .skb-comment-body {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .skb-comment-meta {
+            display: flex;
+            align-items: center;
+            margin-bottom: 3px;
+        }
+
+        .skb-comment-user {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-right: 8px;
+        }
+
+        .skb-comment-time {
+            font-size: 11px;
+            color: var(--text-secondary);
+            flex: 1;
+        }
+
+        .skb-comment-actions {
+            display: flex;
+        }
+
+        .skb-comment-action-btn {
+            background: none;
+            border: none;
+            font-size: 11px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0 4px;
+            transition: color 0.15s;
+        }
+
+        .skb-comment-action-btn:hover {
+            color: var(--accent-primary);
+        }
+
+        .skb-comment-action-btn.delete:hover {
+            color: #e05a7a;
+        }
+
+        .skb-comment-edit-form {
+            margin-top: 6px;
+            display: none;
+        }
+
+        .skb-comment-edit-form.active {
+            display: block;
+        }
+
+        .skb-comment-content {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            color: var(--text-primary);
+            line-height: 1.6;
+            word-break: break-word;
+        }
+        .skb-comment-content p { margin: 0 0 6px; }
+        .skb-comment-content p:last-child { margin-bottom: 0; }
+        .skb-comment-content ul, .skb-comment-content ol { margin: 4px 0 6px 18px; padding: 0; }
+        .skb-comment-content li { margin-bottom: 2px; }
+        .skb-comment-content code {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 3px;
+            padding: 1px 4px;
+        }
+        .skb-comment-content pre {
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 6px 0;
+        }
+        .skb-comment-content pre code {
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+        .skb-comment-content blockquote {
+            margin: 6px 0;
+            padding: 4px 10px;
+            border-left: 3px solid var(--accent-primary);
+            color: var(--text-secondary);
+        }
+        .skb-comment-content h1, .skb-comment-content h2,
+        .skb-comment-content h3, .skb-comment-content h4 {
+            margin: 8px 0 4px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .skb-comment-content a { color: var(--accent-primary); }
+        .skb-comment-content hr {
+            border: none;
+            border-top: 1px solid var(--border-color);
+            margin: 8px 0;
+        }
+        .skb-comment-content strong { font-weight: 600; }
+        .skb-comment-content em { font-style: italic; }
+
+        .skb-comment-replies {
+            margin-top: 8px;
+            margin-left: 0;
+            border-left: 2px solid var(--border-color);
+            padding-left: 12px;
+        }
+
+        .skb-comment-reply-form {
+            margin-top: 6px;
+            display: none;
+        }
+
+        .skb-comment-reply-form.active {
+            display: block;
+        }
+
+        .skb-comment-form {
+            display: flex;
+            margin-bottom: 4px;
+        }
+
+        .skb-comment-input {
+            flex: 1;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 13px;
+            padding: 6px 10px;
+            resize: none;
+            font-family: var(--font-mono);
+            line-height: 1.4;
+            min-height: 36px;
+            overflow-y: hidden;
+            box-sizing: border-box;
+        }
+
+        .skb-comment-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+        }
+
+        .skb-comment-submit-btn {
+            margin-left: 8px;
+            padding: 6px 12px;
+            background: var(--accent-primary);
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: opacity 0.15s;
+            flex-shrink: 0;
+            align-self: flex-end;
+        }
+
+        .skb-comment-submit-btn:hover {
+            opacity: 0.85;
+        }
+
+        .skb-comment-cancel-btn {
+            margin-left: 4px;
+            padding: 6px 10px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background 0.15s;
+            flex-shrink: 0;
+            align-self: flex-end;
+        }
+
+        .skb-comment-cancel-btn:hover {
+            background: var(--bg-hover);
+        }
+
+        .skb-comment-empty {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-style: italic;
+            margin-bottom: 12px;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="skillbook-navbar">
+        <div class="skillbook-search-box">
+            <input
+                type="text"
+                class="skillbook-search-input"
+                id="searchInput"
+                placeholder="Search functions..."
+                autocomplete="off"
+            />
+            <div class="skillbook-autocomplete" id="autocompleteList"></div>
+        </div>
+
+        <!-- Favorites button (heart icon) -->
+        <button class="skillbook-favorite-button" id="favoritesBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+            </svg>
+        </button>
+
+        <!-- Filter button (funnel icon) -->
+        <button class="skillbook-filter-button" id="filterBtn">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M1 2h14l-5 6v5l-4-2V8z"/>
+            </svg>
+        </button>
+
+        <!-- History button (clock icon) -->
+        <button class="skillbook-history-button" id="historyBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+            </svg>
+        </button>
+
+        <!-- Settings button (gear icon) -->
+        <button class="skillbook-settings-button" id="settingsBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19.43 12.98c.04-.32.07-.64.07-.98 0-.34-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65c-.03-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.49.41l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98 0 .33.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.05.24.24.41.48.41h3.84c.24 0 .44-.17.49-.41l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/>
+            </svg>
+        </button>
+
+        <div class="skillbook-nav-buttons">
+            <button class="skillbook-nav-button" id="prevBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+            <button class="skillbook-nav-button" id="nextBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg></button>
+        </div>
+
+        <div class="skillbook-position" id="positionInfo">0 / 0</div>
+
+        <select class="skillbook-lang-select" id="langSelect">
+            <option value="1">English</option>
+        </select>
+    </div>
+
+    <div class="skillbook-container">
+        <div class="skillbook-main-wrapper">
+            <div class="skillbook-content" id="content" tabindex="0">
+                <div class="skillbook-error">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="skillbook-status" id="statusBar">Ready</div>
+
+    <script>
+        // ─── HTML Generation Functions ───
+
+        // Escape HTML special characters
+        function escapeHtml(text) {
+            if (typeof text !== 'string') return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Render markdown to HTML (with syntax highlighting)
+        function renderMarkdown(text) {
+            if (typeof text !== 'string') return '';
+            if (typeof marked === 'undefined') return escapeHtml(text);
+            try {
+                // Ensure newlines are preserved for non-markdown users (trailing 2 spaces = <br>)
+                const normalized = text.replace(/(?<!  )\n/g, '  \n');
+                const html = marked.parse(normalized, { breaks: true, gfm: true });
+                // Apply highlight.js to code blocks after insertion
+                const tmp = document.createElement('div');
+                tmp.innerHTML = html;
+                if (typeof hljs !== 'undefined') {
+                    tmp.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+                }
+                return tmp.innerHTML;
+            } catch (e) {
+                return escapeHtml(text);
+            }
+        }
+
+        // Sync highlight.js theme with current dark/light mode
+        function syncHljsTheme() {
+            const themeLink = document.querySelector('link[data-theme-css]');
+            const isLight = themeLink && themeLink.href && themeLink.href.includes('white');
+            const darkLink = document.getElementById('hljs-theme-dark');
+            const lightLink = document.getElementById('hljs-theme-light');
+            if (darkLink) darkLink.disabled = isLight;
+            if (lightLink) lightLink.disabled = !isLight;
+        }
+
+        // Linkify tokens in text
+        function linkifyTokens(text, names, cssClass, anchorPrefix) {
+            const result = [];
+            const pieces = text.split(/(\w+)/);
+            for (const piece of pieces) {
+                if (names.has(piece)) {
+                    const anchorId = piece.replace(/[&<>]/g, '');
+                    result.push(`<a class="${cssClass}" href="#${anchorPrefix}${anchorId}">${escapeHtml(piece)}</a>`);
+                } else {
+                    result.push(escapeHtml(piece));
+                }
+            }
+            return result.join('');
+        }
+
+        // Format signature with highlighting
+        function formatSignature(signature, funcName, argNames = new Set(), retNames = new Set()) {
+            if (!signature) return '';
+
+            signature = signature.trim().replace(/\s+/g, ' ');
+            const parenPos = signature.indexOf('(');
+
+            if (parenPos <= 0) {
+                return escapeHtml(signature);
+            }
+
+            const funcPart = signature.substring(0, parenPos).trim();
+            const rest = signature.substring(parenPos).trim();
+
+            let depth = 0;
+            let closePos = -1;
+            for (let i = 0; i < rest.length; i++) {
+                if (rest[i] === '(') depth++;
+                else if (rest[i] === ')') {
+                    depth--;
+                    if (depth === 0) {
+                        closePos = i;
+                        break;
+                    }
+                }
+            }
+
+            if (closePos < 0) {
+                return escapeHtml(signature);
+            }
+
+            const argsPart = rest.substring(1, closePos).trim();
+            const afterParen = rest.substring(closePos + 1).trim();
+
+            const funcPartEscaped = escapeHtml(funcPart);
+            const argsFormatted = argNames.size > 0
+                ? linkifyTokens(argsPart, argNames, 'sig-param-link', 'arg-')
+                : escapeHtml(argsPart);
+
+            const returnsMatch = afterParen.match(/^\s*=>\s*(.+)$/);
+            if (returnsMatch) {
+                const returnsPart = returnsMatch[1].trim();
+                const returnsFormatted = retNames.size > 0
+                    ? linkifyTokens(returnsPart, retNames, 'sig-ret-link', 'ret-')
+                    : escapeHtml(returnsPart);
+                return `<span class="function-name">${funcPartEscaped}</span>(${argsFormatted}) => <span class="returns">${returnsFormatted}</span>`;
+            }
+
+            return `<span class="function-name">${funcPartEscaped}</span>(${argsFormatted})`;
+        }
+
+        // Format content (HTML or plain text)
+        function formatContent(content, format = 'text') {
+            if (!content || content === 'X') {
+                return '<em>No documentation available</em>';
+            }
+
+            if (format === 'html') {
+                return content;
+            } else {
+                content = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                content = content.replace(/\n/g, '<br>');
+                return `<p>${content}</p>`;
+            }
+        }
+
+        // SVG heart helpers
+        function svgHeartOutline() {
+            return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+        }
+        function svgHeartFilled() {
+            return '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+        }
+
+        // Generate HTML for function data
+        function generateFunctionHtml(data) {
+            const funcName = escapeHtml(data.function_name);
+            const section = escapeHtml(data.section || 'NA');
+
+            // Build signatures
+            const argNames = new Set(data.arguments.map(a => a.name));
+            const retNames = new Set(data.returns.map(r => r.name));
+
+            let signatureDisplay = '';
+            if (data.signatures && data.signatures.length > 0) {
+                const sigs = data.signatures.map(sig =>
+                    formatSignature(sig, data.function_name, argNames, retNames)
+                );
+                signatureDisplay = sigs.join('<br>\n            ');
+            } else {
+                const argSig = data.arguments.map(a => a.name).join(', ');
+                const retSig = data.returns.map(r => r.name).join(' / ');
+                signatureDisplay = `<span class="function-name">${funcName}</span>(${argSig}) => <span class="returns">${retSig}</span>`;
+            }
+
+            // Build arguments table
+            let argsHtml = '';
+            if (data.arguments && data.arguments.length > 0) {
+                argsHtml = '<table class="args-table">\n<tr><th>Name</th><th>Type</th><th>Description</th></tr>\n';
+                for (const arg of data.arguments) {
+                    const argName = escapeHtml(arg.name);
+                    const argAnchor = arg.name.replace(/[&<>]/g, '');
+                    const argDesc = formatContent(arg.description, arg.format || 'text');
+
+                    let typeHtml = '';
+                    const typeNames = arg.type_names || ['unknown'];
+                    const prefixes = arg.prefixes || [];
+                    const typeDescs = arg.type_descs || [];
+
+                    for (let i = 0; i < typeNames.length; i++) {
+                        const prefix = prefixes[i] || '';
+                        const typeDesc = typeDescs[i] || '';
+                        const tooltip = prefix ? `${prefix}_ : ${typeDesc}` : typeDesc;
+                        typeHtml += `<span class="type-badge">${escapeHtml(typeNames[i])}<span class="type-tooltip">${escapeHtml(tooltip)}</span></span>`;
+                    }
+
+                    argsHtml += `<tr id="arg-${argAnchor}"><td><span class="arg-name">${argName}</span></td><td>${typeHtml}</td><td class="arg-desc">${argDesc}</td></tr>\n`;
+                }
+                argsHtml += '</table>';
+            }
+
+            // Build returns table
+            let returnsHtml = '';
+            if (data.returns && data.returns.length > 0) {
+                returnsHtml = '<table class="args-table">\n<tr><th>Name</th><th>Type</th><th>Description</th></tr>\n';
+                for (const ret of data.returns) {
+                    const retName = escapeHtml(ret.name);
+                    const retAnchor = ret.name.replace(/[&<>]/g, '');
+                    const retType = escapeHtml(ret.type_name || 'unknown');
+                    const retTypeDesc = ret.type_desc || '';
+                    const retDesc = formatContent(ret.description, ret.format || 'text');
+                    const tooltip = escapeHtml(retTypeDesc);
+                    const typeBadge = `<span class="type-badge">${retType}<span class="type-tooltip">${tooltip}</span></span>`;
+                    returnsHtml += `<tr id="ret-${retAnchor}"><td><span class="arg-name">${retName}</span></td><td>${typeBadge}</td><td class="arg-desc">${retDesc}</td></tr>\n`;
+                }
+                returnsHtml += '</table>';
+            }
+
+            // Build references
+            let refsHtml = '';
+            if (data.references && data.references.length > 0) {
+                refsHtml = '<div class="references"><h2 class="skb-section-heading">See Also</h2><p>';
+                const refLinks = data.references.map(ref => {
+                    const refName = escapeHtml(ref.name);
+                    const refLink = ref.link; // Don't escape - we need the raw link to process it
+
+                    // Handle @function_name links
+                    if (refLink.startsWith('@')) {
+                        const funcName = refLink.substring(1);
+                        return `<a href="#" data-jump-to="${escapeHtml(funcName)}">${refName}</a>`;
+                    }
+
+                    // Handle ${doc_base}/path/... links
+                    if (refLink.includes('${doc_base}')) {
+                        // This will be processed by process_links() in Python, but for references
+                        // we should pass through as-is and let handleAtLinks process them
+                        return `<a href="${escapeHtml(refLink)}">${refName}</a>`;
+                    }
+
+                    // Regular links
+                    return `<a href="${escapeHtml(refLink)}">${refName}</a>`;
+                });
+                refsHtml += refLinks.join(', ');
+                refsHtml += '</p></div>';
+            }
+
+            // Build header
+            const header = `<div class="skb-function-header">
+        <h1>
+            <span class="skb-function-name">${funcName}</span>
+            <span class="skb-heart-icon" id="headerHeart" data-func="${escapeHtml(data.function_name)}">${svgHeartOutline()}</span>
+            <span class="skb-section-badge">${section}</span>
+        </h1>
+        <div class="skb-signature">
+            ${signatureDisplay}
+        </div>
+    </div>`;
+
+            // Build description and rest
+            let description = '';
+            if (data.description) {
+                description += `<h2 class="skb-section-heading">Description</h2><div class="description-box">${formatContent(data.description, data.description_format || 'text')}</div>`;
+            }
+            if (argsHtml) {
+                description += `<h2 class="skb-section-heading">Arguments</h2>${argsHtml}`;
+            }
+            if (returnsHtml) {
+                description += `<h2 class="skb-section-heading">Return Values</h2>${returnsHtml}`;
+            }
+            if (data.example && data.example !== 'X') {
+                description += `<h2 class="skb-section-heading">Example</h2><div class="example-box">${formatContent(data.example, data.example_format || 'text')}</div>`;
+            }
+            if (refsHtml) {
+                description += refsHtml;
+            }
+
+            return { header, description };
+        }
+
+        // Variables initialized after DOM is ready
+        let currentIndex = 0;
+        let totalFunctions = 0;
+        let currentLanguage = 1;
+        let preferredLanguage = 1;  // Language to toggle to (can be non-English)
+        let uiLanguage = 'en';  // UI language (from skillup setting)
+        let isLoading = false;
+        let searchInput, autocompleteList, prevBtn, nextBtn, positionInfo, langSelect, contentDiv, statusBar;
+        let autocompleteSelectedIndex = -1;
+        let filterBtn, filterDialog, filterSectionList, filterCloseBtn;
+        let filterSelectedIndex = -1;
+        let favoritesBtn, favoritesDialog, favoritesList, favoritesCloseBtn;
+        let favoritesSelectedIndex = -1;
+        let currentFilter = '';
+        let filteredFunctionIndices = [];
+        let allSections = [];
+        let historyBtn, historyDialog, historyList, historyCloseBtn;
+        let historySelectedIndex = -1;
+        let settingsBtn, settingsDialog, settingsLangSelect, settingsSaveBtn, settingsCloseBtn;
+
+        // UI text translations
+        const uiTexts = {
+            en: {
+                settings: 'Settings',
+                language: 'Language',
+                save: 'Save',
+                close: 'Close',
+                shortcuts: 'Keyboard Shortcuts',
+                shortcutArrows: '← → : Previous / Next function',
+                shortcutE: 'E : Toggle English',
+                favorites: 'Favorites',
+                noComments: 'No comments yet. Be the first!',
+                writeComment: 'Write a comment...',
+                writeReply: 'Write a reply...',
+                post: 'Post',
+                reply: 'Reply',
+                edit: 'Edit',
+                save: 'Save',
+                delete: 'Delete',
+                cancel: 'Cancel'
+            },
+            ko: {
+                settings: '설정',
+                language: '시작 언어',
+                save: '저장',
+                close: '닫기',
+                shortcuts: '단축키',
+                shortcutArrows: '← → : 이전 / 다음 함수',
+                shortcutE: 'E : 임시 영어로 언어 변경',
+                favorites: '즐겨찾기',
+                noComments: '아직 댓글이 없습니다. 첫 번째 댓글을 남겨보세요!',
+                writeComment: '댓글을 입력하세요...',
+                writeReply: '답글을 입력하세요...',
+                post: '등록',
+                reply: '답글',
+                edit: '수정',
+                save: '저장',
+                delete: '삭제',
+                cancel: '취소'
+            }
+        };
+
+        // Get UI language from window (set by skillup)
+        function getUILanguage() {
+            // Check if window.uiLanguage is set by skillup
+            if (window.uiLanguage) {
+                return window.uiLanguage.substring(0, 2).toLowerCase();  // en, ko, etc.
+            }
+            // Try to detect from navigator
+            const navLang = navigator.language || navigator.userLanguage;
+            if (navLang.startsWith('ko')) return 'ko';
+            return 'en';
+        }
+
+        // Update UI text based on language
+        function updateUIText() {
+            const texts = uiTexts[uiLanguage] || uiTexts.en;
+            const settingsTitle = document.getElementById('settingsTitle');
+            const settingsLangLabel = document.getElementById('settingsLangLabel');
+            const settingsSaveBtnEl = document.getElementById('settingsSaveBtn');
+            const settingsCloseBtnEl = document.getElementById('settingsCloseBtn');
+            const shortcutsTitle = document.getElementById('shortcutsTitle');
+            const shortcutArrows = document.getElementById('shortcutArrows');
+            const shortcutE = document.getElementById('shortcutE');
+            const favoritesTitle = document.getElementById('favoritesTitle');
+
+            if (settingsTitle) settingsTitle.textContent = texts.settings;
+            if (settingsLangLabel) settingsLangLabel.textContent = texts.language;
+            if (settingsSaveBtnEl) settingsSaveBtnEl.textContent = texts.save;
+            if (settingsCloseBtnEl) settingsCloseBtnEl.textContent = texts.close;
+            if (shortcutsTitle) shortcutsTitle.textContent = texts.shortcuts;
+            if (shortcutArrows) shortcutArrows.textContent = texts.shortcutArrows;
+            if (shortcutE) shortcutE.textContent = texts.shortcutE;
+            if (favoritesTitle) favoritesTitle.textContent = '♡ ' + texts.favorites;
+        }
+
+        // Wait for callPython to be available
+        async function waitForCallPython(timeout = 5000) {
+            const startTime = Date.now();
+            while (!window.callPython && (Date.now() - startTime) < timeout) {
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            if (!window.callPython) {
+                throw new Error('callPython not available after initialization');
+            }
+        }
+
+        // Listen for messages from desktop (setLanguage from skillup framework)
+        window.addEventListener('message', async (event) => {
+            const data = event.data;
+            if (!data || !data.action) return;
+
+            // Handle setLanguage message from desktop
+            if (data.action === 'setLanguage' && data.language) {
+                const langCode = data.language.substring(0, 2).toLowerCase();
+                if (langCode === 'ko') {
+                    uiLanguage = 'ko';
+                } else {
+                    uiLanguage = 'en';
+                }
+                updateUIText();
+                if (currentCommentsFunc) {
+                    loadComments(currentCommentsFunc);
+                }
+
+                // If app is already initialized, no need to reload function
+                // The UI text (settings modal) is updated, but function content doesn't change
+                // with Skillup UI language - it uses the function's own language selection
+            }
+
+            // Restore focus to search input when desktop shows this iframe
+            if (data.action === 'requestFocus') {
+                searchInput.focus();
+            }
+        });
+
+        // ── Desktop dialog notification helpers ───────────────────────────────────
+        function _notifyDialogOpen() {
+            if (window.parent !== window) {
+                window.parent.postMessage({ action: 'skillbookDialogOpen' }, '*');
+            }
+        }
+        function _notifyDialogClose() {
+            // Only notify if no dialogs remain open
+            const dialogs = [historyDialog, filterDialog, settingsDialog, favoritesDialog];
+            const anyOpen = dialogs.some(function(d) { return d && d.style.display !== 'none'; });
+            if (!anyOpen && window.parent !== window) {
+                window.parent.postMessage({ action: 'skillbookDialogClose' }, '*');
+            }
+        }
+
+        // Initialize
+        async function init() {
+            try {
+                // Wait for callPython to be available
+                await waitForCallPython();
+
+                // Get UI language
+                uiLanguage = getUILanguage();
+                updateUIText();
+
+                // Get DOM elements
+                searchInput = document.getElementById('searchInput');
+                autocompleteList = document.getElementById('autocompleteList');
+                prevBtn = document.getElementById('prevBtn');
+                nextBtn = document.getElementById('nextBtn');
+                positionInfo = document.getElementById('positionInfo');
+                langSelect = document.getElementById('langSelect');
+                contentDiv = document.getElementById('content');
+                statusBar = document.getElementById('statusBar');
+                filterBtn = document.getElementById('filterBtn');
+                filterDialog = document.getElementById('filterDialog');
+                filterSectionList = document.getElementById('filterSectionList');
+                filterCloseBtn = document.getElementById('filterCloseBtn');
+                favoritesBtn = document.getElementById('favoritesBtn');
+                favoritesDialog = document.getElementById('favoritesDialog');
+                favoritesList = document.getElementById('favoritesList');
+                favoritesCloseBtn = document.getElementById('favoritesCloseBtn');
+                historyBtn = document.getElementById('historyBtn');
+                historyDialog = document.getElementById('historyDialog');
+                historyList = document.getElementById('historyList');
+                historyCloseBtn = document.getElementById('historyCloseBtn');
+                settingsBtn = document.getElementById('settingsBtn');
+                settingsDialog = document.getElementById('settingsDialog');
+                settingsLangSelect = document.getElementById('settingsLangSelect');
+                settingsSaveBtn = document.getElementById('settingsSaveBtn');
+                settingsCloseBtn = document.getElementById('settingsCloseBtn');
+
+                const result = await callPython('getInfo', {});
+
+                if (result.success) {
+                    totalFunctions = result.total_functions;
+
+                    // Load saved language setting
+                    const settingsResult = await callPython('getSettings', {});
+                    if (settingsResult.success) {
+                        currentLanguage = settingsResult.language;
+                    } else {
+                        currentLanguage = result.languages[0]?.id || 1;
+                    }
+                    preferredLanguage = currentLanguage;  // Initialize preferred language
+
+                    // Populate language select (main navbar)
+                    langSelect.innerHTML = '';
+                    result.languages.forEach(lang => {
+                        const option = document.createElement('option');
+                        option.value = lang.id;
+                        option.textContent = lang.name;
+                        langSelect.appendChild(option);
+                    });
+
+                    // Populate settings language select
+                    settingsLangSelect.innerHTML = '';
+                    result.languages.forEach(lang => {
+                        const option = document.createElement('option');
+                        option.value = lang.id;
+                        option.textContent = lang.name;
+                        settingsLangSelect.appendChild(option);
+                    });
+                    settingsLangSelect.value = currentLanguage;
+
+                    // Load sections
+                    const sectionsResult = await callPython('getSections', {});
+                    if (sectionsResult.success) {
+                        allSections = sectionsResult.sections;
+                        populateFilterDialog();
+                    }
+
+                    // Load first function
+                    await loadFunction(0, currentLanguage);
+                    searchInput.focus();
+                    updateStatus('Ready');
+
+                    // Setup event listeners after initialization
+                    setupEventListeners();
+                } else {
+                    showError('Failed to initialize: ' + (result.error || 'Unknown error'));
+                    updateStatus('Error: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                showError('Initialization error: ' + error.message);
+                updateStatus('Error: ' + error.message);
+            }
+        }
+
+        async function loadFunction(index, langId, addToHistory = false, scrollPos = null) {
+            if (isLoading) return;
+            if (index < 0 || index >= totalFunctions) return;
+
+            isLoading = true;
+            updateStatus('Loading function...');
+
+            try {
+                const result = await callPython('getFunction', { index, lang_id: langId });
+
+                if (result.success) {
+                    currentIndex = index;
+                    currentLanguage = langId;
+
+                    // Generate HTML from data
+                    const { header, description } = generateFunctionHtml(result.data);
+
+                    // Clear content and build structure
+                    contentDiv.innerHTML = '';
+
+                    // Add header (fixed section)
+                    const sigDiv = document.createElement('div');
+                    sigDiv.className = 'skb-signature-section';
+                    sigDiv.innerHTML = header;
+                    contentDiv.appendChild(sigDiv);
+
+                    // Add description and rest (scrollable section)
+                    const descDiv = document.createElement('div');
+                    descDiv.className = 'skb-scrollable-section';
+                    descDiv.innerHTML = description;
+                    contentDiv.appendChild(descDiv);
+
+                    // Update UI
+                    positionInfo.textContent = `${index + 1} / ${totalFunctions}`;
+                    updateNavButtons();
+                    langSelect.value = langId;
+
+                    // Restore scroll position or scroll to top
+                    if (scrollPos !== null) {
+                        contentDiv.scrollTop = scrollPos;
+                    } else {
+                        contentDiv.scrollTop = 0;
+                    }
+
+                    // Fix dark mode colors
+                    fixDarkModeColors();
+
+                    // Setup anchor navigation with signature offset
+                    handleAnchorNavigation();
+
+                    // Setup @ function links for cross-reference navigation
+                    handleAtLinks();
+
+                    // Setup row click handlers for toggle selection
+                    setupRowClickHandlers();
+
+                    // Add to history only when explicitly requested (search or @link)
+                    if (addToHistory) {
+                        callPython('addHistory', { name: result.function_name }).catch(() => {});
+                    }
+
+                    // Update heart icon state
+                    updateHeartIcon(result.function_name);
+
+                    // Load comments
+                    loadComments(result.function_name);
+
+                    updateStatus(`Function: ${result.function_name}`);
+                } else {
+                    showError('Error loading function: ' + (result.error || 'Unknown error'));
+                    updateStatus('Error: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                showError('Error loading function: ' + error.message);
+                updateStatus('Error: ' + error.message);
+            } finally {
+                isLoading = false;
+            }
+        }
+
+        function showError(message) {
+            contentDiv.innerHTML = `<div class="skillbook-error">${escapeHtml(message)}</div>`;
+        }
+
+        function updateStatus(message) {
+            statusBar.textContent = message;
+        }
+
+        function getFilteredPrev(idx) {
+            if (!filteredFunctionIndices.length) {
+                return idx > 0 ? idx - 1 : -1;
+            }
+            const candidates = filteredFunctionIndices.filter(i => i < idx);
+            return candidates.length ? candidates[candidates.length - 1] : -1;
+        }
+
+        function getFilteredNext(idx) {
+            if (!filteredFunctionIndices.length) {
+                return idx < totalFunctions - 1 ? idx + 1 : -1;
+            }
+            const candidates = filteredFunctionIndices.filter(i => i > idx);
+            return candidates.length ? candidates[0] : -1;
+        }
+
+        function updateNavButtons() {
+            const prevIdx = getFilteredPrev(currentIndex);
+            const nextIdx = getFilteredNext(currentIndex);
+            prevBtn.disabled = prevIdx === -1;
+            nextBtn.disabled = nextIdx === -1;
+        }
+
+        function populateFilterDialog() {
+            // Sort sections by count (descending - highest count first)
+            const sortedSections = [...allSections].sort((a, b) => b.count - a.count);
+
+            const html = sortedSections.map(section => {
+                const active = section.name === currentFilter ? ' active' : '';
+                return `<button class="skillbook-filter-item${active}" data-section="${escapeHtml(section.name)}"><span>${escapeHtml(section.name)}</span><span class="skillbook-filter-count">${section.count}</span></button>`;
+            }).join('');
+
+            // Add "All" option at the beginning
+            const allActive = currentFilter === '' ? ' active' : '';
+            const allHtml = `<button class="skillbook-filter-item${allActive}" data-section=""><span>All</span><span class="skillbook-filter-count">${totalFunctions}</span></button>${html}`;
+
+            filterSectionList.innerHTML = allHtml;
+
+            // Add click handlers
+            filterSectionList.querySelectorAll('.skillbook-filter-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const section = item.dataset.section;
+                    selectFilter(section);
+                });
+            });
+        }
+
+        function selectFilter(sectionName) {
+            currentFilter = sectionName;
+
+            // Update filtered indices based on section
+            if (sectionName === '') {
+                // All sections
+                filteredFunctionIndices = [];
+            } else {
+                // Find the section and get its indices
+                const section = allSections.find(s => s.name === sectionName);
+                filteredFunctionIndices = section ? section.indices : [];
+            }
+
+            // Update filter button active state
+            filterBtn.classList.toggle('active', currentFilter !== '');
+
+            // Update dialog UI
+            filterSectionList.querySelectorAll('.skillbook-filter-item').forEach(item => {
+                item.classList.toggle('active', item.dataset.section === currentFilter);
+                item.classList.remove('selected');
+            });
+
+            // Close dialog
+            filterDialog.style.display = 'none';
+            _notifyDialogClose();
+
+            // If current index is not in filtered set, jump to first filtered function
+            if (filteredFunctionIndices.length > 0) {
+                if (!filteredFunctionIndices.includes(currentIndex)) {
+                    const firstIdx = filteredFunctionIndices[0];
+                    loadFunction(firstIdx, currentLanguage);
+                } else {
+                    updateNavButtons();
+                }
+            } else {
+                updateNavButtons();
+            }
+        }
+
+        async function openHistoryDialog() {
+            try {
+                const result = await callPython('getHistory', {});
+                const history = (result.success && result.history) ? result.history : [];
+                if (history.length === 0) {
+                    historyList.innerHTML = '<div class="skillbook-history-empty">No history yet.</div>';
+                } else {
+                    historyList.innerHTML = history
+                        .map(name => `
+                            <div class="skillbook-history-item" data-name="${escapeHtml(name)}">
+                                <span class="skillbook-history-item-name">${escapeHtml(name)}</span>
+                                <button class="skillbook-history-item-delete">×</button>
+                            </div>
+                        `)
+                        .join('');
+                    historyList.querySelectorAll('.skillbook-history-item').forEach(item => {
+                        const deleteBtn = item.querySelector('.skillbook-history-item-delete');
+                        const nameSpan = item.querySelector('.skillbook-history-item-name');
+
+                        // Click on item name to navigate
+                        nameSpan.addEventListener('click', async (e) => {
+                            const name = item.dataset.name;
+                            historyDialog.style.display = 'none';
+                            _notifyDialogClose();
+                            const jumpResult = await callPython('jump', { name });
+                            if (jumpResult.success) {
+                                loadFunction(jumpResult.index, currentLanguage, true);
+                            }
+                        });
+
+                        // Delete button click
+                        deleteBtn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            const name = item.dataset.name;
+                            try {
+                                const delResult = await callPython('deleteHistory', { name });
+                                if (delResult.success) {
+                                    // Refresh the history dialog
+                                    await openHistoryDialog();
+                                }
+                            } catch (err) {
+                                console.error('Failed to delete history item:', err);
+                            }
+                        });
+                    });
+                }
+            } catch (e) {
+                historyList.innerHTML = '<div class="skillbook-history-empty">Failed to load history.</div>';
+            }
+            historyDialog.style.display = 'flex';
+            historySelectedIndex = -1;
+            historyDialog.focus();
+            _notifyDialogOpen();
+        }
+
+        function updateHistorySelection() {
+            const items = historyList.querySelectorAll('.skillbook-history-item');
+            items.forEach((item, i) => {
+                if (i === historySelectedIndex) {
+                    item.classList.add('selected');
+                    item.scrollIntoView({ block: 'nearest' });
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
+        }
+
+        function updateFilterSelection(items) {
+            items.forEach((item, i) => {
+                if (i === filterSelectedIndex) {
+                    item.classList.add('selected');
+                    item.scrollIntoView({ block: 'nearest' });
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
+        }
+
+        function setupEventListeners() {
+            // History button and dialog handlers
+            historyBtn.addEventListener('click', () => {
+                if (historyDialog.style.display === 'none') {
+                    openHistoryDialog();
+                } else {
+                    historyDialog.style.display = 'none';
+                    _notifyDialogClose();
+                }
+            });
+
+            historyCloseBtn.addEventListener('click', () => {
+                historyDialog.style.display = 'none';
+                _notifyDialogClose();
+            });
+
+            historyDialog.addEventListener('click', (e) => {
+                if (e.target === historyDialog) {
+                    historyDialog.style.display = 'none';
+                    _notifyDialogClose();
+                }
+            });
+
+            historyDialog.addEventListener('keydown', async (e) => {
+                if (historyDialog.style.display === 'none') return;
+                const items = historyList.querySelectorAll('.skillbook-history-item');
+                if (items.length === 0) {
+                    if (e.key === 'Escape') { historyDialog.style.display = 'none'; _notifyDialogClose(); }
+                    return;
+                }
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    historySelectedIndex = Math.min(historySelectedIndex + 1, items.length - 1);
+                    updateHistorySelection();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    historySelectedIndex = Math.max(historySelectedIndex - 1, 0);
+                    updateHistorySelection();
+                } else if (e.key === 'PageDown') {
+                    e.preventDefault();
+                    historySelectedIndex = Math.min(historySelectedIndex + 5, items.length - 1);
+                    updateHistorySelection();
+                } else if (e.key === 'PageUp') {
+                    e.preventDefault();
+                    historySelectedIndex = Math.max(historySelectedIndex - 5, 0);
+                    updateHistorySelection();
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (historySelectedIndex >= 0 && historySelectedIndex < items.length) {
+                        const name = items[historySelectedIndex].dataset.name;
+                        historyDialog.style.display = 'none';
+                        _notifyDialogClose();
+                        const jumpResult = await callPython('jump', { name });
+                        if (jumpResult.success) {
+                            loadFunction(jumpResult.index, currentLanguage, true);
+                        }
+                    }
+                } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                    e.preventDefault();
+                    if (historySelectedIndex >= 0 && historySelectedIndex < items.length) {
+                        const name = items[historySelectedIndex].dataset.name;
+                        try {
+                            const delResult = await callPython('deleteHistory', { name });
+                            if (delResult.success) {
+                                await openHistoryDialog();
+                            }
+                        } catch (err) {
+                            console.error('Failed to delete history item:', err);
+                        }
+                    }
+                } else if (e.key === 'Escape') {
+                    historyDialog.style.display = 'none';
+                    _notifyDialogClose();
+                }
+            });
+
+
+            // Filter button and dialog handlers
+            filterBtn.addEventListener('click', () => {
+                if (filterDialog.style.display === 'none') {
+                    filterDialog.style.display = 'flex';
+                    filterSelectedIndex = -1;
+                    // Move cursor to currently active filter item
+                    const items = filterSectionList.querySelectorAll('.skillbook-filter-item');
+                    items.forEach((item, i) => {
+                        item.classList.remove('selected');
+                        if (item.classList.contains('active')) filterSelectedIndex = i;
+                    });
+                    if (filterSelectedIndex >= 0) updateFilterSelection(items);
+                    filterDialog.focus();
+                    _notifyDialogOpen();
+                } else {
+                    filterDialog.style.display = 'none';
+                    _notifyDialogClose();
+                }
+            });
+
+            filterCloseBtn.addEventListener('click', () => {
+                filterDialog.style.display = 'none';
+                _notifyDialogClose();
+            });
+
+            filterDialog.addEventListener('click', (e) => {
+                if (e.target === filterDialog) {
+                    filterDialog.style.display = 'none';
+                    _notifyDialogClose();
+                }
+            });
+
+            filterDialog.addEventListener('keydown', handleFilterDialogKey, true);
+
+            function handleFilterDialogKey(e) {
+                if (filterDialog.style.display === 'none') return;
+                const items = filterSectionList.querySelectorAll('.skillbook-filter-item');
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    filterDialog.style.display = 'none';
+                    _notifyDialogClose();
+                    return;
+                }
+                if (items.length === 0) return;
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    filterSelectedIndex = Math.min(filterSelectedIndex + 1, items.length - 1);
+                    updateFilterSelection(items);
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    filterSelectedIndex = Math.max(filterSelectedIndex - 1, 0);
+                    updateFilterSelection(items);
+                } else if (e.key === 'PageDown') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    filterSelectedIndex = Math.min(filterSelectedIndex + 5, items.length - 1);
+                    updateFilterSelection(items);
+                } else if (e.key === 'PageUp') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    filterSelectedIndex = Math.max(filterSelectedIndex - 5, 0);
+                    updateFilterSelection(items);
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (filterSelectedIndex >= 0 && filterSelectedIndex < items.length) {
+                        selectFilter(items[filterSelectedIndex].dataset.section);
+                    }
+                }
+            }
+
+            // Event listeners for navigation
+            prevBtn.addEventListener('click', () => {
+                const prevIdx = getFilteredPrev(currentIndex);
+                if (prevIdx !== -1) {
+                    loadFunction(prevIdx, currentLanguage);
+                }
+            });
+
+            nextBtn.addEventListener('click', () => {
+                const nextIdx = getFilteredNext(currentIndex);
+                if (nextIdx !== -1) {
+                    loadFunction(nextIdx, currentLanguage);
+                }
+            });
+
+            langSelect.addEventListener('change', (e) => {
+                const newLangId = parseInt(e.target.value);
+                preferredLanguage = newLangId;  // Update preferred language when user selects
+                loadFunction(currentIndex, newLangId);
+            });
+
+            // Search functionality
+            let autocompleteTimeout;
+            let autocompleteState = {
+                query: '',
+                offset: 0,
+                limit: 30,
+                total: 0,
+                has_more: false,
+                isLoading: false  // Prevent concurrent loads
+            };
+
+            function updateAutocompleteSelection() {
+                const items = autocompleteList.querySelectorAll('.skillbook-autocomplete-item');
+                items.forEach((item, idx) => {
+                    item.classList.toggle('selected', idx === autocompleteSelectedIndex);
+                });
+                if (autocompleteSelectedIndex >= 0 && autocompleteSelectedIndex < items.length) {
+                    items[autocompleteSelectedIndex].scrollIntoView({ block: 'nearest' });
+                }
+
+                // Load more if at the end and has_more is true (but not while already loading)
+                const lastIdx = items.length - 1;
+                if (autocompleteSelectedIndex === lastIdx && autocompleteState.has_more && !autocompleteState.isLoading) {
+                    loadMoreAutocomplete();
+                }
+            }
+
+            async function loadAutocomplete(query, offset = 0) {
+                try {
+                    // Mark as loading to prevent concurrent requests
+                    autocompleteState.isLoading = true;
+
+                    const result = await callPython('autocomplete', {
+                        q: query,
+                        section: currentFilter,
+                        offset: offset,
+                        limit: 30
+                    });
+
+                    if (result.success && result.results.length > 0) {
+                        if (offset === 0) {
+                            // First page - replace content
+                            autocompleteList.innerHTML = result.results
+                                .map((item, idx) =>
+                                    `<div class="skillbook-autocomplete-item" data-index="${item.index}">${escapeHtml(item.name)}</div>`
+                                )
+                                .join('');
+                        } else {
+                            // Append to existing results - preserve scroll position
+                            const scrollPos = autocompleteList.scrollTop;
+                            const fragment = document.createDocumentFragment();
+                            result.results.forEach(item => {
+                                const div = document.createElement('div');
+                                div.className = 'skillbook-autocomplete-item';
+                                div.dataset.index = item.index;
+                                div.textContent = item.name;
+                                fragment.appendChild(div);
+                            });
+
+                            // Use requestAnimationFrame to ensure DOM update completes before scroll restore
+                            requestAnimationFrame(() => {
+                                autocompleteList.appendChild(fragment);
+                                // Restore scroll position after DOM update
+                                requestAnimationFrame(() => {
+                                    autocompleteList.scrollTop = scrollPos;
+                                });
+                            });
+                        }
+
+                        // Update state AFTER DOM manipulation
+                        autocompleteState = {
+                            query: query,
+                            offset: result.offset,
+                            limit: result.limit,
+                            total: result.total,
+                            has_more: result.has_more,
+                            isLoading: false
+                        };
+
+                        autocompleteList.classList.add('active');
+                        if (offset === 0) {
+                            autocompleteSelectedIndex = -1;
+                        }
+
+                        // Add click handlers - use event delegation on parent for better performance
+                        if (!autocompleteList._clickHandlerAttached) {
+                            autocompleteList.addEventListener('click', (e) => {
+                                if (e.target.classList.contains('skillbook-autocomplete-item')) {
+                                    const index = parseInt(e.target.dataset.index);
+                                    loadFunction(index, currentLanguage, true);
+                                    searchInput.value = '';
+                                    autocompleteList.classList.remove('active');
+                                }
+                            });
+                            autocompleteList._clickHandlerAttached = true;
+                        }
+                    } else {
+                        autocompleteState.isLoading = false;
+                        autocompleteList.classList.remove('active');
+                    }
+                } catch (error) {
+                    autocompleteState.isLoading = false;
+                    autocompleteList.classList.remove('active');
+                }
+            }
+
+            async function loadMoreAutocomplete() {
+                const nextOffset = autocompleteState.offset + autocompleteState.limit;
+                if (nextOffset < autocompleteState.total && !autocompleteState.isLoading) {
+                    await loadAutocomplete(autocompleteState.query, nextOffset);
+                }
+            }
+
+            searchInput.addEventListener('input', async (e) => {
+                const query = e.target.value.trim();
+
+                clearTimeout(autocompleteTimeout);
+                autocompleteSelectedIndex = -1;
+
+                if (query.length < 1) {
+                    autocompleteList.classList.remove('active');
+                    return;
+                }
+
+                autocompleteTimeout = setTimeout(async () => {
+                    await loadAutocomplete(query, 0);
+                }, 200);
+            });
+
+            searchInput.addEventListener('keydown', (e) => {
+                const isDropdownActive = autocompleteList.classList.contains('active');
+                const items = autocompleteList.querySelectorAll('.skillbook-autocomplete-item');
+
+                if (e.key === 'ArrowDown') {
+                    if (isDropdownActive && items.length > 0) {
+                        e.preventDefault();
+                        autocompleteSelectedIndex = Math.min(autocompleteSelectedIndex + 1, items.length - 1);
+                        updateAutocompleteSelection();
+                    }
+                } else if (e.key === 'ArrowUp') {
+                    if (isDropdownActive && items.length > 0) {
+                        e.preventDefault();
+                        autocompleteSelectedIndex = Math.max(autocompleteSelectedIndex - 1, -1);
+                        updateAutocompleteSelection();
+                    }
+                } else if (e.key === 'PageDown') {
+                    if (isDropdownActive && items.length > 0) {
+                        e.preventDefault();
+                        autocompleteSelectedIndex = Math.min(autocompleteSelectedIndex + 10, items.length - 1);
+                        updateAutocompleteSelection();
+                    }
+                } else if (e.key === 'PageUp') {
+                    if (isDropdownActive && items.length > 0) {
+                        e.preventDefault();
+                        autocompleteSelectedIndex = Math.max(autocompleteSelectedIndex - 10, -1);
+                        updateAutocompleteSelection();
+                    }
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (isDropdownActive && autocompleteSelectedIndex >= 0 && autocompleteSelectedIndex < items.length) {
+                        const index = parseInt(items[autocompleteSelectedIndex].dataset.index);
+                        console.log('[Skillbook] Selected function at index:', index);
+                        loadFunction(index, currentLanguage, true);
+                        searchInput.value = '';
+                        autocompleteList.classList.remove('active');
+                    }
+                } else if (e.key === 'Escape') {
+                    autocompleteList.classList.remove('active');
+                    autocompleteSelectedIndex = -1;
+                }
+            });
+
+            // Keyboard navigation for left/right (function navigation)
+            document.addEventListener('keydown', (e) => {
+                // Don't navigate if any input/textarea is focused
+                const activeEl = document.activeElement;
+                const isInputFocused = activeEl === searchInput ||
+                                      activeEl.tagName === 'TEXTAREA' ||
+                                      activeEl.tagName === 'INPUT' ||
+                                      (activeEl.classList && activeEl.classList.contains('skb-comment-input'));
+                if (isInputFocused) {
+                    return;
+                }
+
+                // Let filter/history/settings/favorites dialogs handle their own keys
+                if (filterDialog.style.display !== 'none' || historyDialog.style.display !== 'none' || settingsDialog.style.display !== 'none' || favoritesDialog.style.display !== 'none') {
+                    return;
+                }
+
+                if (e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    const prevIdx = getFilteredPrev(currentIndex);
+                    if (prevIdx !== -1) {
+                        loadFunction(prevIdx, currentLanguage);
+                        // Move focus to content area for subsequent scroll operations
+                        contentDiv.focus();
+                    }
+                } else if (e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    const nextIdx = getFilteredNext(currentIndex);
+                    if (nextIdx !== -1) {
+                        loadFunction(nextIdx, currentLanguage);
+                        // Move focus to content area for subsequent scroll operations
+                        contentDiv.focus();
+                    }
+                } else if (e.key === 'e' || e.key === 'E') {
+                    // Toggle between preferred language and English (lang_id = 1)
+                    // Only toggle if current language is not English
+                    if (preferredLanguage !== 1) {
+                        e.preventDefault();
+                        const savedScrollPos = contentDiv.scrollTop;
+                        const nextLang = currentLanguage === 1 ? preferredLanguage : 1;
+                        loadFunction(currentIndex, nextLang, false, savedScrollPos);
+                    }
+                }
+            });
+
+            // Keyboard navigation for up/down (scroll)
+            contentDiv.addEventListener('keydown', (e) => {
+                if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+                if (document.activeElement && document.activeElement.classList.contains('skb-comment-input')) return;
+                e.preventDefault();
+                contentDiv.scrollTop += e.key === 'ArrowUp' ? -40 : 40;
+            });
+
+            // Search by name with Enter
+            searchInput.addEventListener('keydown', async (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const name = searchInput.value.trim();
+                    if (name) {
+                        try {
+                            const result = await callPython('jump', { name });
+                            if (result.success) {
+                                loadFunction(result.index, currentLanguage, true);
+                                searchInput.value = '';
+                                autocompleteList.classList.remove('active');
+                            } else {
+                                updateStatus('Function not found: ' + name);
+                            }
+                        } catch (error) {
+                            updateStatus('Error: ' + error.message);
+                        }
+                    }
+                }
+            });
+
+            // Hide autocomplete on blur
+            searchInput.addEventListener('blur', () => {
+                setTimeout(() => {
+                    autocompleteList.classList.remove('active');
+                }, 200);
+            });
+
+            // Settings button and dialog handlers
+            settingsBtn.addEventListener('click', () => {
+                if (settingsDialog.style.display === 'none') {
+                    settingsLangSelect.value = currentLanguage;
+                    settingsDialog.style.display = 'flex';
+                    settingsDialog.focus();
+                    _notifyDialogOpen();
+                } else {
+                    settingsDialog.style.display = 'none';
+                    _notifyDialogClose();
+                }
+            });
+
+            settingsSaveBtn.addEventListener('click', async () => {
+                try {
+                    const newLanguage = parseInt(settingsLangSelect.value);
+                    const result = await callPython('saveSettings', { language: newLanguage });
+                    if (result.success) {
+                        currentLanguage = newLanguage;
+                        preferredLanguage = newLanguage;  // Update preferred language
+                        langSelect.value = newLanguage;
+                        settingsDialog.style.display = 'none';
+                        _notifyDialogClose();
+                        // Reload current function with new language
+                        await loadFunction(currentIndex, currentLanguage);
+                        updateStatus('Settings saved');
+                    } else {
+                        updateStatus('Error: Failed to save settings');
+                    }
+                } catch (error) {
+                    updateStatus('Error: ' + error.message);
+                }
+            });
+
+            settingsCloseBtn.addEventListener('click', () => {
+                settingsDialog.style.display = 'none';
+                _notifyDialogClose();
+            });
+
+            settingsDialog.addEventListener('click', (e) => {
+                if (e.target === settingsDialog) {
+                    settingsDialog.style.display = 'none';
+                    _notifyDialogClose();
+                }
+            });
+
+            settingsDialog.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    settingsDialog.style.display = 'none';
+                    _notifyDialogClose();
+                }
+            });
+
+            // Favorites listeners
+            setupFavoritesListeners();
+        }
+
+        // Convert black color (#000000) to readable color in dark mode only
+        function fixDarkModeColors() {
+            const contentDiv = document.getElementById('content');
+            if (!contentDiv) return;
+
+            // Check if we're in dark mode by checking background color
+            const bodyBgColor = window.getComputedStyle(document.body).backgroundColor;
+
+            // Detect dark mode: if background is dark (dark gray/black)
+            // Extract RGB values and check if it's a dark color
+            const rgbMatch = bodyBgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+            const isDarkMode = rgbMatch && (parseInt(rgbMatch[1]) < 100);
+
+            if (!isDarkMode) {
+                // Light mode: darken text color
+                fixLightModeColors();
+                return;
+            }
+
+            const allElements = contentDiv.querySelectorAll('*');
+
+            allElements.forEach((el) => {
+                const computedColor = window.getComputedStyle(el).color;
+                // Check for black color
+                if (computedColor === 'rgb(0, 0, 0)' || computedColor === '#000000') {
+                    // Fix black text to light blue
+                    if (el.textContent.trim().length > 0) {
+                        el.style.setProperty('color', '#a5d8ff', 'important');
+                    }
+                }
+                // Check for blue color (#0000ff)
+                if (computedColor === 'rgb(0, 0, 255)' || computedColor === '#0000ff') {
+                    // Fix blue text to accent color (cyan) like SEE ALSO links
+                    el.style.setProperty('color', '#4cc9f0', 'important');
+                }
+                // Check for dark blue color (#003366) - hard to see in dark mode
+                if (computedColor === 'rgb(0, 51, 102)' || computedColor === '#003366') {
+                    el.style.setProperty('color', '#7cb8d8', 'important');
+                }
+
+                // Fix example-box background color in dark mode
+                if (el.classList && el.classList.contains('example-box')) {
+                    el.style.setProperty('background', '#1f2937', 'important');
+                    el.style.setProperty('border', '1px solid #374151', 'important');
+                    el.style.setProperty('border-left', '3px solid #f59e0b', 'important');
+                    el.style.setProperty('color', '#e5e7eb', 'important');
+                }
+
+                // Fix tables with bgcolor in dark mode
+                if (el.tagName === 'TABLE' && el.hasAttribute('bgcolor')) {
+                    const bg = el.getAttribute('bgcolor').toLowerCase();
+                    if (bg === '#ffffff' || bg === 'white' || bg === '#fff') {
+                        el.removeAttribute('bgcolor');
+                        el.style.setProperty('background-color', '#1e293b', 'important');
+                    }
+                    if (bg === '#cccccc') {
+                        el.removeAttribute('bgcolor');
+                        el.style.setProperty('background-color', '#2d3748', 'important');
+                    }
+                }
+                // Fix td/th with bgcolor in dark mode
+                if ((el.tagName === 'TD' || el.tagName === 'TH') && el.hasAttribute('bgcolor')) {
+                    const bg = el.getAttribute('bgcolor').toLowerCase();
+                    if (bg === '#ffffff' || bg === 'white' || bg === '#fff') {
+                        el.removeAttribute('bgcolor');
+                        el.style.setProperty('background-color', '#1e293b', 'important');
+                    }
+                    if (bg === '#cccccc') {
+                        el.removeAttribute('bgcolor');
+                        el.style.setProperty('background-color', '#2d3748', 'important');
+                    }
+                }
+
+            });
+        }
+
+        // Fix text colors in light mode
+        function fixLightModeColors() {
+            const contentDiv = document.getElementById('content');
+            if (!contentDiv) return;
+
+            const allElements = contentDiv.querySelectorAll('*');
+
+            allElements.forEach((el) => {
+                // Darken text in description boxes and tables
+                if (el.classList) {
+                    if (el.classList.contains('description-box') ||
+                        el.classList.contains('arg-desc') ||
+                        (el.tagName === 'P' && el.parentElement &&
+                         (el.parentElement.classList.contains('description-box') ||
+                          el.parentElement.classList.contains('references'))) ||
+                        (el.tagName === 'LI' && el.parentElement &&
+                         el.parentElement.classList.contains('description-box'))) {
+                        el.style.setProperty('color', '#1a202c', 'important');
+                    }
+                }
+
+                // Darken text in references
+                if (el.classList && el.classList.contains('references')) {
+                    if (el.tagName === 'P') {
+                        el.style.setProperty('color', '#1a202c', 'important');
+                    }
+                }
+
+                // Fix black (#000000) inline style - code identifiers
+                const computedColor = window.getComputedStyle(el).color;
+                if (computedColor === 'rgb(0, 0, 0)' || computedColor === '#000000') {
+                    if (el.style.color && el.textContent.trim().length > 0) {
+                        el.style.setProperty('color', '#0369a1', 'important');
+                    }
+                }
+                // Fix blue (#0000ff) inline style - links/references
+                if (computedColor === 'rgb(0, 0, 255)' || computedColor === '#0000ff') {
+                    el.style.setProperty('color', '#0369a1', 'important');
+                }
+                // Fix dark blue (#003366) inline style
+                if (computedColor === 'rgb(0, 51, 102)' || computedColor === '#003366') {
+                    el.style.setProperty('color', '#1e4976', 'important');
+                }
+            });
+        }
+
+        // Detect if we're in dark mode
+        function isDarkMode() {
+            const bgColor = window.getComputedStyle(document.body).backgroundColor;
+            const rgb = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+            if (!rgb) return false;
+            const r = parseInt(rgb[1]);
+            const g = parseInt(rgb[2]);
+            const b = parseInt(rgb[3]);
+            // If background is dark (low values), we're in dark mode
+            return (r + g + b) / 3 < 128;
+        }
+
+        // Setup row click handlers for single selection
+        function setupRowClickHandlers() {
+            const contentDiv = document.getElementById('content');
+            if (!contentDiv) return;
+
+            // Find all argument and return value rows
+            const rows = contentDiv.querySelectorAll('table.args-table tbody tr[id^="arg-"], table.args-table tbody tr[id^="ret-"]');
+
+            // Create style element for dark mode
+            if (isDarkMode()) {
+                const style = document.createElement('style');
+                style.textContent = `
+                    table.args-table tbody tr.skb-row-selected td {
+                        background: #462e2e !important;
+                    }
+                    table.args-table tbody tr.skb-row-selected:hover td {
+                        background: #553d3d !important;
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            rows.forEach((row, idx) => {
+                row.style.cursor = 'pointer';
+
+                row.addEventListener('click', (e) => {
+                    // Don't select if clicking on a link
+                    if (e.target.tagName === 'A') {
+                        return;
+                    }
+
+                    // Check if this row is already selected
+                    if (row.classList.contains('skb-row-selected')) {
+                        // If already selected, deselect it
+                        row.classList.remove('skb-row-selected');
+                    } else {
+                        // If not selected, remove selection from all rows and select this one
+                        rows.forEach(r => r.classList.remove('skb-row-selected'));
+                        row.classList.add('skb-row-selected');
+                    }
+                });
+            });
+        }
+
+        // Handle @functionName links - navigate to referenced function
+        function handleAtLinks() {
+            const contentDiv = document.getElementById('content');
+            if (!contentDiv) return;
+
+            // Handle @function_name internal links (jump to function)
+            const atLinks = contentDiv.querySelectorAll('a[data-jump-to]');
+            atLinks.forEach(link => {
+                link.style.cursor = 'pointer';
+                link.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    const funcName = link.getAttribute('data-jump-to');
+                    try {
+                        const result = await callPython('jump', { name: funcName });
+                        if (result.success) {
+                            loadFunction(result.index, currentLanguage, true);
+                        } else {
+                            updateStatus('Function not found: ' + funcName);
+                        }
+                    } catch (err) {
+                        updateStatus('Error: ' + err.message);
+                    }
+                });
+            });
+
+            // Handle ${doc_base}/path/... external links (open in Firefox)
+            const externalLinks = contentDiv.querySelectorAll('a[data-external-url]');
+            externalLinks.forEach((link) => {
+                const url = link.getAttribute('data-external-url');
+                link.style.cursor = 'pointer';
+                link.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    try {
+                        // Use callPython to open URL (works in desktop mode)
+                        const result = await callPython('openExternalUrl', { url: url });
+                        if (result.success) {
+                            updateStatus('Opening: ' + url);
+                        } else {
+                            updateStatus('Failed to open link: ' + (result.error || 'Unknown error'));
+                        }
+                    } catch (err) {
+                        updateStatus('Error opening link: ' + err.message);
+                    }
+                });
+            });
+        }
+
+        // Handle anchor links with sticky signature offset
+        function handleAnchorNavigation() {
+            const contentDiv = document.getElementById('content');
+            if (!contentDiv) return;
+
+            // Find all links that point to argument/return anchors
+            const links = contentDiv.querySelectorAll('a[href^="#arg-"], a[href^="#ret-"]');
+
+            links.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const anchorId = link.getAttribute('href').substring(1);
+                    const targetElement = document.getElementById(anchorId);
+
+                    if (targetElement) {
+                        // Get the signature section height
+                        const signatureSection = contentDiv.querySelector('.skb-signature-section');
+                        const signatureHeight = signatureSection ? signatureSection.offsetHeight : 0;
+
+                        // Scroll to the target with offset
+                        const targetRect = targetElement.getBoundingClientRect();
+                        const contentRect = contentDiv.getBoundingClientRect();
+                        const relativeTop = targetRect.top - contentRect.top + contentDiv.scrollTop;
+
+                        // Scroll to position: target position - signature height - small padding
+                        contentDiv.scrollTop = relativeTop - signatureHeight - 10;
+
+                        // Highlight the target row
+                        targetElement.classList.remove('skb-highlighted');
+                        void targetElement.offsetWidth; // force reflow to restart animation
+                        targetElement.classList.add('skb-highlighted');
+                        setTimeout(() => targetElement.classList.remove('skb-highlighted'), 1200);
+                    }
+                });
+            });
+        }
+
+        // ─── Favorites ───
+
+        async function updateHeartIcon(funcName) {
+            const heart = document.getElementById('headerHeart');
+            if (!heart) return;
+            try {
+                const res = await callPython('isFavorite', { name: funcName });
+                if (res.success) {
+                    if (res.is_favorite) {
+                        heart.classList.add('filled');
+                        heart.innerHTML = svgHeartFilled();
+                    } else {
+                        heart.classList.remove('filled');
+                        heart.innerHTML = svgHeartOutline();
+                    }
+                }
+            } catch (e) { /* ignore */ }
+
+            heart.onclick = async (e) => {
+                e.stopPropagation();
+                try {
+                    const res = await callPython('toggleFavorite', { name: funcName });
+                    if (res.success) {
+                        if (res.is_favorite) {
+                            heart.classList.add('filled');
+                            heart.innerHTML = svgHeartFilled();
+                        } else {
+                            heart.classList.remove('filled');
+                            heart.innerHTML = svgHeartOutline();
+                        }
+                    }
+                } catch (e) { /* ignore */ }
+            };
+        }
+
+        async function openFavoritesDialog() {
+            try {
+                const res = await callPython('getFavorites', {});
+                const favorites = (res.success && res.favorites) ? res.favorites : [];
+                if (favorites.length === 0) {
+                    favoritesList.innerHTML = '<div class="skillbook-favorites-empty">No favorites yet.</div>';
+                } else {
+                    favoritesList.innerHTML = favorites.map(fav =>
+                        `<div class="skillbook-favorites-item" data-name="${escapeHtml(fav.name)}">
+                            <span class="skillbook-favorites-item-name">${escapeHtml(fav.name)}</span>
+                            <button class="skillbook-favorites-item-delete">&#10005;</button>
+                        </div>`
+                    ).join('');
+
+                    favoritesList.querySelectorAll('.skillbook-favorites-item').forEach(item => {
+                        const deleteBtn = item.querySelector('.skillbook-favorites-item-delete');
+                        const nameSpan = item.querySelector('.skillbook-favorites-item-name');
+
+                        nameSpan.addEventListener('click', async () => {
+                            const name = item.dataset.name;
+                            favoritesDialog.style.display = 'none';
+                            _notifyDialogClose();
+                            const jumpResult = await callPython('jump', { name });
+                            if (jumpResult.success) {
+                                loadFunction(jumpResult.index, currentLanguage, true);
+                            }
+                        });
+
+                        deleteBtn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            const name = item.dataset.name;
+                            try {
+                                await callPython('toggleFavorite', { name });
+                                await openFavoritesDialog();
+                                // Update heart if current function
+                                const heart = document.getElementById('headerHeart');
+                                if (heart && heart.dataset.func === name) {
+                                    heart.classList.remove('filled');
+                                    heart.innerHTML = svgHeartOutline();
+                                }
+                            } catch (err) { /* ignore */ }
+                        });
+                    });
+                }
+            } catch (e) {
+                favoritesList.innerHTML = '<div class="skillbook-favorites-empty">Failed to load favorites.</div>';
+            }
+            favoritesDialog.style.display = 'flex';
+            favoritesSelectedIndex = -1;
+            favoritesDialog.focus();
+            _notifyDialogOpen();
+        }
+
+        function setupFavoritesListeners() {
+            favoritesBtn.addEventListener('click', () => {
+                if (favoritesDialog.style.display === 'none') {
+                    openFavoritesDialog();
+                } else {
+                    favoritesDialog.style.display = 'none';
+                    _notifyDialogClose();
+                }
+            });
+
+            favoritesCloseBtn.addEventListener('click', () => {
+                favoritesDialog.style.display = 'none';
+                _notifyDialogClose();
+            });
+
+            favoritesDialog.addEventListener('click', (e) => {
+                if (e.target === favoritesDialog) { favoritesDialog.style.display = 'none'; _notifyDialogClose(); }
+            });
+
+            favoritesDialog.addEventListener('keydown', async (e) => {
+                if (favoritesDialog.style.display === 'none') return;
+                const items = favoritesList.querySelectorAll('.skillbook-favorites-item');
+                if (e.key === 'Escape') { favoritesDialog.style.display = 'none'; _notifyDialogClose(); return; }
+                if (items.length === 0) return;
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    favoritesSelectedIndex = Math.min(favoritesSelectedIndex + 1, items.length - 1);
+                    updateFavoritesSelection(items);
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    favoritesSelectedIndex = Math.max(favoritesSelectedIndex - 1, 0);
+                    updateFavoritesSelection(items);
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (favoritesSelectedIndex >= 0 && favoritesSelectedIndex < items.length) {
+                        const name = items[favoritesSelectedIndex].dataset.name;
+                        favoritesDialog.style.display = 'none';
+                        _notifyDialogClose();
+                        const jumpResult = await callPython('jump', { name });
+                        if (jumpResult.success) loadFunction(jumpResult.index, currentLanguage, true);
+                    }
+                } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                    e.preventDefault();
+                    if (favoritesSelectedIndex >= 0 && favoritesSelectedIndex < items.length) {
+                        const name = items[favoritesSelectedIndex].dataset.name;
+                        await callPython('toggleFavorite', { name }).catch(() => {});
+                        await openFavoritesDialog();
+                        const heart = document.getElementById('headerHeart');
+                        if (heart && heart.dataset.func === name) {
+                            heart.classList.remove('filled');
+                            heart.innerHTML = svgHeartOutline();
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateFavoritesSelection(items) {
+            items.forEach((item, i) => {
+                if (i === favoritesSelectedIndex) {
+                    item.classList.add('selected');
+                    item.scrollIntoView({ block: 'nearest' });
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
+        }
+
+        // ─── Comments ───
+
+        let currentCommentsFunc = '';
+
+        async function loadComments(funcName) {
+            currentCommentsFunc = funcName;
+            const contentDiv = document.getElementById('content');
+            if (!contentDiv) return;
+
+            // Remove existing comments section
+            const existing = contentDiv.querySelector('.skb-comments-section');
+            if (existing) existing.remove();
+
+            // Find scrollable section to append to
+            const scrollable = contentDiv.querySelector('.skb-scrollable-section');
+            if (!scrollable) return;
+
+            try {
+                const res = await callPython('getComments', { name: funcName });
+                const comments = (res.success && res.comments) ? res.comments : [];
+                const currentUser = (res.success && res.current_user) ? res.current_user : '';
+
+                const section = document.createElement('div');
+                section.className = 'skb-comments-section';
+                section.innerHTML = buildCommentsHtml(comments, currentUser, funcName, uiLanguage);
+                scrollable.appendChild(section);
+
+                // Store raw content on each comment element so edit textarea gets original markdown
+                const rawMap = {};
+                function collectRaw(list) { list.forEach(c => { rawMap[c.id] = c.content; if (c.children) collectRaw(c.children); }); }
+                collectRaw(comments);
+                section.querySelectorAll('.skb-comment[data-id]').forEach(el => {
+                    const contentEl = el.querySelector('.skb-comment-content');
+                    if (contentEl && rawMap[el.dataset.id] !== undefined) contentEl.dataset.raw = rawMap[el.dataset.id];
+                });
+
+                setupCommentListeners(section, funcName, currentUser);
+            } catch (e) { /* ignore */ }
+        }
+
+        function buildCommentsHtml(comments, currentUser, funcName, lang) {
+            const texts = uiTexts[lang] || uiTexts.en;
+            // Build tree: map id -> children
+            const roots = [];
+            const map = {};
+            comments.forEach(c => { map[c.id] = { ...c, children: [] }; });
+            comments.forEach(c => {
+                if (c.parent_id && map[c.parent_id]) {
+                    map[c.parent_id].children.push(map[c.id]);
+                } else {
+                    roots.push(map[c.id]);
+                }
+            });
+
+            function renderComment(c, depth) {
+                const displayName = c.display_name || c.user_id;
+                const initials = displayName.substring(0, 2).toUpperCase();
+                const avatarMime = c.avatar_mime || 'image/jpeg';
+                const avatarHtml = c.avatar_small && c.avatar_small.length > 0
+                    ? `<img src="data:${avatarMime};base64,${c.avatar_small}" alt="${escapeHtml(displayName)}" style="width:100%;height:100%;object-fit:cover;">`
+                    : `<span>${escapeHtml(initials)}</span>`;
+                const canEdit = c.user_id === currentUser;
+                const canDelete = c.user_id === currentUser;
+                const timeStr = formatCommentTime(c.created_at);
+                const repliesHtml = c.children.length
+                    ? `<div class="skb-comment-replies">${c.children.map(ch => renderComment(ch, depth + 1)).join('')}</div>`
+                    : '';
+                return `<div class="skb-comment" data-id="${c.id}">
+                    <div class="skb-comment-avatar">${avatarHtml}</div>
+                    <div class="skb-comment-body">
+                        <div class="skb-comment-meta">
+                            <span class="skb-comment-user">${escapeHtml(displayName)}</span>
+                            <span class="skb-comment-time">${escapeHtml(timeStr)}</span>
+                            <div class="skb-comment-actions">
+                                <button class="skb-comment-action-btn reply-btn">${texts.reply}</button>
+                                ${canEdit ? `<button class="skb-comment-action-btn edit-btn">${texts.edit}</button>` : ''}
+                                ${canDelete ? `<button class="skb-comment-action-btn delete">${texts.delete}</button>` : ''}
+                            </div>
+                        </div>
+                        <div class="skb-comment-content">${renderMarkdown(c.content)}</div>
+                        <div class="skb-comment-edit-form">
+                            <div class="skb-comment-form">
+                                <textarea class="skb-comment-input" rows="2">${escapeHtml(c.content)}</textarea>
+                                <button class="skb-comment-submit-btn edit-save-btn">${texts.save}</button>
+                                <button class="skb-comment-cancel-btn edit-cancel-btn">${texts.cancel}</button>
+                            </div>
+                        </div>
+                        <div class="skb-comment-reply-form" data-parent="${c.id}">
+                            <div class="skb-comment-form">
+                                <textarea class="skb-comment-input" rows="2" placeholder="${texts.writeReply}"></textarea>
+                                <button class="skb-comment-submit-btn">${texts.reply}</button>
+                                <button class="skb-comment-cancel-btn">${texts.cancel}</button>
+                            </div>
+                        </div>
+                        ${repliesHtml}
+                    </div>
+                </div>`;
+            }
+
+            const listHtml = roots.length
+                ? `<div class="skb-comment-list">${roots.map(c => renderComment(c, 0)).join('')}</div>`
+                : `<div class="skb-comment-empty">${texts.noComments}</div>`;
+
+            return `<div class="skb-comments-heading">Comments</div>
+                ${listHtml}
+                <div class="skb-comment-form">
+                    <textarea class="skb-comment-input" id="newCommentInput" rows="2" placeholder="${texts.writeComment}"></textarea>
+                    <button class="skb-comment-submit-btn" id="newCommentSubmit">${texts.post}</button>
+                </div>`;
+        }
+
+        function formatCommentTime(isoStr) {
+            try {
+                const d = new Date(isoStr + 'Z');
+                return d.toLocaleString();
+            } catch (e) {
+                return isoStr;
+            }
+        }
+
+        function autoResizeTextarea(el) {
+            el.style.height = 'auto';
+            el.style.height = el.scrollHeight + 'px';
+        }
+
+        function bindAutoResize(el) {
+            el.addEventListener('keydown', (e) => {
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    const start = el.selectionStart;
+                    const end = el.selectionEnd;
+                    el.value = el.value.substring(0, start) + '    ' + el.value.substring(end);
+                    el.selectionStart = el.selectionEnd = start + 4;
+                }
+            });
+            el.addEventListener('input', () => {
+                autoResizeTextarea(el);
+                // Scroll only if the bottom of textarea is clipped
+                const rect = el.getBoundingClientRect();
+                const scrollable = el.closest('#content');
+                if (scrollable) {
+                    const sRect = scrollable.getBoundingClientRect();
+                    const overflow = rect.bottom - sRect.bottom;
+                    if (overflow > 0) {
+                        scrollable.scrollTop += overflow + 8;
+                    }
+                }
+            });
+            autoResizeTextarea(el);
+        }
+
+        function setupCommentListeners(section, funcName, currentUser) {
+            // Apply auto-resize to all textareas in this section
+            section.querySelectorAll('textarea.skb-comment-input').forEach(bindAutoResize);
+
+            // Top-level new comment
+            const newInput = section.querySelector('#newCommentInput');
+            const newSubmit = section.querySelector('#newCommentSubmit');
+            if (newSubmit && newInput) {
+                newSubmit.addEventListener('click', async () => {
+                    const content = newInput.value.trim();
+                    if (!content) return;
+                    try {
+                        await callPython('addComment', { name: funcName, content, parent_id: null });
+                        await loadComments(funcName);
+                    } catch (e) { /* ignore */ }
+                });
+                newInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                        e.preventDefault();
+                        newSubmit.click();
+                    }
+                });
+            }
+
+            // Per-comment actions
+            section.querySelectorAll('.skb-comment').forEach(commentEl => {
+                const commentId = parseInt(commentEl.dataset.id);
+
+                // Reply button
+                const replyBtn = commentEl.querySelector('.reply-btn');
+                const replyForm = commentEl.querySelector('.skb-comment-reply-form');
+                if (replyBtn && replyForm) {
+                    replyBtn.addEventListener('click', () => {
+                        replyForm.classList.toggle('active');
+                        if (replyForm.classList.contains('active')) {
+                            replyForm.querySelector('textarea').focus();
+                        }
+                    });
+
+                    const replyInput = replyForm.querySelector('textarea');
+                    const replySubmit = replyForm.querySelector('.skb-comment-submit-btn');
+                    const replyCancel = replyForm.querySelector('.skb-comment-cancel-btn');
+
+                    replySubmit.addEventListener('click', async () => {
+                        const content = replyInput.value.trim();
+                        if (!content) return;
+                        try {
+                            await callPython('addComment', { name: funcName, content, parent_id: commentId });
+                            await loadComments(funcName);
+                        } catch (e) { /* ignore */ }
+                    });
+
+                    replyInput.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                            e.preventDefault();
+                            replySubmit.click();
+                        }
+                    });
+
+                    replyCancel.addEventListener('click', () => {
+                        replyForm.classList.remove('active');
+                        replyInput.value = '';
+                    });
+                }
+
+                // Edit button
+                const editBtn = commentEl.querySelector('.edit-btn');
+                const editForm = commentEl.querySelector('.skb-comment-edit-form');
+                const contentEl = commentEl.querySelector('.skb-comment-content');
+                if (editBtn && editForm) {
+                    const editInput = editForm.querySelector('textarea');
+                    const editSave = editForm.querySelector('.edit-save-btn');
+                    const editCancel = editForm.querySelector('.edit-cancel-btn');
+
+                    editBtn.addEventListener('click', () => {
+                        editInput.value = contentEl.dataset.raw || contentEl.textContent;
+                        editForm.classList.add('active');
+                        contentEl.style.display = 'none';
+                        autoResizeTextarea(editInput);
+                        editInput.focus();
+                    });
+
+                    editSave.addEventListener('click', async () => {
+                        const content = editInput.value.trim();
+                        if (!content) return;
+                        try {
+                            const res = await callPython('editComment', { id: commentId, content });
+                            if (res.success) {
+                                await loadComments(funcName);
+                            }
+                        } catch (e) { /* ignore */ }
+                    });
+
+                    editInput.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                            e.preventDefault();
+                            editSave.click();
+                        }
+                        if (e.key === 'Escape') {
+                            editCancel.click();
+                        }
+                    });
+
+                    editCancel.addEventListener('click', () => {
+                        editForm.classList.remove('active');
+                        contentEl.style.display = '';
+                    });
+                }
+
+                // Delete button
+                const deleteBtn = commentEl.querySelector('.skb-comment-action-btn.delete');
+                if (deleteBtn) {
+                    deleteBtn.addEventListener('click', async () => {
+                        try {
+                            const res = await callPython('deleteComment', { id: commentId });
+                            if (res.success) {
+                                await loadComments(funcName);
+                            }
+                        } catch (e) { /* ignore */ }
+                    });
+                }
+            });
+        }
+
+        // No app state auto-loading needed for skillbook
+        window.getAppStateAction = function() { return null; };
+
+        // Sync hljs theme when theme CSS link is added/changed
+        new MutationObserver(syncHljsTheme).observe(document.head, { childList: true, subtree: true, attributes: true, attributeFilter: ['href'] });
+        syncHljsTheme();
+
+        // Start initialization when page loads
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    </script>
+
+    <!-- Favorites Dialog -->
+    <div id="favoritesDialog" class="skillbook-favorites-dialog" style="display:none;" tabindex="-1">
+        <div class="skillbook-favorites-dialog-inner">
+            <div class="skillbook-favorites-title" id="favoritesTitle">&#9829; Favorites</div>
+            <div class="skillbook-favorites-list" id="favoritesList">
+                <!-- Populated by JS -->
+            </div>
+            <button id="favoritesCloseBtn" class="skillbook-favorites-close-btn">Close</button>
+        </div>
+    </div>
+
+    <!-- History Dialog -->
+    <div id="historyDialog" class="skillbook-history-dialog" style="display:none;" tabindex="-1">
+        <div class="skillbook-history-dialog-inner">
+            <div class="skillbook-history-title">History</div>
+            <div class="skillbook-history-list" id="historyList">
+                <!-- Populated by JS -->
+            </div>
+            <button id="historyCloseBtn" class="skillbook-history-close-btn">Close</button>
+        </div>
+    </div>
+
+    <!-- Settings Dialog -->
+    <div id="settingsDialog" class="skillbook-settings-dialog" style="display:none;" tabindex="-1">
+        <div class="skillbook-settings-dialog-inner">
+            <div class="skillbook-settings-title" id="settingsTitle">Settings</div>
+            <div class="skillbook-settings-body">
+                <label>
+                    <div class="skillbook-settings-label-text" id="settingsLangLabel">Language</div>
+                    <select id="settingsLangSelect">
+                        <option value="1">English</option>
+                    </select>
+                </label>
+            </div>
+            <div class="skillbook-settings-shortcuts">
+                <div class="skillbook-settings-shortcuts-title" id="shortcutsTitle">Keyboard Shortcuts</div>
+                <div class="skillbook-settings-shortcuts-list">
+                    <div class="skillbook-settings-shortcut-item" id="shortcutArrows">← → : Previous / Next function</div>
+                    <div class="skillbook-settings-shortcut-item" id="shortcutE">E : Toggle English</div>
+                </div>
+            </div>
+            <div class="skillbook-settings-footer">
+                <button id="settingsSaveBtn">Save</button>
+                <button id="settingsCloseBtn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Dialog -->
+    <div id="filterDialog" class="skillbook-filter-dialog" style="display:none;" tabindex="-1">
+        <div class="skillbook-filter-dialog-inner">
+            <div class="skillbook-filter-title">Filter by Section</div>
+            <div class="skillbook-filter-list" id="filterSectionList">
+                <!-- Populated by JS -->
+            </div>
+            <button id="filterCloseBtn" class="skillbook-filter-close-btn">Close</button>
+        </div>
+    </div>
+</body>
+</html>

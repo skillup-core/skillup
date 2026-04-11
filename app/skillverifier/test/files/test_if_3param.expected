@@ -1,0 +1,6 @@
+# Expected errors for test_if_3param.il
+# Format: line|func|type|var
+#
+1|None|undeclared(variable)|a
+1|None|undeclared(variable)|b
+1|None|undeclared(variable)|c

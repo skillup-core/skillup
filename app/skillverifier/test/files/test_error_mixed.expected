@@ -1,0 +1,10 @@
+# Expected errors for test_error_mixed.il
+# Format: line|func|type|var
+#
+5|None|undeclared(variable)|unknownVar
+10|mixedError1|undeclared(variable)|z
+17|mixedError2|redeclaration|counter
+19|mixedError2|undeclared(variable)|myList
+29|mixedError3|undeclared(variable)|undeclaredValue
+37|messyFunction|undeclared(variable)|missing1
+38|messyFunction|undeclared(variable)|threshold

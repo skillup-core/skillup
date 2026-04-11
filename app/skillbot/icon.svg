@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Background -->
+  <rect width="64" height="64" rx="12" fill="#1d4ed8"/>
+
+  <!-- Rounded square -->
+  <rect x="20" y="16" width="24" height="32" rx="5" fill="#fbbf24"/>
+
+  <!-- B carved in -->
+  <text x="32" y="40" font-family="Arial Black, sans-serif" font-size="22" font-weight="900"
+        text-anchor="middle" fill="#1d4ed8">B</text>
+
+  <!-- Parentheses -->
+  <path d="M12 24 Q8 32 12 40" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+  <path d="M52 24 Q56 32 52 40" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+</svg>

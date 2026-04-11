@@ -1,0 +1,6 @@
+# Expected errors for test_array.il
+# Format: line|func|type|var
+#
+2|test|undeclared(variable)|i
+2|test|undeclared(variable)|arr
+3|test|undeclared(variable)|x

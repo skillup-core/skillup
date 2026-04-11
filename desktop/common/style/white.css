@@ -1,0 +1,315 @@
+/* ============================================================================
+   Skillup - White Theme (Light)
+   ============================================================================
+   Light theme stylesheet for all Skillup applications
+   Includes: fonts, CSS variables, common UI components
+   ============================================================================ */
+
+/* ============================================================================
+   Font Definitions
+   ============================================================================ */
+@font-face {
+    font-family: 'NanumGothic';
+    src: url('../resource/font/NanumGothic.ttf') format('truetype');
+    /* Note: This font may generate OTS warnings in some Chromium versions
+       due to legacy TSI3 table, but still renders correctly */
+    font-display: swap; /* Improve loading performance */
+}
+
+@font-face {
+    font-family: 'Noto Emoji';
+    src: url('../resource/font/NotoEmoji-Regular.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'D2Coding';
+    src: url('../resource/font/D2Coding.ttf') format('truetype');
+}
+
+/* ============================================================================
+   CSS Variables (Light Theme)
+   ============================================================================ */
+:root {
+    /* Background colors */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f5f5f7;
+    --bg-tertiary: #e8e8ed;
+    --canvas-grid-color: rgba(0,0,0,0.06);
+
+    /* Text colors */
+    --text-primary: #1d1d1f;
+    --text-secondary: #6e6e73;
+
+    /* Accent colors */
+    --accent-primary: #0071e3;
+    --accent-primary-hover: #0077ed;
+    --accent-text: #0066cc;
+
+    /* Status colors */
+    --success: #28a745;
+    --warning: #ff9500;
+    --error: #dc3545;
+
+    /* Border */
+    --border-color: #d2d2d7;
+
+    /* Brand */
+    --brand-skill-color: #000000;
+
+    /* Font families */
+    --font-sans: 'NanumGothic', 'Noto Emoji', 'Noto Color Emoji', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: 'D2Coding', 'Courier New', monospace;
+}
+
+/* ============================================================================
+   Global Resets
+   ============================================================================ */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+}
+
+/* ============================================================================
+   Base Elements
+   ============================================================================ */
+body {
+    font-family: var(--font-sans);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 100vh;
+    line-height: 1.5;
+}
+
+code, pre {
+    font-family: var(--font-mono);
+}
+
+/* ============================================================================
+   Common Layout Components
+   ============================================================================ */
+.content-container {
+    padding: 20px;
+}
+
+.app-section {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.app-section h3 {
+    font-size: 16px;
+    margin-bottom: 15px;
+    color: var(--accent-text);
+    display: flex;
+    align-items: center;
+}
+
+.app-section h3 svg {
+    width: 20px;
+    height: 20px;
+    margin-right: 10px;
+    fill: currentColor;
+}
+
+/* ============================================================================
+   Form Elements
+   ============================================================================ */
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 5px;
+}
+
+.form-control {
+    width: 100%;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+}
+
+.form-control::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+/* ============================================================================
+   Button Components
+   ============================================================================ */
+.btn {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: var(--accent-primary);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--accent-primary-hover);
+}
+
+.btn-secondary {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+    background: var(--bg-secondary);
+}
+
+/* ============================================================================
+   Utility Classes
+   ============================================================================ */
+.text-success {
+    color: var(--success);
+}
+
+.text-warning {
+    color: var(--warning);
+}
+
+.text-error {
+    color: var(--error);
+}
+
+/* ============================================================================
+   Scrollbar
+   ============================================================================ */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+}
+
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 3px;
+    border: 1px solid transparent;
+    background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: var(--text-secondary);
+    background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* ============================================================================
+   Light Theme Specific Overrides
+   ============================================================================ */
+
+/* Skillbook - args/returns table hover */
+:root {
+    --args-table-hover-bg: #e8f0fe;
+}
+
+/* Terminal Log - Light version */
+.terminal-log {
+    background: #f6f8fa;
+    border: 1px solid var(--border-color);
+}
+
+.terminal-log .log-line {
+    color: #24292f;
+}
+
+/* Code Viewer - Light version */
+.code-viewer {
+    background-color: #f6f8fa;
+    color: #24292f;
+}
+
+.code-header {
+    background-color: #ffffff;
+    border-bottom: 1px solid var(--border-color);
+    color: #24292f;
+}
+
+.code-line:hover {
+    background-color: #eaeef2;
+}
+
+.code-line.error-line {
+    background-color: #ffeef0;
+}
+
+.line-number {
+    color: #57606a;
+}
+
+/* Mark (highlight) */
+mark {
+    background-color: #fff3cd;
+    color: #000;
+}
+
+/* Hover effects for light theme */
+.result-file-header:hover {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+.result-error:hover, .result-warning:hover {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.filter-checkbox-item:hover {
+    background: var(--bg-tertiary);
+}
+
+/* Brand logo text - Light theme overrides */
+.brand-skill {
+    font-family: 'Courgette', cursive;
+    font-size: 1.14em;
+    font-weight: 300;
+    color: var(--brand-skill-color);
+    letter-spacing: 1.5px;
+}
+
+.brand-up {
+    color: #d97706;
+}
+
+/* Favicon/logo image - improve visibility on light background */
+/* Convert yellow/amber SVG to deep blue-gray for contrast */
+.sidebar-logo {
+    filter: brightness(0) saturate(100%) invert(20%) sepia(80%) saturate(600%) hue-rotate(190deg) brightness(0.8);
+}

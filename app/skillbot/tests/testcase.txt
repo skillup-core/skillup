@@ -1,0 +1,1424 @@
+; Skillbot Debugger Transform Test Cases
+; Format:
+;   [testcaseNN] description
+;   INPUT:
+;   <SKILL source code>
+;   OUTPUT:
+;   <expected transformed code>
+;
+; Lines starting with ';' are comments (ignored by test runner).
+; INPUT: and OUTPUT: markers must be on their own line.
+; Each test case ends at the next [testcaseNN] or EOF.
+
+
+[testcase01] Basic procedure with simple statements
+INPUT:
+procedure(aaa()
+let((a b c)
+    a = 10
+    printf("a => %L" a)
+    b = 20
+    ))
+OUTPUT:
+procedure(aaa()
+let((a b c)
+    when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+    a = 10
+    when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+    printf("a => %L" a)
+    when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+    b = 20
+    ))
+
+
+[testcase02] for loop - init/limit/body all on separate lines (original bug)
+; for(var init limit body...) - breakpoint must NOT be inserted between
+; the var/init/limit arguments. Only body statements are insertable.
+INPUT:
+procedure(testFor()
+    for(i
+        0
+        3
+        printf(">>> %d" i)
+        )
+    )
+OUTPUT:
+procedure(testFor()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    for(i
+        0
+        3
+        when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+        printf(">>> %d" i)
+        )
+    )
+
+
+[testcase03] for loop - limit and body on same line (no body breakpoint possible)
+; When a non-body arg and body start are on the same line,
+; we cannot safely insert a breakpoint before the body.
+INPUT:
+procedure(f()
+    for(i 0
+        3 printf("...%d" i)
+        )
+    )
+OUTPUT:
+procedure(f()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    for(i 0
+        3 printf("...%d" i)
+        )
+    )
+
+
+[testcase04] for loop - all args on one line
+INPUT:
+procedure(f()
+    for(i 0 3 printf("...%d" i))
+    )
+OUTPUT:
+procedure(f()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    for(i 0 3 printf("...%d" i))
+    )
+
+
+[testcase05] for loop with multiple body statements
+INPUT:
+procedure(f()
+    for(i 0 3
+        printf("%d" i)
+        x = i * 2
+        )
+    )
+OUTPUT:
+procedure(f()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    for(i 0 3
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        printf("%d" i)
+        when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+        x = i * 2
+        )
+    )
+
+
+[testcase06] foreach loop
+INPUT:
+procedure(f()
+    foreach(item myList
+        printf("%L" item)
+        )
+    )
+OUTPUT:
+procedure(f()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    foreach(item myList
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        printf("%L" item)
+        )
+    )
+
+
+[testcase07] while loop
+INPUT:
+procedure(f()
+    while(x > 0
+        x = x - 1
+        )
+    )
+OUTPUT:
+procedure(f()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    while(x > 0
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        x = x - 1
+        )
+    )
+
+
+[testcase08] when and unless
+INPUT:
+procedure(f()
+    when(x > 0
+        printf("pos")
+        y = 1
+        )
+    unless(x > 0
+        printf("neg")
+        )
+    )
+OUTPUT:
+procedure(f()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    when(x > 0
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        printf("pos")
+        when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+        y = 1
+        )
+    when(member(6 __sbk_bp_0) _sbDbgBreak(6 0))
+    unless(x > 0
+        when(member(7 __sbk_bp_0) _sbDbgBreak(7 0))
+        printf("neg")
+        )
+    )
+
+
+[testcase09] prog inside for loop body
+; prog((vars) body...) - first arg (var list) is skipped, body gets breakpoints
+INPUT:
+procedure(f()
+    for(i 0 2
+        prog(()
+            printf("...")
+            printf(">>>> %d" i)
+        )
+    )
+    )
+OUTPUT:
+procedure(f()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    for(i 0 2
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        prog(()
+            when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+            printf("...")
+            when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+            printf(">>>> %d" i)
+        )
+    )
+    )
+
+
+[testcase10] if with then/else keywords
+; 'then' and 'else' keywords must NOT have a breakpoint before them.
+; Breakpoints go before the then-expr and else-expr only.
+INPUT:
+procedure(f()
+    if(a == 0
+        then
+        printf("a")
+    else
+        printf("c")
+    )
+    )
+OUTPUT:
+procedure(f()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    if(a == 0
+        then
+        when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+        printf("a")
+    else
+        when(member(6 __sbk_bp_0) _sbDbgBreak(6 0))
+        printf("c")
+    )
+    )
+
+
+[testcase11] if without then/else keywords
+; if(cond expr1 expr2) with no 'then'/'else' keywords: no breakpoints inside.
+; The if() itself gets a breakpoint before it, but its args do not.
+INPUT:
+procedure(f()
+    if(a == 0
+        printf("a")
+        printf("c")
+    )
+    )
+OUTPUT:
+procedure(f()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    if(a == 0
+        printf("a")
+        printf("c")
+    )
+    )
+
+
+[testcase12] if with compound then-expr (prog)
+INPUT:
+procedure(f()
+    if(a == 0
+        then
+        prog(()
+            printf("a1")
+            printf("a2")
+        )
+    else
+        printf("c")
+    )
+    )
+OUTPUT:
+procedure(f()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    if(a == 0
+        then
+        when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+        prog(()
+            when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+            printf("a1")
+            when(member(6 __sbk_bp_0) _sbDbgBreak(6 0))
+            printf("a2")
+        )
+    else
+        when(member(9 __sbk_bp_0) _sbDbgBreak(9 0))
+        printf("c")
+    )
+    )
+
+
+[testcase13] mixed: for + foreach + while + when + assignment
+INPUT:
+procedure(testAll()
+let((x)
+    x = 10
+    for(i
+        0
+        3
+        printf(">>> %d" i)
+        )
+    foreach(item myList
+        printf("%L" item)
+        )
+    while(x > 0
+        x = x - 1
+        )
+    when(x == 0
+        printf("done")
+        )
+    printf("end")
+    ))
+OUTPUT:
+procedure(testAll()
+let((x)
+    when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+    x = 10
+    when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+    for(i
+        0
+        3
+        when(member(7 __sbk_bp_0) _sbDbgBreak(7 0))
+        printf(">>> %d" i)
+        )
+    when(member(9 __sbk_bp_0) _sbDbgBreak(9 0))
+    foreach(item myList
+        when(member(10 __sbk_bp_0) _sbDbgBreak(10 0))
+        printf("%L" item)
+        )
+    when(member(12 __sbk_bp_0) _sbDbgBreak(12 0))
+    while(x > 0
+        when(member(13 __sbk_bp_0) _sbDbgBreak(13 0))
+        x = x - 1
+        )
+    when(member(15 __sbk_bp_0) _sbDbgBreak(15 0))
+    when(x == 0
+        when(member(16 __sbk_bp_0) _sbDbgBreak(16 0))
+        printf("done")
+        )
+    when(member(18 __sbk_bp_0) _sbDbgBreak(18 0))
+    printf("end")
+    ))
+
+
+[testcase14] nested for loops
+INPUT:
+procedure(nested()
+    for(i 0 3
+        for(j 0 3
+            printf("%d %d" i j)
+            )
+        )
+    )
+OUTPUT:
+procedure(nested()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    for(i 0 3
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        for(j 0 3
+            when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+            printf("%d %d" i j)
+            )
+        )
+    )
+
+
+[testcase15] let with multiple body statements
+; let((vars) body...) - var list is skipped, body statements get breakpoints.
+; The let form itself does NOT get a breakpoint before it (unlike for/foreach/while).
+; This is because let is the procedure body container, handled by _find_body_start.
+INPUT:
+procedure(f()
+    let((a b)
+        a = 1
+        b = 2
+        printf("%d %d" a b)
+        )
+    )
+OUTPUT:
+procedure(f()
+    let((a b)
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        a = 1
+        when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+        b = 2
+        when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+        printf("%d %d" a b)
+        )
+    )
+
+
+[testcase16] if 2-arg: if(cond then-expr) on same line - no break inside
+; if(cond expr) with then-expr on same line as cond: no breakpoints inside if.
+INPUT:
+procedure(f()
+    if(a == 0 printf("a\n"))
+    printf("c\n")
+)
+OUTPUT:
+procedure(f()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    if(a == 0 printf("a\n"))
+    when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+    printf("c\n")
+)
+
+
+[testcase17] if 3-arg: then-expr and else-expr on separate lines without keywords - no break inside
+; if(cond then-expr else-expr) without 'then'/'else' keywords: no breakpoints inside.
+INPUT:
+procedure(f()
+    if(a == 0 printf("a\n")
+        printf("c\n")
+    )
+    printf("d\n")
+)
+OUTPUT:
+procedure(f()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    if(a == 0 printf("a\n")
+        printf("c\n")
+    )
+    when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+    printf("d\n")
+)
+
+
+[testcase18] cond with let body - breakpoints inside let clauses
+; cond(clause...) where each clause is ((cond-expr) body...)
+; let((vars) body...) inside a cond clause must get breakpoints in its body.
+INPUT:
+procedure(testCond(a)
+    cond(
+    ((a==-1) printf("zzz\n"))
+    ((a==0)  let((z)
+                printf("aaa\n")
+                printf("aaaaa\n")
+              )
+    )
+    ((a==1)  printf("bbb\n"))
+    (t printf("ccc"))
+    )
+)
+OUTPUT:
+procedure(testCond(a)
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    cond(
+    ((a==-1) printf("zzz\n"))
+    ((a==0)  let((z)
+                when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+                printf("aaa\n")
+                when(member(6 __sbk_bp_0) _sbDbgBreak(6 0))
+                printf("aaaaa\n")
+              )
+    )
+    ((a==1)  printf("bbb\n"))
+    (t printf("ccc"))
+    )
+)
+
+
+[testcase19] cond with for body - breakpoints inside for clauses
+; cond clause containing for() - body statements inside for must get breakpoints.
+INPUT:
+procedure(testCond2(a)
+    cond(
+    ((a==-1) printf("zzz\n"))
+    ((a==0)  for(i 0 2
+                printf(">>> %n" i)
+                printf("...\n")
+             )
+    )
+    ((a==1)  printf("bbb\n"))
+    (t printf("ccc"))
+    )
+)
+OUTPUT:
+procedure(testCond2(a)
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    cond(
+    ((a==-1) printf("zzz\n"))
+    ((a==0)  for(i 0 2
+                when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+                printf(">>> %n" i)
+                when(member(6 __sbk_bp_0) _sbDbgBreak(6 0))
+                printf("...\n")
+             )
+    )
+    ((a==1)  printf("bbb\n"))
+    (t printf("ccc"))
+    )
+)
+
+
+[testcase20] case with for/prog/let bodies - breakpoints inside each clause
+; case(val clause...) where clauses contain for(), prog(), let() bodies.
+; Breakpoints must be inserted inside for/prog/let body statements.
+INPUT:
+procedure(testCase(a)
+    case(a
+        ((100) for(i 0 1
+                    printf("==..>\n")
+                    printf("==.*>\n")
+               )
+        )
+        ((0) prog((z)
+                    printf("aaa\n")
+                    printf("bbb\n")
+                )
+        )
+    )
+
+    b = list(1 2)
+    case(b
+        ((100) printf("==..>\n"))
+        (((1 2)) let((z)
+                printf("...ab\n")
+                printf("...cd\n")
+            )
+        )
+    )
+)
+OUTPUT:
+procedure(testCase(a)
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    case(a
+        ((100) for(i 0 1
+                    when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+                    printf("==..>\n")
+                    when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+                    printf("==.*>\n")
+               )
+        )
+        ((0) prog((z)
+                    when(member(9 __sbk_bp_0) _sbDbgBreak(9 0))
+                    printf("aaa\n")
+                    when(member(10 __sbk_bp_0) _sbDbgBreak(10 0))
+                    printf("bbb\n")
+                )
+        )
+    )
+
+    when(member(15 __sbk_bp_0) _sbDbgBreak(15 0))
+    b = list(1 2)
+    when(member(16 __sbk_bp_0) _sbDbgBreak(16 0))
+    case(b
+        ((100) printf("==..>\n"))
+        (((1 2)) let((z)
+                when(member(19 __sbk_bp_0) _sbDbgBreak(19 0))
+                printf("...ab\n")
+                when(member(20 __sbk_bp_0) _sbDbgBreak(20 0))
+                printf("...cd\n")
+            )
+        )
+    )
+)
+
+
+[testcase21] while with paren condition - breakpoints inside body
+; while((a <= 1) body...) - condition is a paren-expression, not just an atom.
+; Breakpoints must be inserted before each body statement.
+INPUT:
+procedure(testWhile(a)
+    while((a <= 1)
+        printf("%d\n" a++)
+        printf("(%d)\n" a++)
+    )
+)
+OUTPUT:
+procedure(testWhile(a)
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    while((a <= 1)
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        printf("%d\n" a++)
+        when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+        printf("(%d)\n" a++)
+    )
+)
+
+
+[testcase22] lambda inside mapcar - breakpoints inside lambda body
+; lambda((vars) body...) passed as an argument to mapcar.
+; Breakpoints must be inserted inside the lambda body statements.
+INPUT:
+procedure(testLambda()
+    mapcar(lambda((x)
+                printf(">>> lambda\n")
+                plus(x 1)
+            )
+            '(1 2 3)
+    )
+)
+OUTPUT:
+procedure(testLambda()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    mapcar(lambda((x)
+                when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+                printf(">>> lambda\n")
+                when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+                plus(x 1)
+            )
+            '(1 2 3)
+    )
+)
+
+
+[testcase23] lambda assigned to variable, called via funcall
+; f = lambda((x y) body...) then result = funcall(f 3 4)
+; Breakpoints must be inserted inside the lambda body.
+INPUT:
+procedure(testLambda2()
+    let((f result)
+        f = lambda((x y)
+            x = x * 2
+            plus(x y)
+        )
+        result = funcall(f 3 4)
+        printf("result=%d\n" result)
+    )
+)
+OUTPUT:
+procedure(testLambda2()
+    let((f result)
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        f = lambda((x y)
+            when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+            x = x * 2
+            when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+            plus(x y)
+        )
+        when(member(7 __sbk_bp_0) _sbDbgBreak(7 0))
+        result = funcall(f 3 4)
+        when(member(8 __sbk_bp_0) _sbDbgBreak(8 0))
+        printf("result=%d\n" result)
+    )
+)
+
+
+[testcase24] setof with begin body - breakpoints inside begin and setof body
+; setof(var collection body...) skips 2 leading args (var + collection).
+; begin(body...) has no leading args to skip, so all statements are body.
+; Breakpoints must be inserted inside begin's body statements.
+INPUT:
+procedure(testSetof()
+    let((nums result)
+        nums = '(1 2 3 4 5)
+        result = setof(x nums
+            begin(
+                printf("...\n")
+                x > 2
+            )
+        )
+        printf("setof result: %L\n" result)
+    )
+)
+OUTPUT:
+procedure(testSetof()
+    let((nums result)
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        nums = '(1 2 3 4 5)
+        when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+        result = setof(x nums
+            when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+            begin(
+                when(member(6 __sbk_bp_0) _sbDbgBreak(6 0))
+                printf("...\n")
+                when(member(7 __sbk_bp_0) _sbDbgBreak(7 0))
+                x > 2
+            )
+        )
+        when(member(10 __sbk_bp_0) _sbDbgBreak(10 0))
+        printf("setof result: %L\n" result)
+    )
+)
+
+
+[testcase25] exists with bare expression - no breakpoint inside body
+; exists(var collection expr) allows only a single expression as body.
+; A bare expression (x > 3) cannot have a breakpoint inserted before it.
+; Use begin/let/prog inside exists if multiple statements are needed.
+INPUT:
+procedure(testExists()
+    let((nums found)
+        nums = '(1 2 3 4 5)
+        found = exists(x nums
+            x > 3
+        )
+        printf("exists result: %L\n" found)
+    )
+)
+OUTPUT:
+procedure(testExists()
+    let((nums found)
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        nums = '(1 2 3 4 5)
+        when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+        found = exists(x nums
+            x > 3
+        )
+        when(member(7 __sbk_bp_0) _sbDbgBreak(7 0))
+        printf("exists result: %L\n" found)
+    )
+)
+
+
+[testcase26] forall with bare expression - no breakpoint inside body
+; forall(var collection expr) allows only a single expression as body.
+; A bare expression (evenp(x)) cannot have a breakpoint inserted before it.
+; Use begin/let/prog inside forall if multiple statements are needed.
+INPUT:
+procedure(testForall()
+    let((nums ok)
+        nums = '(2 4 6)
+        ok = forall(x nums
+            evenp(x)
+        )
+        printf("forall result: %L\n" ok)
+    )
+)
+OUTPUT:
+procedure(testForall()
+    let((nums ok)
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        nums = '(2 4 6)
+        when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+        ok = forall(x nums
+            evenp(x)
+        )
+        when(member(7 __sbk_bp_0) _sbDbgBreak(7 0))
+        printf("forall result: %L\n" ok)
+    )
+)
+
+
+[testcase27] nested lambda - inner lambda body gets breakpoint
+; mapcar(lambda((x) mapcar(lambda((y) plus(x y)) '(10 20)) '(1 2 3))
+; ")"The inner lambda's body (plus(x y)) must get a breakpoint even though
+; it is nested inside a regular function call (mapcar), not a special form.
+INPUT:
+procedure(testNestedLambda()
+    let((result)
+        result = mapcar(
+            lambda((x)
+                mapcar(lambda((y)
+                        plus(x y)
+                    )
+                    '(10 20)
+                )
+            )
+            '(1 2 3)
+        )
+        printf("nested lambda: %L\n" result)
+    )
+)
+OUTPUT:
+procedure(testNestedLambda()
+    let((result)
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        result = mapcar(
+            lambda((x)
+                when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+                mapcar(lambda((y)
+                        when(member(6 __sbk_bp_0) _sbDbgBreak(6 0))
+                        plus(x y)
+                    )
+                    '(10 20)
+                )
+            )
+            '(1 2 3)
+        )
+        when(member(13 __sbk_bp_0) _sbDbgBreak(13 0))
+        printf("nested lambda: %L\n" result)
+    )
+)
+
+
+[testcase28] errset with begin body and if then/else on same line
+; errset(...) is a regular function call — begin inside gets breakpoints.
+; if(ok then printf(...) else printf(...)) with then/else on same line as expr:
+; no breakpoint before the then-expr or else-expr (same line as keyword).
+INPUT:
+procedure(testErrset()
+    let((ok)
+        ok = errset(
+            begin(
+                printf("trying...\n")
+                car(nil)
+                printf("done\n")
+            )
+        )
+        if(ok
+            then printf("no error\n")
+            else printf("caught error\n")
+        )
+    )
+)
+OUTPUT:
+procedure(testErrset()
+    let((ok)
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        ok = errset(
+            begin(
+                when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+                printf("trying...\n")
+                when(member(6 __sbk_bp_0) _sbDbgBreak(6 0))
+                car(nil)
+                when(member(7 __sbk_bp_0) _sbDbgBreak(7 0))
+                printf("done\n")
+            )
+        )
+        when(member(10 __sbk_bp_0) _sbDbgBreak(10 0))
+        if(ok
+            then printf("no error\n")
+            else printf("caught error\n")
+        )
+    )
+)
+
+
+[testcase29] nested procedure definition - both inner and outer bodies get breakpoints
+; procedure(innerHelper(x) ...) defined inside outer procedure body.
+; Both the inner procedure body and the outer let body get breakpoints.
+INPUT:
+procedure(testNestedProc()
+    procedure(innerHelper(x)
+        let((r)
+            r = x * 2
+            printf("inner: %d\n" r)
+            r
+        )
+    )
+    let((v)
+        v = innerHelper(5)
+        printf("outer: %d\n" v)
+    )
+)
+OUTPUT:
+procedure(testNestedProc()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    procedure(innerHelper(x)
+        let((r)
+            when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+            r = x * 2
+            when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+            printf("inner: %d\n" r)
+            when(member(6 __sbk_bp_0) _sbDbgBreak(6 0))
+            r
+        )
+    )
+    when(member(9 __sbk_bp_0) _sbDbgBreak(9 0))
+    let((v)
+        when(member(10 __sbk_bp_0) _sbDbgBreak(10 0))
+        v = innerHelper(5)
+        when(member(11 __sbk_bp_0) _sbDbgBreak(11 0))
+        printf("outer: %d\n" v)
+    )
+)
+
+
+[testcase30] apply with lambda - lambda body gets breakpoints
+; f = lambda((x y z) body...) then result = apply(f '(1 2 3))
+; Breakpoints inside lambda body; apply() itself is a regular call.
+INPUT:
+procedure(testApply()
+    let((f result)
+        f = lambda((x y z)
+            printf("args: %d %d %d\n" x y z)
+            plus(x plus(y z))
+        )
+        result = apply(f '(1 2 3))
+        printf("apply result: %d\n" result)
+    )
+)
+OUTPUT:
+procedure(testApply()
+    let((f result)
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        f = lambda((x y z)
+            when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+            printf("args: %d %d %d\n" x y z)
+            when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+            plus(x plus(y z))
+        )
+        when(member(7 __sbk_bp_0) _sbDbgBreak(7 0))
+        result = apply(f '(1 2 3))
+        when(member(8 __sbk_bp_0) _sbDbgBreak(8 0))
+        printf("apply result: %d\n" result)
+    )
+)
+
+
+[testcase31] string containing parens and keywords - not misinterpreted
+; s = "if(x > 0) then printf(ok)" — parens and keywords inside a string
+; must not confuse the parser. Breakpoints are inserted normally around
+; the string assignment and the when() body.
+INPUT:
+procedure(testStringParens()
+    let((s)
+        s = "if(x > 0) then printf(ok)"
+        printf("str: %s\n" s)
+        when(stringp(s)
+            printf("is string\n")
+            printf("len=%d\n" strlen(s))
+        )
+    )
+)
+OUTPUT:
+procedure(testStringParens()
+    let((s)
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        s = "if(x > 0) then printf(ok)"
+        when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+        printf("str: %s\n" s)
+        when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+        when(stringp(s)
+            when(member(6 __sbk_bp_0) _sbDbgBreak(6 0))
+            printf("is string\n")
+            when(member(7 __sbk_bp_0) _sbDbgBreak(7 0))
+            printf("len=%d\n" strlen(s))
+        )
+    )
+)
+
+
+[testcase32] nested cond - breakpoints in inner cond clause bodies
+; cond inside cond: inner cond clauses get breakpoints in their body statements.
+; First body statement on same line as condition is not breakpointable;
+; subsequent statements on their own lines are.
+INPUT:
+procedure(testNestedCond()
+    let((a b)
+        a = 0
+        b = 1
+        cond(
+            ((a == 0)
+                cond(
+                    ((b == 0) printf("...\n")
+                              printf("a=0 b=0\n"))
+                    ((b == 1) printf(",,,\n")
+                              printf("a=0 b=1\n"))
+                    (t        printf("'''\n")
+                              printf("a=0 b=?\n"))
+                )
+            )
+            ((a == 1)
+                printf("a=1\n")
+            )
+            (t
+                printf("a=?\n")
+            )
+        )
+    )
+)
+OUTPUT:
+procedure(testNestedCond()
+    let((a b)
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        a = 0
+        when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+        b = 1
+        when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+        cond(
+            ((a == 0)
+                when(member(7 __sbk_bp_0) _sbDbgBreak(7 0))
+                cond(
+                    ((b == 0) printf("...\n")
+                              when(member(9 __sbk_bp_0) _sbDbgBreak(9 0))
+                              printf("a=0 b=0\n"))
+                    ((b == 1) printf(",,,\n")
+                              when(member(11 __sbk_bp_0) _sbDbgBreak(11 0))
+                              printf("a=0 b=1\n"))
+                    (t        printf("'''\n")
+                              when(member(13 __sbk_bp_0) _sbDbgBreak(13 0))
+                              printf("a=0 b=?\n"))
+                )
+            )
+            ((a == 1)
+                when(member(17 __sbk_bp_0) _sbDbgBreak(17 0))
+                printf("a=1\n")
+            )
+            (t
+                when(member(20 __sbk_bp_0) _sbDbgBreak(20 0))
+                printf("a=?\n")
+            )
+        )
+    )
+)
+
+
+[testcase33] multiline assignment with quoted list and setof/begin - no break between = and RHS
+; nums = '(...) split across multiple lines: breakpoint must be before 'nums', NOT between '=' and '('.
+; result = setof(...) also split across lines: same rule applies.
+; begin() inside setof body gets breakpoints for each statement.
+; printf() call with args on separate lines: breakpoint before printf line only.
+INPUT:
+procedure(test()
+    let((nums result)
+        nums
+         =
+          '(
+            1
+            5
+        )
+        result
+        =
+        setof(
+            x
+            nums
+            begin(
+                printf("...\n")
+                x > 2
+            )
+        )
+        printf(
+            "setof result: %L\n"
+            result
+        )
+    )
+)
+OUTPUT:
+procedure(test()
+    let((nums result)
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        nums
+         =
+          '(
+            1
+            5
+        )
+        when(member(9 __sbk_bp_0) _sbDbgBreak(9 0))
+        result
+        =
+        setof(
+            x
+            nums
+            when(member(14 __sbk_bp_0) _sbDbgBreak(14 0))
+            begin(
+                when(member(15 __sbk_bp_0) _sbDbgBreak(15 0))
+                printf("...\n")
+                when(member(16 __sbk_bp_0) _sbDbgBreak(16 0))
+                x > 2
+            )
+        )
+        when(member(19 __sbk_bp_0) _sbDbgBreak(19 0))
+        printf(
+            "setof result: %L\n"
+            result
+        )
+    )
+)
+
+
+[testcase34] multiline quoted list on same line as = and exists with bare expression
+; nums = '(1 2 3\n4 5) with quoted list spanning lines starting on same line as '='.
+; found = exists(...) split across lines: breakpoint before 'found', not between '=' and exists.
+; exists(var collection expr): bare expr (x > 3) has no breakpoint inside.
+; printf() with args on separate lines: breakpoint before printf line only.
+INPUT:
+procedure(test()
+    let((nums found)
+        nums = '(
+            1 2 3
+            4 5)
+        found
+        =
+        exists(
+            x
+            nums
+            x > 3
+        )
+        printf(
+            "exists result: %L\n"
+            found
+        )
+    )
+)
+test()
+OUTPUT:
+procedure(test()
+    let((nums found)
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        nums = '(
+            1 2 3
+            4 5)
+        when(member(6 __sbk_bp_0) _sbDbgBreak(6 0))
+        found
+        =
+        exists(
+            x
+            nums
+            x > 3
+        )
+        when(member(13 __sbk_bp_0) _sbDbgBreak(13 0))
+        printf(
+            "exists result: %L\n"
+            found
+        )
+    )
+)
+test()
+
+
+[testcase35] exists with begin body containing multiline printf - breakpoints inside begin
+; exists(var collection body): when body is begin(), all statements inside begin get breakpoints.
+; printf() with closing ')' on next line: breakpoint before printf, not inside its args.
+; x > 3 as last statement in begin: gets its own breakpoint.
+INPUT:
+procedure(test()
+    let((nums found)
+        nums = '(
+            1 2 3
+            4 5)
+        found
+        =
+        exists(
+            x
+            nums
+            begin(
+                printf(
+                    "...")
+                x > 3
+            )
+        )
+        printf(
+            "exists result: %L\n"
+            found
+        )
+    )
+)
+OUTPUT:
+procedure(test()
+    let((nums found)
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        nums = '(
+            1 2 3
+            4 5)
+        when(member(6 __sbk_bp_0) _sbDbgBreak(6 0))
+        found
+        =
+        exists(
+            x
+            nums
+            begin(
+                when(member(12 __sbk_bp_0) _sbDbgBreak(12 0))
+                printf(
+                    "...")
+                when(member(14 __sbk_bp_0) _sbDbgBreak(14 0))
+                x > 3
+            )
+        )
+        when(member(17 __sbk_bp_0) _sbDbgBreak(17 0))
+        printf(
+            "exists result: %L\n"
+            found
+        )
+    )
+)
+
+
+[testcase36] forall with multiline evenp body and let vars on separate lines
+; let((nums\n    ok)) - variable list spanning lines: body starts at line 4.
+; nums = '(2 4 6) with quoted list on same line as '=': single breakpoint before nums.
+; ok = forall(...) on same line: single breakpoint before ok.
+; forall(var collection expr): evenp(x) split across lines is a single paren-expr, no break inside.
+INPUT:
+procedure(test()
+    let((nums
+        ok)
+        nums = '(
+            2 4 6)
+        ok = forall(
+            x
+            nums
+            evenp(
+                x
+           )
+        )
+        printf("forall result: %L\n" ok)
+    )
+)
+OUTPUT:
+procedure(test()
+    let((nums
+        ok)
+        when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+        nums = '(
+            2 4 6)
+        when(member(6 __sbk_bp_0) _sbDbgBreak(6 0))
+        ok = forall(
+            x
+            nums
+            evenp(
+                x
+           )
+        )
+        when(member(13 __sbk_bp_0) _sbDbgBreak(13 0))
+        printf("forall result: %L\n" ok)
+    )
+)
+
+
+[testcase37] nested lambda with args and body on separate lines
+; lambda( (x) body...) with arg list on its own line: body starts on next line.
+; Inner lambda( (y) plus(...)) with plus split across lines: breakpoint before plus only.
+; plus(x y) with args on separate lines: single paren-expr, no break inside.
+INPUT:
+procedure(test()
+    let((result)
+        result = mapcar(
+            lambda(
+                (x)
+                mapcar(
+                    lambda(
+                        (y)
+                        plus(
+                            x y
+                            )
+                    )
+                    '(10 20)
+                )
+            )
+            '(1 2 3)
+        )
+        printf("nested lambda: %L\n" result)
+    )
+)
+OUTPUT:
+procedure(test()
+    let((result)
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        result = mapcar(
+            lambda(
+                (x)
+                when(member(6 __sbk_bp_0) _sbDbgBreak(6 0))
+                mapcar(
+                    lambda(
+                        (y)
+                        when(member(9 __sbk_bp_0) _sbDbgBreak(9 0))
+                        plus(
+                            x y
+                            )
+                    )
+                    '(10 20)
+                )
+            )
+            '(1 2 3)
+        )
+        when(member(18 __sbk_bp_0) _sbDbgBreak(18 0))
+        printf("nested lambda: %L\n" result)
+    )
+)
+
+
+[testcase38] errset with begin on same line - first begin stmt not breakpointable, rest are
+; ok = errset(begin(printf(...) ...)) — errset and begin open on same line as first statement.
+; First statement (printf) is on same line as begin(: cannot insert breakpoint before it.
+; Subsequent statements (car, printf) on their own lines get breakpoints.
+; if(ok then ... else ...) with then/else on same line as expr: no break before expr.
+INPUT:
+procedure(test()
+    let((ok)
+        ok = errset(begin(printf("trying...\n")
+                car(nil)
+                printf("done\n")
+            )
+        )
+        if(ok
+            then printf("no error\n")
+            else printf("caught error\n")
+        )
+    )
+)
+OUTPUT:
+procedure(test()
+    let((ok)
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        ok = errset(begin(printf("trying...\n")
+                when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+                car(nil)
+                when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+                printf("done\n")
+            )
+        )
+        when(member(8 __sbk_bp_0) _sbDbgBreak(8 0))
+        if(ok
+            then printf("no error\n")
+            else printf("caught error\n")
+        )
+    )
+)
+
+
+[testcase39] lambda with multiline arg list and nested plus, apply with quoted list on same line
+; f = lambda( (x y\n z\n ) body...) — arg list spans multiple lines; body starts after closing ')'.
+; printf on same line as first body statement: gets breakpoint before it.
+; plus(x plus(y z)) split across lines: single paren-expr, breakpoint before plus only.
+; result = apply(f '(1 2 3)) with args on same line as apply: single breakpoint before result.
+INPUT:
+procedure(test()
+    let((f result)
+        f
+        =
+        lambda(
+            (x y
+                z
+                )
+            printf("args: %d %d %d\n" x y z)
+            plus(
+                x
+                plus(
+                    y
+                    z))
+        )
+        result
+        =
+        apply(
+            f '(1 2 3))
+        printf("apply result: %d\n" result)
+    )
+)
+OUTPUT:
+procedure(test()
+    let((f result)
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        f
+        =
+        lambda(
+            (x y
+                z
+                )
+            when(member(9 __sbk_bp_0) _sbDbgBreak(9 0))
+            printf("args: %d %d %d\n" x y z)
+            when(member(10 __sbk_bp_0) _sbDbgBreak(10 0))
+            plus(
+                x
+                plus(
+                    y
+                    z))
+        )
+        when(member(16 __sbk_bp_0) _sbDbgBreak(16 0))
+        result
+        =
+        apply(
+            f '(1 2 3))
+        when(member(20 __sbk_bp_0) _sbDbgBreak(20 0))
+        printf("apply result: %d\n" result)
+    )
+)
+
+[testcase40] if with function call in condition and then/else keywords
+INPUT:
+procedure(test()
+    if(inner(a) then
+        doSomethingA()
+    else
+        doSomethingB()
+    )
+)
+OUTPUT:
+procedure(test()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    if(inner(a) then
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        doSomethingA()
+    else
+        when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+        doSomethingB()
+    )
+)
+
+[testcase41] if with chained function call in condition and then/else keywords
+INPUT:
+procedure(test()
+    if(foo(bar(x)) then
+        doSomething()
+    else
+        doOther()
+    )
+)
+OUTPUT:
+procedure(test()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    if(foo(bar(x)) then
+        when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+        doSomething()
+    else
+        when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+        doOther()
+    )
+)
+
+[testcase42] block comment with unbalanced parens inside - ignored correctly
+INPUT:
+procedure(inner(a)
+    doFirst()
+    doSecond()
+    /*
+    abc(()
+    */
+    a+100
+)
+OUTPUT:
+procedure(inner(a)
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    doFirst()
+    when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+    doSecond()
+    /*
+    abc(()
+    */
+    when(member(7 __sbk_bp_0) _sbDbgBreak(7 0))
+    a+100
+)
+
+[testcase43] nested block comments
+INPUT:
+procedure(f()
+    /* outer /* inner */ still comment */
+    x = 1
+    x
+)
+OUTPUT:
+procedure(f()
+    /* outer /* inner */ still comment */
+    when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+    x = 1
+    when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+    x
+)
+
+[testcase44] inline block comment with paren inside
+INPUT:
+procedure(f()
+    x = /* skip this ( */ 1
+    x
+)
+OUTPUT:
+procedure(f()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    x = /* skip this ( */ 1
+    when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+    x
+)

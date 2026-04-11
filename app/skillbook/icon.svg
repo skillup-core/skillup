@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" fill="#7c3aed" rx="16"/>
+  <!-- Open book -->
+  <path d="M20 35 L20 70 Q35 66 50 70 L50 35 Q35 31 20 35Z" fill="white" opacity="0.95"/>
+  <path d="M50 35 Q65 31 80 35 L80 70 Q65 66 50 70 L50 35Z" fill="white" opacity="0.75"/>
+  <!-- Center line -->
+  <line x1="50" y1="35" x2="50" y2="70" stroke="#7c3aed" stroke-width="2" opacity="0.6"/>
+</svg>

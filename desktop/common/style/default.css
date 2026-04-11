@@ -1,0 +1,281 @@
+/* ============================================================================
+   Skillup - Default Theme (Dark)
+   ============================================================================
+   Base stylesheet for all Skillup applications
+   Includes: fonts, CSS variables, common UI components
+   ============================================================================ */
+
+/* ============================================================================
+   Font Definitions
+   ============================================================================ */
+@font-face {
+    font-family: 'NanumGothic';
+    src: url('../resource/font/NanumGothic.ttf') format('truetype');
+    /* Note: This font may generate OTS warnings in some Chromium versions
+       due to legacy TSI3 table, but still renders correctly */
+    font-display: swap; /* Improve loading performance */
+}
+
+@font-face {
+    font-family: 'Noto Emoji';
+    src: url('../resource/font/NotoEmoji-Regular.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'D2Coding';
+    src: url('../resource/font/D2Coding.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'Courgette';
+    src: url('../resource/font/Courgette-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+
+/* ============================================================================
+   CSS Variables (Dark Theme)
+   ============================================================================ */
+:root {
+    /* Background colors */
+    --bg-primary: #1a1d23;
+    --bg-secondary: #20242b;
+    --bg-tertiary: #2a2f38;
+    --canvas-grid-color: rgba(255,255,255,0.07);
+
+    /* Text colors */
+    --text-primary: #e4e6eb;
+    --text-secondary: #b0b3b8;
+
+    /* Accent colors */
+    --accent-primary: #3b82f6;
+    --accent-primary-hover: #2563eb;
+    --accent-text: #4cc9f0;
+
+    /* Status colors */
+    --success: #10b981;
+    --warning: #f59e0b;
+    --error: #ef4444;
+
+    /* Border */
+    --border-color: #373c47;
+
+    /* Brand */
+    --brand-skill-color: #ffffff;
+
+    /* Font families */
+    --font-sans: 'NanumGothic', 'Noto Emoji', 'Noto Color Emoji', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: 'D2Coding', 'Courier New', monospace;
+}
+
+/* ============================================================================
+   Global Resets
+   ============================================================================ */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+}
+
+/* ============================================================================
+   Base Elements
+   ============================================================================ */
+body {
+    font-family: var(--font-sans);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 100vh;
+    line-height: 1.5;
+}
+
+code, pre {
+    font-family: var(--font-mono);
+}
+
+/* ============================================================================
+   Common Layout Components
+   ============================================================================ */
+.content-container {
+    padding: 8px;
+}
+
+.app-section {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.app-section h3 {
+    font-size: 16px;
+    margin-bottom: 10px;
+    color: var(--accent-text);
+    display: flex;
+    align-items: center;
+}
+
+.app-section h3 svg {
+    width: 20px;
+    height: 20px;
+    margin-right: 10px;
+    fill: currentColor;
+}
+
+/* ============================================================================
+   Form Elements
+   ============================================================================ */
+.form-group {
+    margin-bottom: 10px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 3px;
+}
+
+.form-control {
+    width: 100%;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+}
+
+.form-control::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+/* ============================================================================
+   Button Components
+   ============================================================================ */
+.btn {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: var(--accent-primary);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--accent-primary-hover);
+}
+
+.btn-secondary {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+    background: var(--bg-secondary);
+}
+
+/* ============================================================================
+   Modal Components
+   ============================================================================ */
+.modal-content {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+
+.modal-header {
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modal-title {
+    color: var(--text-primary);
+}
+
+.modal-body {
+    color: var(--text-primary);
+}
+
+.modal-footer {
+    background: var(--bg-tertiary);
+    border-top: 1px solid var(--border-color);
+}
+
+.modal-backdrop {
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+/* ============================================================================
+   Utility Classes
+   ============================================================================ */
+.text-success {
+    color: var(--success);
+}
+
+.text-warning {
+    color: var(--warning);
+}
+
+.text-error {
+    color: var(--error);
+}
+
+/* ============================================================================
+   Scrollbar
+   ============================================================================ */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+}
+
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 3px;
+    border: 1px solid transparent;
+    background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: var(--text-secondary);
+    background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* ============================================================================
+   Brand Logo Styles
+   ============================================================================ */
+.brand-skill {
+    font-family: 'Courgette', cursive;
+    font-size: 1.2em;
+    color: var(--brand-skill-color);
+    letter-spacing: 1px;
+}

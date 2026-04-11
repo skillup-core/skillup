@@ -1,0 +1,5 @@
+procedure(test(obj)
+  let( ((x obj~>a~>b~>c))
+    printf("%L\n" x)
+  )
+)

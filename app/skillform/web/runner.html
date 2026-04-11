@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Form Runner - Skill Form</title>
+    <script src="/common/script/appinit.js" onerror="this.onerror=null;this.src='../../../../web/common/script/appinit.js';"></script>
+</head>
+<body>
+<link rel="stylesheet" href="skillform.css" onerror="this.onerror=null;this.href='/app/skillform/skillform.css';">
+
+<div class="sfr-root">
+
+    <!-- Toolbar -->
+    <div class="sfr-topbar">
+        <input type="text" id="sfr-path" class="sfr-path-input" placeholder="form.json path…"/>
+        <button class="sfd-btn" onclick="doLoad()">Load</button>
+        <div class="sfr-spacer"></div>
+        <button class="sfd-btn" id="sfr-cancel-btn" onclick="doCancel()" style="display:none">Cancel</button>
+        <button class="sfd-btn sfd-btn-primary" id="sfr-submit-btn" onclick="doSubmit()" style="display:none">Submit</button>
+    </div>
+
+    <div class="sfr-status" id="sfr-status"></div>
+
+    <!-- Empty state (outside sfr-form so innerHTML='' never removes it) -->
+    <div class="sfr-empty" id="sfr-empty">Load a form file to begin.</div>
+
+    <!-- Form area (grid-rendered) -->
+    <div class="sfr-form" id="sfr-form" style="display:none"></div>
+
+    <!-- Result area -->
+    <div class="sfr-result" id="sfr-result" style="display:none">
+        <div class="sfd-props-title">Result</div>
+        <pre id="sfr-result-json"></pre>
+    </div>
+
+</div>
+
+<script>
+// ================================================================
+// STATE
+// ================================================================
+let currentSchema = null;
+let formValues    = {};
+
+// ================================================================
+// LOAD
+// ================================================================
+async function doLoad() {
+    const path = document.getElementById('sfr-path').value.trim();
+    if (!path) { setStatus('Enter a file path', 'err'); return; }
+    const r = await callPython('runner_load_schema', { path });
+    if (r && r.success && r.schema) {
+        renderForm(r.schema);
+        setStatus('', '');
+    } else {
+        setStatus((r && r.error) || 'Failed to load', 'err');
+    }
+}
+
+// ================================================================
+// RENDER FORM from skillform JSON schema
+// ================================================================
+function renderForm(schema) {
+    currentSchema = schema;
+    formValues    = {};
+
+    const formEl = document.getElementById('sfr-form');
+    document.getElementById('sfr-empty').style.display = 'none';
+    formEl.style.display = 'block';
+
+    const gridRowH = (schema.grid && schema.grid.rowHeight) || 56;
+    const cellW    = (schema.grid && schema.grid.cellW)    || 56;
+    const fields   = schema.fields || [];
+
+    // Compute canvas size
+    let maxRow = 0, maxCol = 0;
+    fields.forEach(f => {
+        maxRow = Math.max(maxRow, f.row + f.h);
+        maxCol = Math.max(maxCol, f.col + f.w);
+    });
+
+    // Clear previous form content
+    formEl.innerHTML = '';
+    formEl.style.position = 'relative';
+    formEl.style.minHeight = (maxRow * gridRowH + 24) + 'px';
+    formEl.style.width = (maxCol * cellW) + 'px';
+    formEl.style.overflowX = 'auto';
+
+    // Render separators first so they appear below other components
+    const sorted = [...fields].sort((a, b) => (a.type === 'separator' ? -1 : 0) - (b.type === 'separator' ? -1 : 0));
+    sorted.forEach(f => {
+        const el = document.createElement('div');
+        el.className = 'sfr-field';
+
+        // Separator box: position/size adjusted by center vs edge
+        if (f.type === 'separator' && (f.lineType || 'horizontal') === 'box') {
+            const isEdge = f.align === 'edge';
+            const ox = isEdge ? 0 : cellW / 2;
+            const oy = isEdge ? 0 : gridRowH / 2;
+            el.style.left   = (f.col * cellW   + ox) + 'px';
+            el.style.top    = (f.row * gridRowH + oy) + 'px';
+            el.style.width  = (f.w   * cellW   - ox * 2) + 'px';
+            el.style.height = (f.h   * gridRowH - oy * 2) + 'px';
+            el.style.padding = '0';
+        } else {
+            el.style.left   = (f.col * cellW) + 'px';
+            el.style.width  = (f.w   * cellW) + 'px';
+            el.style.top    = (f.row * gridRowH) + 'px';
+            el.style.height = (f.h   * gridRowH) + 'px';
+        }
+
+        el.appendChild(buildFieldWidget(f, gridRowH));
+        formEl.appendChild(el);
+    });
+
+    // Show action buttons
+    document.getElementById('sfr-submit-btn').style.display = '';
+    document.getElementById('sfr-cancel-btn').style.display = '';
+    document.getElementById('sfr-result').style.display = 'none';
+}
+
+function buildFieldWidget(f, rowH) {
+    const wrap = document.createElement('div');
+    wrap.className = 'sfr-widget';
+
+    if (f.type !== 'separator') {
+        wrap.style.fontFamily = (f.font === 'sans')
+            ? 'var(--font-sans)' : 'var(--font-mono)';
+    }
+
+    if (f.type === 'separator') {
+        const lt = f.lineType || 'horizontal';
+        const isEdge = f.align === 'edge';
+        if (lt === 'vertical') {
+            wrap.style.flexDirection = 'row';
+            wrap.style.alignItems = isEdge ? 'flex-start' : 'center';
+        } else if (lt === 'box') {
+            // position/size already handled in sfr-field; widget fills it
+        } else {
+            wrap.style.justifyContent = isEdge ? 'flex-start' : 'center';
+        }
+    }
+
+    const label = f.type !== 'separator' && f.type !== 'label';
+    if (label && f.label) {
+        const lbl = document.createElement('label');
+        lbl.className = 'sfr-label';
+        lbl.textContent = f.label + (f.required ? ' *' : '');
+        lbl.htmlFor = 'sfr-' + f.id;
+        wrap.appendChild(lbl);
+    }
+
+    let input = null;
+
+    switch (f.type) {
+        case 'text':
+            input = document.createElement('input');
+            input.type = 'text';
+            input.id = 'sfr-' + f.id;
+            if (f.placeholder) input.placeholder = f.placeholder;
+            if (f.default)     input.value = f.default;
+            if (f.readonly)    input.readOnly = true;
+            input.addEventListener('input', () => { formValues[f.id] = input.value; });
+            formValues[f.id] = f.default || '';
+            break;
+
+        case 'number':
+            input = document.createElement('input');
+            input.type = 'number';
+            input.id = 'sfr-' + f.id;
+            if (f.min !== '' && f.min !== undefined) input.min = f.min;
+            if (f.max !== '' && f.max !== undefined) input.max = f.max;
+            if (f.default !== '') input.value = f.default;
+            if (f.readonly) input.readOnly = true;
+            input.addEventListener('input', () => { formValues[f.id] = parseFloat(input.value); });
+            formValues[f.id] = f.default !== undefined ? Number(f.default) : 0;
+            break;
+
+        case 'checkbox':
+            input = document.createElement('input');
+            input.type = 'checkbox';
+            input.id = 'sfr-' + f.id;
+            input.checked = (f.default === true || f.default === 'true');
+            input.disabled = f.readonly;
+            input.addEventListener('change', () => { formValues[f.id] = input.checked; });
+            formValues[f.id] = input.checked;
+            break;
+
+        case 'toggle':
+            input = document.createElement('label');
+            input.className = 'sfr-toggle';
+            const toggleCb = document.createElement('input');
+            toggleCb.type = 'checkbox';
+            toggleCb.id = 'sfr-' + f.id;
+            toggleCb.checked = (f.default === true || f.default === 'true');
+            toggleCb.disabled = f.readonly;
+            const slider = document.createElement('span');
+            slider.className = 'sfr-toggle-slider';
+            input.appendChild(toggleCb);
+            input.appendChild(slider);
+            toggleCb.addEventListener('change', () => { formValues[f.id] = toggleCb.checked; });
+            formValues[f.id] = toggleCb.checked;
+            break;
+
+        case 'dropdown':
+            input = document.createElement('select');
+            input.id = 'sfr-' + f.id;
+            input.disabled = f.readonly;
+            (f.options || []).forEach(opt => {
+                const o = document.createElement('option');
+                o.value = opt; o.textContent = opt;
+                if (opt === f.default) o.selected = true;
+                input.appendChild(o);
+            });
+            input.addEventListener('change', () => { formValues[f.id] = input.value; });
+            formValues[f.id] = input.value;
+            break;
+
+        case 'radio': {
+            input = document.createElement('div');
+            input.className = 'sfr-radio-group' + (f.inline ? ' sfr-radio-group-inline' : '');
+            (f.options || []).forEach(opt => {
+                const radioId = 'sfr-' + f.id + '-' + opt.replace(/\s/g,'_');
+                const row = document.createElement('label');
+                row.className = 'sfr-radio-row';
+                const rb = document.createElement('input');
+                rb.type = 'radio';
+                rb.name = 'sfr-' + f.id;
+                rb.id = radioId;
+                rb.value = opt;
+                if (opt === f.default) { rb.checked = true; formValues[f.id] = opt; }
+                rb.disabled = f.readonly;
+                rb.addEventListener('change', () => { if (rb.checked) formValues[f.id] = opt; });
+                row.appendChild(rb);
+                row.appendChild(document.createTextNode(' ' + opt));
+                input.appendChild(row);
+            });
+            if (!formValues[f.id] && f.options && f.options.length) {
+                formValues[f.id] = f.options[0];
+            }
+            break;
+        }
+
+        case 'textarea':
+            input = document.createElement('textarea');
+            input.id = 'sfr-' + f.id;
+            input.rows = f.rows || 3;
+            if (f.placeholder) input.placeholder = f.placeholder;
+            if (f.default)     input.value = f.default;
+            if (f.readonly)    input.readOnly = true;
+            input.style.resize = 'none';
+            input.style.height = '100%';
+            input.addEventListener('input', () => { formValues[f.id] = input.value; });
+            formValues[f.id] = f.default || '';
+            break;
+
+        case 'file':
+            input = document.createElement('div');
+            input.className = 'sfr-file-row';
+            const fileInput = document.createElement('input');
+            fileInput.type = 'text';
+            fileInput.id = 'sfr-' + f.id;
+            fileInput.placeholder = f.placeholder || '';
+            fileInput.value = f.default || '';
+            fileInput.readOnly = f.readonly;
+            fileInput.addEventListener('input', () => { formValues[f.id] = fileInput.value; });
+            formValues[f.id] = f.default || '';
+            input.appendChild(fileInput);
+            if (!f.readonly) {
+                const browseBtn = document.createElement('button');
+                browseBtn.className = 'sfr-file-browse-btn';
+                browseBtn.textContent = '…';
+                browseBtn.type = 'button';
+                browseBtn.addEventListener('click', async () => {
+                    let result;
+                    if (f.dirOnly) {
+                        result = await callPython('select_directory', {});
+                    } else {
+                        result = await callPython('select_file', { filter: f.filter || '' });
+                    }
+                    if (result && result.success && result.path) {
+                        fileInput.value = result.path;
+                        formValues[f.id] = result.path;
+                    }
+                });
+                input.appendChild(browseBtn);
+            }
+            break;
+
+        case 'date':
+            input = document.createElement('input');
+            input.type = 'date';
+            input.id = 'sfr-' + f.id;
+            if (f.default) input.value = f.default;
+            if (f.readonly) input.readOnly = true;
+            input.addEventListener('change', () => { formValues[f.id] = input.value; });
+            formValues[f.id] = f.default || '';
+            break;
+
+        case 'color':
+            input = document.createElement('input');
+            input.type = 'color';
+            input.id = 'sfr-' + f.id;
+            input.value = f.default || '#000000';
+            input.disabled = f.readonly;
+            input.addEventListener('input', () => { formValues[f.id] = input.value; });
+            formValues[f.id] = input.value;
+            break;
+
+        case 'slider': {
+            input = document.createElement('div');
+            input.className = 'sfr-slider-row';
+            const sl = document.createElement('input');
+            sl.type = 'range';
+            sl.id = 'sfr-' + f.id;
+            if (f.min !== '' && f.min !== undefined) sl.min = f.min;
+            if (f.max !== '' && f.max !== undefined) sl.max = f.max;
+            if (f.step) sl.step = f.step;
+            sl.value = f.default || sl.min || 0;
+            sl.disabled = f.readonly;
+            const slVal = document.createElement('span');
+            slVal.className = 'sfr-slider-val';
+            slVal.textContent = sl.value;
+            sl.addEventListener('input', () => {
+                formValues[f.id] = parseFloat(sl.value);
+                slVal.textContent = sl.value;
+            });
+            formValues[f.id] = parseFloat(sl.value);
+            input.appendChild(sl);
+            input.appendChild(slVal);
+            break;
+        }
+
+        case 'label': {
+            const tagMap = { small:'small', normal:'p', large:'p', h3:'h3', h2:'h2', h1:'h1' };
+            const tag = tagMap[f.fontSize] || 'p';
+            input = document.createElement(tag);
+            input.textContent = f.label || '';
+            input.className = 'sfr-label-widget';
+            break;
+        }
+
+        case 'separator': {
+            const lt = f.lineType || 'horizontal';
+            input = document.createElement('div');
+            if (lt === 'vertical') {
+                input.className = 'sfr-separator-v';
+            } else if (lt === 'box') {
+                input.className = 'sfr-separator-box';
+            } else {
+                input.className = 'sfr-separator';
+            }
+            break;
+        }
+
+        default:
+            input = document.createElement('input');
+            input.type = 'text';
+            if (f.default) input.value = f.default;
+            input.addEventListener('input', () => { formValues[f.id] = input.value; });
+            formValues[f.id] = f.default || '';
+    }
+
+    if (input) wrap.appendChild(input);
+    return wrap;
+}
+
+// ================================================================
+// SUBMIT / CANCEL
+// ================================================================
+async function doSubmit() {
+    if (currentSchema) {
+        const missing = (currentSchema.fields || []).filter(f => f.required && !formValues[f.id]);
+        if (missing.length) {
+            setStatus('Required: ' + missing.map(f => f.label || f.id).join(', '), 'err');
+            return;
+        }
+    }
+    await callPython('runner_submit', { values: formValues });
+    setStatus('Submitted', 'ok');
+    document.getElementById('sfr-submit-btn').style.display = 'none';
+    document.getElementById('sfr-cancel-btn').style.display = 'none';
+    document.getElementById('sfr-result-json').textContent = JSON.stringify(formValues, null, 2);
+    document.getElementById('sfr-result').style.display = '';
+}
+
+async function doCancel() {
+    await callPython('runner_cancel', {});
+    setStatus('Cancelled', '');
+    document.getElementById('sfr-submit-btn').style.display = 'none';
+    document.getElementById('sfr-cancel-btn').style.display = 'none';
+    document.getElementById('sfr-form').innerHTML = '';
+    document.getElementById('sfr-form').style.display = 'none';
+    document.getElementById('sfr-empty').style.display = '';
+    document.getElementById('sfr-result').style.display = 'none';
+}
+
+function setStatus(msg, type) {
+    const el = document.getElementById('sfr-status');
+    el.textContent = msg;
+    el.className = 'sfr-status' + (type ? ' sfd-status-' + type : '');
+}
+
+// ================================================================
+// APPINIT CALLBACKS
+// ================================================================
+window.getAppStateAction = () => 'runner_get_state';
+window.state_update = function(updates) {
+    if (updates && updates.runner_schema && updates.runner_waiting) {
+        renderForm(updates.runner_schema);
+    }
+};
+
+window.onAppStateLoaded = function(state) {
+    if (state && state.schema) {
+        _pollVersion = state.runner_schema_version || 0;
+        if (state.schema_path) document.getElementById('sfr-path').value = state.schema_path;
+        renderForm(state.schema);
+    }
+    startPolling();
+};
+
+async function onViewActivated() {
+    // When tab is switched to Runner, check if designer pushed a schema
+    const state = await callPython('runner_get_state', {});
+    if (state && state.schema && state.waiting) {
+        if (state.schema_path) document.getElementById('sfr-path').value = state.schema_path;
+        renderForm(state.schema);
+        setStatus('', '');
+    }
+}
+function onLanguageChange(lang) {}
+
+// ================================================================
+// LIVE POLLING — detect schema changes from designer
+// ================================================================
+let _pollVersion = -1;
+let _pollTimer = null;
+
+async function startPolling() {
+    if (_pollTimer) return; // already running
+    async function poll() {
+        try {
+            const r = await callPython('runner_poll', { version: _pollVersion });
+            if (r && r.changed && r.schema) {
+                _pollVersion = r.version;
+                renderForm(r.schema);
+                setStatus('Live update', 'ok');
+            } else if (r) {
+                _pollVersion = r.version;
+            }
+        } catch (e) { /* ignore */ }
+        _pollTimer = setTimeout(poll, 800);
+    }
+    poll();
+}
+
+function stopPolling() {
+    clearTimeout(_pollTimer);
+    _pollTimer = null;
+}
+
+// ================================================================
+// LIVE UPDATE from Designer window (postMessage path — web browser)
+// ================================================================
+window.addEventListener('message', function(e) {
+    if (e.data && e.data.action === 'liveSchema' && e.data.schema) {
+        renderForm(e.data.schema);
+        setStatus('Live preview', 'ok');
+    }
+});
+
+// Signal designer that runner is ready to receive schema
+if (window.opener) {
+    window.opener.postMessage({ action: 'runnerReady' }, '*');
+}
+
+// ================================================================
+// WEB BROWSER MOCK
+// ================================================================
+if (typeof isInWebBrowser !== 'undefined' && isInWebBrowser) {
+    setTimeout(function() {
+        renderForm({
+            title: "Sample Form",
+            grid: { cols: 12, rowHeight: 48 },
+            fields: [
+                { id:'name',  type:'text',     label:'이름',   col:0, row:0, w:6, h:1, required:true },
+                { id:'cell',  type:'text',     label:'Cell',   col:6, row:0, w:6, h:1 },
+                { id:'drc',   type:'checkbox', label:'Run DRC', col:0, row:1, w:4, h:1 },
+                { id:'layer', type:'dropdown', label:'Layer',   col:4, row:1, w:4, h:1, options:['M1','M2','Poly'], default:'M1' },
+                { id:'cnt',   type:'number',   label:'Count',   col:8, row:1, w:4, h:1, default:1 },
+                { id:'note',  type:'textarea', label:'Note',    col:0, row:2, w:12,h:2 },
+            ]
+        });
+    }, 200);
+}
+</script>
+</body>
+</html>

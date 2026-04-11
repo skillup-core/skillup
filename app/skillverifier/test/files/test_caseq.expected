@@ -1,0 +1,4 @@
+# Expected errors for test_caseq.il
+# Format: line|func|type|var
+#
+2|test|undeclared(variable)|state

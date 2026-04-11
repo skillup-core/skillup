@@ -1,0 +1,241 @@
+SKILLUP SOURCE AVAILABLE LICENSE
+Version 1.0, 2026
+
+Copyright (c) 2026 greenfish77@gmail.com
+All rights reserved.
+
+================================================================================
+
+1. DEFINITIONS
+
+"Software" means all source code, binaries, documentation, and related materials
+provided in this repository. This includes any individual file, module, or
+component extracted from the repository and used in a separate project.
+
+"Author" means the copyright holder(s) of the Software.
+
+"You" means the individual or legal entity exercising rights under this License.
+
+"Non-Commercial Use" means use of the Software where You and any organization
+You represent have generated less than USD $500,000 in Total Revenue during the
+trailing 12-month period in which the Software is used.
+
+"Commercial Use" means any use that does not qualify as Non-Commercial Use,
+including but not limited to:
+  - Internal business operations
+  - Software as a Service (SaaS) or cloud-hosted services
+  - Integration into commercial products or services
+  - Paid services, consulting, or contracting
+  - Use by any legal entity (company, organization, partnership, etc.) with
+    Total Revenue of USD $500,000 or more
+
+"Total Revenue" means the total gross revenue received by You and any
+organization You represent from the sale of products or services during the
+trailing 12-month period, regardless of whether such revenue is directly
+generated through use of the Software. This includes revenue from product
+sales, software licenses, subscriptions, consulting, and professional services,
+but excludes investment funding, grants, and non-revenue financial inflows.
+
+"Commercial License" means a separate written agreement between You and the
+Author granting rights for Commercial Use.
+
+"Contribution" means any source code, documentation, or other material
+submitted to the Author for inclusion in the Software.
+
+
+2. NON-COMMERCIAL LICENSE GRANT
+
+Subject to the terms and conditions of this License, the Author grants You a
+worldwide, royalty-free, non-exclusive, non-transferable license to:
+
+  (a) Use and run the Software for Non-Commercial Use;
+  (b) Copy and distribute the Software for Non-Commercial Use;
+  (c) Modify the Software and create derivative works for Non-Commercial Use.
+
+Conditions:
+  - This license notice and copyright notice must be included in all copies
+    or substantial portions of the Software.
+  - You must not remove or alter any copyright, trademark, or attribution
+    notices contained in the Software.
+  - Any modifications must be clearly marked as such and must not be
+    misrepresented as the original Software.
+
+
+3. COMMERCIAL LICENSE REQUIREMENT
+
+If You or your organization exceeds USD $500,000 in Total Revenue during any
+trailing 12-month period in which You use the Software, You MUST obtain a
+Commercial License before continuing to use the Software.
+
+The Commercial License requirement applies even if:
+  - The Software is used only for internal purposes;
+  - The revenue is not directly generated through use of the Software;
+  - The use began under a Non-Commercial Use period.
+
+To obtain a Commercial License, contact: greenfish77@gmail.com
+
+
+4. RESTRICTIONS
+
+You may NOT, without a valid Commercial License:
+
+  (a) Use the Software for Commercial Use as defined in Section 1;
+  (b) Distribute or sublicense the Software as part of a commercial product
+      or offering;
+  (c) Provide access to the Software or its functionality as a paid service;
+  (d) Remove, modify, or obscure this license or any copyright notices.
+
+You may NOT, under any circumstances:
+
+  (e) Use the Software in violation of applicable laws or regulations;
+  (f) Use the Software in any manner that infringes the intellectual property
+      rights of others;
+  (g) Remove, replace, or circumvent any license enforcement mechanism
+      included in the Software, including but not limited to binary
+      components that perform license validation.
+
+
+5. CONTRIBUTIONS
+
+By submitting a Contribution (e.g., pull request, patch, or issue fix) to this
+repository, You agree that:
+
+  (a) Your Contribution is submitted under the same terms as this License;
+  (b) You grant the Author a perpetual, irrevocable, worldwide, royalty-free
+      license to use, reproduce, modify, distribute, and sublicense Your
+      Contribution as part of the Software under any license terms the Author
+      chooses, including proprietary terms;
+  (c) You represent that You have the legal right to make the Contribution and
+      that it does not violate any third-party intellectual property rights;
+  (d) The Author is not obligated to accept, merge, or maintain any
+      Contribution.
+
+
+6. BINARY COMPONENTS
+
+Certain components of the Software may be made available in binary form only.
+Reverse engineering, decompilation, or disassembly of such binary components is
+prohibited to the extent permitted by applicable law.
+
+This restriction does NOT apply to third-party components distributed alongside
+the Software that are governed by their own licenses. In particular, components
+licensed under the GNU Lesser General Public License (LGPL) or similar licenses
+that expressly permit reverse engineering for the purpose of interoperability
+retain all rights granted by their respective licenses, unaffected by this
+Section.
+
+
+7. THIRD-PARTY COMPONENTS
+
+This Software incorporates third-party components with separate license terms,
+including but not limited to:
+
+  - PySide2 / PySide6        : LGPL v3.0
+  - QWebChannel (Qt)         : LGPL v3.0
+  - Bootstrap                : MIT License
+  - CodeMirror               : MIT License
+  - Marked                   : MIT License
+  - Highlight.js             : BSD 3-Clause License
+  - NanumGothic Font         : SIL Open Font License 1.1
+  - D2Coding Font            : SIL Open Font License 1.1
+  - Noto Emoji Font          : SIL Open Font License 1.1
+  - Courgette Font           : SIL Open Font License 1.1
+  - Pillow                   : HPND License (MIT-compatible)
+  - python-xlib              : MIT License
+  - xdotool                  : BSD 3-Clause License
+
+Your use of the Software is subject to compliance with all applicable
+third-party licenses. Nothing in this License limits any rights granted to
+You by such third-party licenses or imposes additional restrictions on
+components governed solely by those licenses.
+
+Copies of applicable third-party licenses are available in the LICENSES/
+directory of this repository or from the respective upstream projects.
+
+
+8. DISCLAIMER OF WARRANTIES
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. THE AUTHOR
+DOES NOT WARRANT THAT THE SOFTWARE WILL MEET YOUR REQUIREMENTS, OPERATE
+WITHOUT INTERRUPTION, OR BE FREE OF ERRORS OR DEFECTS.
+
+
+9. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE
+AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY,
+OR CONSEQUENTIAL DAMAGES (INCLUDING BUT NOT LIMITED TO LOSS OF DATA, LOSS OF
+PROFITS, BUSINESS INTERRUPTION, OR PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES) ARISING OUT OF OR IN CONNECTION WITH THE USE OR INABILITY TO USE
+THE SOFTWARE, EVEN IF THE AUTHOR HAS BEEN ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGES.
+
+
+10. GOVERNING LAW AND JURISDICTION
+
+This License shall be governed by and construed in accordance with the laws of
+the Republic of Korea, without regard to its conflict of law provisions.
+
+Any dispute, controversy, or claim arising out of or relating to this License,
+or the breach, termination, or invalidity thereof, shall be subject to the
+exclusive jurisdiction of the courts located in Seoul, Republic of Korea.
+
+
+11. TERMINATION
+
+Your rights under this License terminate automatically and without notice if
+You fail to comply with any term of this License. Upon termination:
+
+  (a) You must immediately cease all use of the Software;
+  (b) You must destroy all copies of the Software in your possession or control;
+  (c) Sections 8, 9, 10, and 11 survive termination.
+
+The Author may, at their sole discretion, reinstate your rights upon written
+request if the violation is cured within 30 days of You becoming aware of it.
+
+
+12. DERIVATIVE WORKS AND FORKS
+
+If You create a derivative work or fork of the Software:
+
+  (a) The derivative work must be distributed under the terms of this License.
+      The original Author retains all copyright and commercial licensing rights
+      over the original Software. Copyright over portions newly authored by the
+      contributor belongs to the contributor, but does not affect the original
+      Author's rights over the original portions;
+  (b) You may not relicense the derivative work under different terms without
+      prior written permission from the Author;
+  (c) The derivative work must clearly state that it is based on the Software
+      and must not be misrepresented as the original Software;
+  (d) All copyright and attribution notices from the original Software must
+      be preserved in the derivative work.
+
+
+14. SEVERABILITY
+
+If any provision of this License is held to be invalid or unenforceable, the
+remaining provisions shall continue in full force and effect. The invalid or
+unenforceable provision shall be modified to the minimum extent necessary to
+make it valid and enforceable.
+
+
+15. ENTIRE AGREEMENT
+
+This License constitutes the entire agreement between You and the Author with
+respect to the use of the Software and supersedes all prior or contemporaneous
+understandings, agreements, representations, and warranties.
+
+
+16. LICENSE UPDATES
+
+The Author reserves the right to publish revised versions of this License. Each
+version will be given a distinguishing version number. The version of this
+License in effect at the time You first obtained the Software governs Your use
+of that version of the Software, unless You elect to be governed by a later
+version.
+
+================================================================================
+
+For commercial licensing inquiries, contact: greenfish77@gmail.com

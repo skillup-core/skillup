@@ -1,0 +1,26 @@
+# Expected errors for test_defclass_and_features.il
+# Format: line|func|type|var
+#
+17|c|assignment|=
+17|c|undeclared(variable)|z
+17|c|undeclared(variable)|z1
+18|c|assignment|=
+18|c|undeclared(variable)|z
+18|c|undeclared(variable)|z1
+19|c|assignment|=
+19|c|undeclared(variable)|z
+19|c|undeclared(variable)|z1
+42|f|undeclared(function)|func1
+43|f|undeclared(function)|func1
+47|g|undeclared(variable)|z
+47|g|undeclared(function)|func1
+48|g|undeclared(variable)|z
+52|h|undeclared(variable)|z
+52|h|undeclared(function)|func1
+53|h|assignment|=
+53|h|undeclared(variable)|z
+54|h|undeclared(variable)|zz
+54|h|undeclared(function)|func1
+55|h|assignment|=
+55|h|undeclared(variable)|zz
+59|func|undeclared(function)|isFile

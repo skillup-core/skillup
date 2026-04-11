@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Form Designer - Skill Form</title>
+    <script src="/common/script/appinit.js" onerror="this.onerror=null;this.src='../../../../web/common/script/appinit.js';"></script>
+    <style>html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }</style>
+</head>
+<body>
+<link rel="stylesheet" href="skillform.css" onerror="this.onerror=null;this.href='/app/skillform/skillform.css';">
+
+<div class="sfd-root" id="sfd-root-el">
+
+    <!-- ── Top toolbar ───────────────────────────────────────────── -->
+    <div class="sfd-topbar">
+        <span class="sfd-title" id="tb-title">Form Designer</span>
+        <div class="sfd-topbar-mid">
+            <input type="text" id="tb-filepath" placeholder="form.json path…" class="sfd-filepath-input"/>
+            <button class="sfd-btn" onclick="doOpen()">Open</button>
+            <button class="sfd-btn sfd-btn-primary" onclick="doSave()">Save</button>
+            <button class="sfd-btn" onclick="doNew()">New</button>
+            <button class="sfd-btn sfd-btn-run" onclick="doRun()">▶ Run</button>
+        </div>
+        <div class="sfd-status-inline" id="sfd-status"></div>
+    </div>
+
+    <!-- ── Main area ─────────────────────────────────────────────── -->
+    <div class="sfd-main">
+
+        <!-- Left: component palette -->
+        <div class="sfd-palette">
+            <div class="sfd-palette-title">Components</div>
+            <div id="palette-list"></div>
+        </div>
+
+        <!-- Center: canvas -->
+        <div id="sfd-canvas" class="sfd-canvas">
+            <div id="sfd-canvas-inner" class="sfd-canvas-inner"></div>
+        </div>
+
+        <!-- Right: properties panel -->
+        <div class="sfd-props" id="sfd-props">
+            <div class="sfd-props-title">Properties</div>
+            <div id="sfd-props-body">
+                <div class="sfd-props-empty">Select a component</div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+// ================================================================
+// CONFIG
+// ================================================================
+const COMPONENT_TYPES = [
+    { type:'text',      label:'Text',       icon:'T',  defaultW:6, defaultH:1 },
+    { type:'number',    label:'Number',     icon:'#',  defaultW:3, defaultH:1 },
+    { type:'checkbox',  label:'Checkbox',   icon:'☑',  defaultW:4, defaultH:1 },
+    { type:'toggle',    label:'Toggle',     icon:'⊙',  defaultW:3, defaultH:1 },
+    { type:'dropdown',  label:'Dropdown',   icon:'▾',  defaultW:6, defaultH:1 },
+    { type:'radio',     label:'Radio',      icon:'◉',  defaultW:6, defaultH:2 },
+    { type:'textarea',  label:'Textarea',   icon:'¶',  defaultW:12,defaultH:2 },
+    { type:'file',      label:'File Path',  icon:'📁', defaultW:8, defaultH:1 },
+    { type:'date',      label:'Date',       icon:'📅', defaultW:4, defaultH:1 },
+    { type:'color',     label:'Color',      icon:'🎨', defaultW:3, defaultH:1 },
+    { type:'slider',    label:'Slider',     icon:'↔',  defaultW:6, defaultH:1 },
+    { type:'label',     label:'Label',      icon:'Aa', defaultW:6, defaultH:1 },
+    { type:'separator', label:'Separator',  icon:'—',  defaultW:12,defaultH:1 },
+];
+
+// ================================================================
+// CONFIG
+// ================================================================
+const GRID_CELL_W = 56;
+const GRID_ROW_H = 56;
+
+// ================================================================
+// STATE
+// ================================================================
+let gridRowH  = GRID_ROW_H;
+let fields    = [];      // array of field objects
+let selectedId = null;
+let currentFile = '';
+let panX = 0;
+let panY = 0;
+
+let _idSeq = 0;
+function newId() { return 'f' + (++_idSeq); }
+
+// drag state
+let drag = null;
+/*
+  drag = {
+    mode: 'palette'|'move'|'resize',
+    type: component type (palette mode)
+    fieldId: (move/resize mode)
+    ghostEl: HTMLElement,
+    startX, startY,         // mousedown position
+    originCol, originRow,   // field original col/row (move)
+    originW, originH,       // field original w/h (resize)
+  }
+*/
+
+// ================================================================
+// GRID HELPERS
+// ================================================================
+function getCanvas()   { return document.getElementById('sfd-canvas'); }
+function getInner()    { return document.getElementById('sfd-canvas-inner'); }
+
+function cellSize() {
+    return { cw: GRID_CELL_W, rh: gridRowH };
+}
+
+function pxToCell(px, py) {
+    const { cw, rh } = cellSize();
+    return {
+        col: Math.max(0, Math.floor(px / cw)),
+        row: Math.max(0, Math.floor(py / rh))
+    };
+}
+
+function cellToPx(col, row) {
+    const { cw, rh } = cellSize();
+    return { x: col * cw, y: row * rh };
+}
+
+function fieldPx(f) {
+    const { cw, rh } = cellSize();
+    return { x: f.col * cw, y: f.row * rh, w: f.w * cw, h: f.h * rh };
+}
+
+// ================================================================
+// RENDER CANVAS
+// ================================================================
+function renderCanvas(pushToRunner = true) {
+    const wrap  = getCanvas();
+    const inner = getInner();
+
+    const { cw, rh } = cellSize();
+    wrap.style.backgroundSize     = cw + 'px ' + rh + 'px';
+    wrap.style.backgroundPosition = (panX % cw) + 'px ' + (panY % rh) + 'px';
+
+    // inner height: enough to hold all fields + extra room
+    let maxRow = 4;
+    fields.forEach(f => { maxRow = Math.max(maxRow, f.row + f.h); });
+    inner.style.height = (maxRow + 20) * rh + 'px';
+
+    // Apply pan offset to inner
+    inner.style.transform = 'translate(' + panX + 'px, ' + panY + 'px)';
+
+    // Remove old field elements (placeholder survives, but reset ref if detached)
+    Array.from(inner.querySelectorAll('.sfd-field')).forEach(el => el.remove());
+    if (_dropPlaceholder && !inner.contains(_dropPlaceholder)) _dropPlaceholder = null;
+
+    // Render fields into inner
+    // Render separators first so they appear below other components
+    const sorted = [...fields].sort((a, b) => (a.type === 'separator' ? -1 : 0) - (b.type === 'separator' ? -1 : 0));
+    sorted.forEach(f => {
+        const el = createFieldEl(f);
+        inner.appendChild(el);
+    });
+
+    // Live-push to runner window if open
+    if (pushToRunner) pushSchemaToRunner();
+}
+
+function createFieldEl(f) {
+    let { x, y, w, h } = fieldPx(f);
+    const { cw, rh } = cellSize();
+
+    // Separator box: adjust position/size by center vs edge
+    if (f.type === 'separator' && (f.lineType || 'horizontal') === 'box') {
+        const isEdge = f.align === 'edge';
+        const ox = isEdge ? 0 : cw / 2;
+        const oy = isEdge ? 0 : rh / 2;
+        x += ox; y += oy; w -= ox * 2; h -= oy * 2;
+    }
+
+    const el = document.createElement('div');
+    el.className = 'sfd-field' + (f.id === selectedId ? ' sfd-field-selected' : '');
+    el.dataset.id = f.id;
+    el.style.left   = x + 'px';
+    el.style.top    = y + 'px';
+    el.style.width  = w + 'px';
+    el.style.height = h + 'px';
+
+    const meta = COMPONENT_TYPES.find(c => c.type === f.type) || { icon: '?', label: f.type };
+
+    if (f.type === 'separator') {
+        const lt = f.lineType || 'horizontal';
+        const isEdge = f.align === 'edge';
+        el.style.border = 'none';
+        el.style.background = 'transparent';
+        el.style.padding = '0';
+        el.style.overflow = 'visible';
+        if (lt === 'vertical') {
+            el.style.flexDirection = 'column';
+            el.style.alignItems = isEdge ? 'flex-start' : 'center';
+            el.innerHTML = `
+                <div style="width:2px;flex:1;background:var(--border-color,#ced4da)"></div>
+                <div class="sfd-field-resize" data-id="${f.id}" title="resize"></div>
+                <button class="sfd-field-del" data-id="${f.id}" title="delete">✕</button>
+            `;
+        } else if (lt === 'box') {
+            el.style.border = '2px solid var(--border-color,#ced4da)';
+            el.style.borderRadius = '0';
+            el.innerHTML = `
+                <div class="sfd-field-resize" data-id="${f.id}" title="resize"></div>
+                <button class="sfd-field-del sfd-field-del-overlay" data-id="${f.id}" title="delete">✕</button>
+            `;
+        } else {
+            el.style.alignItems = isEdge ? 'flex-start' : 'center';
+            el.innerHTML = `
+                <div style="flex:1;height:2px;background:var(--border-color,#ced4da)"></div>
+                <div class="sfd-field-resize" data-id="${f.id}" title="resize"></div>
+                <button class="sfd-field-del" data-id="${f.id}" title="delete">✕</button>
+            `;
+        }
+    } else {
+        el.innerHTML = `
+            <div class="sfd-field-icon">${meta.icon}</div>
+            <div class="sfd-field-body">
+                <div class="sfd-field-type">${meta.label}</div>
+                <div class="sfd-field-label">${f.label || ''}</div>
+            </div>
+            <div class="sfd-field-resize" data-id="${f.id}" title="resize"></div>
+            <button class="sfd-field-del" data-id="${f.id}" title="delete">✕</button>
+        `;
+    }
+
+    // Select on left-click; right-click passes through to pan
+    el.addEventListener('mousedown', function(e) {
+        if (e.button !== 0) return;
+        if (e.target.classList.contains('sfd-field-resize')) return;
+        if (e.target.classList.contains('sfd-field-del')) return;
+        e.stopPropagation();
+        if (drag) return;
+        selectField(f.id);
+        startMoveDrag(e, f.id);
+    });
+
+    // Double-click: focus label input in properties panel
+    el.addEventListener('dblclick', function(e) {
+        e.stopPropagation();
+        drag = null;
+        selectField(f.id);
+        const input = document.querySelector('#sfd-props-body input[type="text"]');
+        if (input) { input.focus(); input.select(); }
+    });
+
+    // Delete button
+    el.querySelector('.sfd-field-del').addEventListener('click', function(e) {
+        e.stopPropagation();
+        deleteField(f.id);
+    });
+
+    // Resize handle (not present for separator)
+    const resizeHandle = el.querySelector('.sfd-field-resize');
+    if (resizeHandle) {
+        resizeHandle.addEventListener('mousedown', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            startResizeDrag(e, f.id);
+        });
+    }
+
+    return el;
+}
+
+// ================================================================
+// FIELD OPERATIONS
+// ================================================================
+function addField(type, col, row) {
+    const meta = COMPONENT_TYPES.find(c => c.type === type);
+    const w = meta.defaultW;
+    const h = meta.defaultH;
+    const f = {
+        id:    newId(),
+        type:  type,
+        label: meta.label,
+        col:   col,
+        row:   row,
+        w:     w,
+        h:     h,
+        // type-specific defaults
+        required:    false,
+        placeholder: '',
+        default:     '',
+        options:     (type === 'dropdown' || type === 'radio') ? ['Option 1', 'Option 2'] : undefined,
+        font:        (type !== 'separator') ? 'mono' : undefined,
+        align:       (type === 'separator') ? 'center' : undefined,
+        lineType:    (type === 'separator') ? 'horizontal' : undefined,
+        dirOnly:     (type === 'file') ? false : undefined,
+        filter:      (type === 'file') ? '' : undefined,
+        min:         (type === 'number' || type === 'slider') ? '' : undefined,
+        max:         (type === 'number' || type === 'slider') ? '' : undefined,
+        step:        (type === 'slider') ? 1 : undefined,
+        multiline:   false,
+        readonly:    false,
+    };
+    // Remove undefined keys
+    Object.keys(f).forEach(k => { if (f[k] === undefined) delete f[k]; });
+    fields.push(f);
+    selectField(f.id);
+    renderCanvas();
+    return f;
+}
+
+function deleteField(id) {
+    fields = fields.filter(f => f.id !== id);
+    if (selectedId === id) { selectedId = null; renderProps(); }
+    renderCanvas();
+}
+
+function selectField(id) {
+    if (selectedId === id) return;
+    // Update selected class in-place without rebuilding the whole DOM
+    const inner = getInner();
+    inner.querySelectorAll('.sfd-field').forEach(el => {
+        el.classList.toggle('sfd-field-selected', el.dataset.id === id);
+    });
+    selectedId = id;
+    renderProps();
+}
+
+function updateField(id, key, value) {
+    const f = fields.find(f => f.id === id);
+    if (!f) return;
+    f[key] = value;
+    // Box separator needs at least 2 rows of height to be usable
+    if (f.type === 'separator' && key === 'lineType' && value === 'box' && f.h < 2) {
+        f.h = 2;
+    }
+    renderCanvas();
+}
+
+// ================================================================
+// DRAG — PALETTE
+// ================================================================
+function initPalette() {
+    const list = document.getElementById('palette-list');
+    list.innerHTML = '';
+    COMPONENT_TYPES.forEach(meta => {
+        const item = document.createElement('div');
+        item.className = 'sfd-palette-item';
+        item.innerHTML = `<span class="sfd-palette-icon">${meta.icon}</span><span>${meta.label}</span>`;
+        item.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            startPaletteDrag(e, meta.type);
+        });
+        list.appendChild(item);
+    });
+}
+
+function startPaletteDrag(e, type) {
+    const meta = COMPONENT_TYPES.find(c => c.type === type);
+    const ghost = document.createElement('div');
+    ghost.className = 'sfd-ghost';
+    ghost.textContent = meta.label;
+    document.body.appendChild(ghost);
+    positionGhost(ghost, e.clientX, e.clientY);
+
+    drag = { mode: 'palette', type, ghostEl: ghost, startX: e.clientX, startY: e.clientY };
+    bindDragEvents();
+}
+
+// ================================================================
+// DRAG — MOVE
+// ================================================================
+const DRAG_THRESHOLD = 3; // pixels before move drag activates
+
+function startMoveDrag(e, fieldId) {
+    e.preventDefault();
+    const f = fields.find(f => f.id === fieldId);
+    if (!f) return;
+
+    // Compute mouse offset within the field so the field doesn't jump on drag start
+    const { px, py } = canvasRelPos(e.clientX, e.clientY);
+    const { cw, rh } = cellSize();
+    const offsetCol = px / cw - f.col;
+    const offsetRow = py / rh - f.row;
+
+    drag = {
+        mode: 'move', fieldId,
+        ghostEl: null,
+        startX: e.clientX, startY: e.clientY,
+        originCol: f.col, originRow: f.row,
+        offsetCol, offsetRow,
+        dragging: false   // becomes true once threshold is crossed
+    };
+    bindDragEvents();
+}
+
+// ================================================================
+// DRAG — RESIZE
+// ================================================================
+function startResizeDrag(e, fieldId) {
+    const f = fields.find(f => f.id === fieldId);
+    if (!f) return;
+    drag = {
+        mode: 'resize', fieldId,
+        ghostEl: null,
+        startX: e.clientX, startY: e.clientY,
+        originW: f.w, originH: f.h,
+        originCol: f.col, originRow: f.row
+    };
+    bindDragEvents();
+}
+
+// ================================================================
+// DRAG — COMMON EVENTS
+// ================================================================
+function bindDragEvents() {
+    document.removeEventListener('mousemove', onDragMove);
+    document.removeEventListener('mouseup',   onDragEnd);
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('mouseup',   onDragEnd);
+}
+
+function unbindDragEvents() {
+    document.removeEventListener('mousemove', onDragMove);
+    document.removeEventListener('mouseup',   onDragEnd);
+}
+
+
+function positionGhost(el, cx, cy) {
+    el.style.left = (cx + 12) + 'px';
+    el.style.top  = (cy + 4)  + 'px';
+}
+
+let _dropPlaceholder = null;
+
+function updateDropPlaceholder(col, row, w, h) {
+    const inner = getInner();
+    if (!_dropPlaceholder) {
+        _dropPlaceholder = document.createElement('div');
+        _dropPlaceholder.className = 'sfd-drop-placeholder';
+        inner.appendChild(_dropPlaceholder);
+    }
+    const { cw, rh } = cellSize();
+    _dropPlaceholder.style.left   = (col * cw) + 'px';
+    _dropPlaceholder.style.top    = (row * rh) + 'px';
+    _dropPlaceholder.style.width  = (w   * cw) + 'px';
+    _dropPlaceholder.style.height = (h   * rh) + 'px';
+}
+
+function removeDropPlaceholder() {
+    if (_dropPlaceholder) {
+        _dropPlaceholder.remove();
+        _dropPlaceholder = null;
+    }
+}
+
+function canvasRelPos(clientX, clientY) {
+    const canvas = getCanvas();
+    const rect = canvas.getBoundingClientRect();
+    return { px: clientX - rect.left - panX, py: clientY - rect.top - panY };
+}
+
+function onDragMove(e) {
+    if (!drag) return;
+
+    // Primary drag-end detection: button released (works even when mouseup was spurious)
+    if (e.buttons === 0) {
+        onDragEnd(e);
+        return;
+    }
+
+    // For move mode, activate drag only after threshold is crossed
+    if (drag.mode === 'move' && !drag.dragging) {
+        const dx = Math.abs(e.clientX - drag.startX);
+        const dy = Math.abs(e.clientY - drag.startY);
+        if (dx < DRAG_THRESHOLD && dy < DRAG_THRESHOLD) return;
+        drag.dragging = true;
+        document.body.style.cursor = 'grabbing';
+    }
+
+    if (drag.ghostEl) positionGhost(drag.ghostEl, e.clientX, e.clientY);
+
+    if (drag.mode === 'move' && drag.dragging) {
+        const { px, py } = canvasRelPos(e.clientX, e.clientY);
+        const { cw, rh } = cellSize();
+        const col = Math.floor(px / cw - drag.offsetCol);
+        const row = Math.floor(py / rh - drag.offsetRow);
+        const f = fields.find(f => f.id === drag.fieldId);
+        if (f) updateDropPlaceholder(
+            Math.max(0, col),
+            Math.max(0, row),
+            f.w, f.h
+        );
+    }
+
+    if (drag.mode === 'palette') {
+        const canvas = getCanvas();
+        const rect = canvas.getBoundingClientRect();
+        if (e.clientX >= rect.left && e.clientX <= rect.right &&
+            e.clientY >= rect.top  && e.clientY <= rect.bottom) {
+            const { px, py } = canvasRelPos(e.clientX, e.clientY);
+            const { col, row } = pxToCell(px, py);
+            const meta = COMPONENT_TYPES.find(c => c.type === drag.type);
+            if (meta) updateDropPlaceholder(
+                Math.max(0, col),
+                Math.max(0, row),
+                meta.defaultW, meta.defaultH
+            );
+        } else {
+            removeDropPlaceholder();
+        }
+    }
+
+    if (drag.mode === 'resize') {
+        const f = fields.find(f => f.id === drag.fieldId);
+        if (!f) return;
+        const { cw, rh } = cellSize();
+        const dw = Math.round((e.clientX - drag.startX) / cw);
+        const dh = Math.round((e.clientY - drag.startY) / rh);
+        f.w = Math.max(1, drag.originW + dw);
+        f.h = Math.max(1, drag.originH + dh);
+        // Update only the resizing element's size without rebuilding the whole DOM
+        const el = getInner().querySelector('.sfd-field[data-id="' + f.id + '"]');
+        if (el) {
+            const isBox = f.type === 'separator' && (f.lineType || 'horizontal') === 'box';
+            const ox = (isBox && f.align !== 'edge') ? cw / 2 : 0;
+            const oy = (isBox && f.align !== 'edge') ? rh / 2 : 0;
+            el.style.width  = (f.w * cw - ox * 2) + 'px';
+            el.style.height = (f.h * rh - oy * 2) + 'px';
+        }
+    }
+}
+
+function onDragEnd(e) {
+    if (!drag) return;
+    // move mode: mouseup before threshold — treat as click, not drag
+    if (drag.mode === 'move' && !drag.dragging) {
+        drag = null;
+        unbindDragEvents();
+        document.body.style.cursor = '';
+        return;
+    }
+
+    // Capture what we need before clearing state
+    const endDrag = drag;
+    drag = null;
+    unbindDragEvents();
+
+    if (endDrag.ghostEl) endDrag.ghostEl.remove();
+    removeDropPlaceholder();
+    document.body.style.cursor = '';
+
+    const { px, py } = canvasRelPos(e.clientX, e.clientY);
+    const { cw, rh } = cellSize();
+    const { col, row } = pxToCell(px, py);
+
+    if (endDrag.mode === 'palette') {
+        const canvas = getCanvas();
+        const rect = canvas.getBoundingClientRect();
+        if (e.clientX >= rect.left && e.clientX <= rect.right &&
+            e.clientY >= rect.top  && e.clientY <= rect.bottom) {
+            addField(endDrag.type, Math.max(0, col), Math.max(0, row));
+        }
+    } else if (endDrag.mode === 'move' && endDrag.dragging) {
+        const f = fields.find(f => f.id === endDrag.fieldId);
+        if (f) {
+            f.col = Math.max(0, Math.floor(px / cw - endDrag.offsetCol));
+            f.row = Math.max(0, Math.floor(py / rh - endDrag.offsetRow));
+            renderCanvas();
+        }
+    } else if (endDrag.mode === 'resize') {
+        renderCanvas(); // finalize resize and push to runner
+    }
+}
+
+// ================================================================
+// PROPERTIES PANEL
+// ================================================================
+function renderProps() {
+    const body = document.getElementById('sfd-props-body');
+    if (!selectedId) {
+        body.innerHTML = '<div class="sfd-props-empty">Select a component</div>';
+        return;
+    }
+    const f = fields.find(f => f.id === selectedId);
+    if (!f) { body.innerHTML = ''; return; }
+
+    let html = '';
+
+    // Common fields
+    html += propText('label', 'Label', f.label || '');
+    html += propText('id', 'Field ID', f.id);
+    if (f.type !== 'separator') {
+        html += `<div class="sfd-prop-row"><label>Font</label>
+            <select onchange="updateField('${f.id}','font',this.value)">
+                <option value="mono" ${(f.font||'mono')==='mono'?'selected':''}>Mono</option>
+                <option value="sans" ${f.font==='sans'?'selected':''}>Sans</option>
+            </select></div>`;
+    }
+    if (f.type !== 'label' && f.type !== 'separator') {
+        html += propCheck('required', 'Required', f.required);
+        html += propCheck('readonly', 'Read-only', f.readonly);
+    }
+    if (f.type === 'text' || f.type === 'textarea' || f.type === 'file') {
+        html += propText('placeholder', 'Placeholder', f.placeholder || '');
+    }
+    if (f.type !== 'label' && f.type !== 'separator') {
+        html += propText('default', 'Default', f.default !== undefined ? String(f.default) : '');
+    }
+
+    // Type-specific
+    if (f.type === 'number' || f.type === 'slider') {
+        html += propText('min', 'Min', f.min !== undefined ? String(f.min) : '');
+        html += propText('max', 'Max', f.max !== undefined ? String(f.max) : '');
+        if (f.type === 'slider') {
+            html += propText('step', 'Step', f.step !== undefined ? String(f.step) : '1');
+        }
+    }
+    if (f.type === 'dropdown' || f.type === 'radio') {
+        html += propOptions('options', 'Options (one per line)', f.options || []);
+    }
+    if (f.type === 'radio') {
+        html += propCheck('inline', 'Inline (horizontal)', f.inline || false);
+    }
+    if (f.type === 'file') {
+        html += propCheck('dirOnly', 'Directory only', f.dirOnly || false);
+        html += propText('filter', 'Extensions (e.g. *.py *.txt)', f.filter || '');
+    }
+    if (f.type === 'separator') {
+        const lt = f.lineType || 'horizontal';
+        html += `<div class="sfd-prop-row"><label>Type</label>
+            <select onchange="updateField('${f.id}','lineType',this.value)">
+                <option value="horizontal" ${lt==='horizontal'?'selected':''}>Horizontal</option>
+                <option value="vertical"   ${lt==='vertical'?'selected':''}>Vertical</option>
+                <option value="box"        ${lt==='box'?'selected':''}>Box</option>
+            </select></div>`;
+        html += `<div class="sfd-prop-row"><label>Align</label>
+            <select onchange="updateField('${f.id}','align',this.value)">
+                <option value="center" ${(f.align||'center')==='center'?'selected':''}>Center</option>
+                <option value="edge"   ${f.align==='edge'?'selected':''}>Edge</option>
+            </select></div>`;
+    }
+    if (f.type === 'textarea') {
+        html += propText('rows', 'Rows', f.rows !== undefined ? String(f.rows) : '3');
+    }
+    if (f.type === 'label') {
+        html += `<div class="sfd-prop-row">
+            <label>Size</label>
+            <select onchange="updateField('${f.id}','fontSize',this.value)">
+                ${['small','normal','large','h3','h2','h1'].map(s =>
+                    `<option value="${s}" ${f.fontSize===s?'selected':''}>${s}</option>`).join('')}
+            </select>
+        </div>`;
+    }
+
+    // Grid position (read-only display)
+    html += `<div class="sfd-prop-section">Grid</div>`;
+    html += `<div class="sfd-prop-row"><label>Col</label><input type="number" value="${f.col}" min="0" onchange="updateFieldInt('${f.id}','col',this.value)"/></div>`;
+    html += `<div class="sfd-prop-row"><label>Row</label><input type="number" value="${f.row}" min="0" onchange="updateFieldInt('${f.id}','row',this.value)"/></div>`;
+    html += `<div class="sfd-prop-row"><label>W (cols)</label><input type="number" value="${f.w}" min="1" onchange="updateFieldInt('${f.id}','w',this.value)"/></div>`;
+    html += `<div class="sfd-prop-row"><label>H (rows)</label><input type="number" value="${f.h}" min="1" onchange="updateFieldInt('${f.id}','h',this.value)"/></div>`;
+
+    body.innerHTML = html;
+}
+
+function propText(key, labelText, value) {
+    return `<div class="sfd-prop-row">
+        <label>${labelText}</label>
+        <input type="text" value="${escHtml(value)}"
+               onchange="updateField('${selectedId}','${key}',this.value)"
+               oninput="updateField('${selectedId}','${key}',this.value)"/>
+    </div>`;
+}
+
+function propCheck(key, labelText, value) {
+    return `<div class="sfd-prop-row">
+        <label>${labelText}</label>
+        <input type="checkbox" ${value ? 'checked' : ''}
+               onchange="updateField('${selectedId}','${key}',this.checked)"/>
+    </div>`;
+}
+
+function propOptions(key, labelText, arr) {
+    return `<div class="sfd-prop-row sfd-prop-col">
+        <label>${labelText}</label>
+        <textarea rows="4" onchange="updateFieldOptions('${selectedId}','${key}',this.value)"
+                  oninput="updateFieldOptions('${selectedId}','${key}',this.value)">${escHtml(arr.join('\n'))}</textarea>
+    </div>`;
+}
+
+function updateFieldInt(id, key, value) {
+    updateField(id, key, parseInt(value) || 0);
+    renderProps();
+}
+
+function updateFieldOptions(id, key, value) {
+    const arr = value.split('\n').map(s => s.trim()).filter(Boolean);
+    updateField(id, key, arr);
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+
+// ================================================================
+// SAVE / OPEN / NEW
+// ================================================================
+function formToJson() {
+    return {
+        title: document.getElementById('tb-title').textContent.trim(),
+        grid: { rowHeight: gridRowH, cellW: GRID_CELL_W },
+        fields: fields.map(f => Object.assign({}, f))
+    };
+}
+
+function jsonToForm(data) {
+    if (!data) return;
+    if (data.title) document.getElementById('tb-title').textContent = data.title;
+    if (data.grid) {
+        gridRowH  = data.grid.rowHeight || GRID_ROW_H;
+    }
+    fields = (data.fields || []).map(f => Object.assign({}, f));
+    // Restore _idSeq
+    fields.forEach(f => {
+        const n = parseInt((f.id || '').replace(/\D/g,''));
+        if (!isNaN(n) && n > _idSeq) _idSeq = n;
+    });
+    selectedId = null;
+    renderCanvas();
+    renderProps();
+}
+
+async function doSave() {
+    const path = document.getElementById('tb-filepath').value.trim();
+    if (!path) { setStatus('No file path', 'err'); return; }
+    const schema = formToJson();
+    const r = await callPython('designer_save', { path, schema });
+    if (r && r.success) {
+        currentFile = path;
+        setStatus('Saved: ' + path, 'ok');
+    } else {
+        setStatus((r && r.error) || 'Save failed', 'err');
+    }
+}
+
+async function doOpen() {
+    const path = document.getElementById('tb-filepath').value.trim();
+    if (!path) { setStatus('No file path', 'err'); return; }
+    const r = await callPython('designer_load', { path });
+    if (r && r.success) {
+        currentFile = path;
+        jsonToForm(r.schema || {});
+        setStatus(r.is_new ? 'New form' : 'Opened: ' + path, '');
+    } else {
+        setStatus((r && r.error) || 'Open failed', 'err');
+    }
+}
+
+function doNew() {
+    fields = [];
+    selectedId = null;
+    _idSeq = 0;
+    document.getElementById('tb-title').textContent = 'My Form';
+    renderCanvas();
+    renderProps();
+    setStatus('New form', '');
+}
+
+// ================================================================
+// LIVE RUNNER WINDOW
+// ================================================================
+let _runnerWin = null;
+
+let _pushTimer = null;
+
+function pushSchemaToRunner() {
+    // Debounce: push at most once per 300ms
+    clearTimeout(_pushTimer);
+    _pushTimer = setTimeout(async function() {
+        if (fields.length === 0) return;
+        const schema = formToJson();
+        await callPython('designer_run', { schema });
+    }, 300);
+}
+
+async function doRun() {
+    if (fields.length === 0) {
+        setStatus('No components to run', 'err');
+        return;
+    }
+
+    const schema = formToJson();
+
+    // Extract app_id from current URL path: /app/{app_id}/designer.html
+    const appIdMatch = window.location.pathname.match(/\/app\/([^\/]+)\//);
+    const appId = appIdMatch ? appIdMatch[1] : 'skillform';
+    const runnerUrl = `/app/${appId}/runner.html?standalone=1`;
+
+    if (window.isInIframe) {
+        // window.open is blocked inside an iframe — use Python open_window API instead
+        // Save schema first, then open window so runner loads it on startup
+        await callPython('designer_run', { schema });
+        const r = await callPython('open_window', {
+            url: runnerUrl,
+            title: 'Skill Form Runner',
+            mode: 'true'
+        });
+        setStatus('Runner opened', 'ok');
+        return;
+    }
+
+    // Non-iframe environment (web browser)
+    if (_runnerWin && !_runnerWin.closed) {
+        _runnerWin.focus();
+        pushSchemaToRunner();
+        return;
+    }
+
+    _runnerWin = window.open(runnerUrl, 'skillform_runner',
+        'width=800,height=600,resizable=yes,scrollbars=yes');
+
+    if (!_runnerWin) {
+        setStatus('Popup blocked', 'err');
+        return;
+    }
+
+    window.addEventListener('message', function onRunnerReady(e) {
+        if (e.source === _runnerWin && e.data && e.data.action === 'runnerReady') {
+            window.removeEventListener('message', onRunnerReady);
+            pushSchemaToRunner();
+        }
+    });
+
+    setStatus('Runner opened', 'ok');
+}
+
+function setStatus(msg, type) {
+    const el = document.getElementById('sfd-status');
+    el.textContent = msg;
+    el.className = 'sfd-status-inline' + (type ? ' sfd-status-' + type : '');
+}
+
+// ================================================================
+// CANVAS CLICK (deselect) + PAN (right-click drag)
+// ================================================================
+function initCanvas() {
+    const canvas = getCanvas();
+    const inner  = getInner();
+
+    // Deselect when clicking empty inner area (left click)
+    inner.addEventListener('mousedown', function(e) {
+        if (e.button !== 0) return;
+        if (e.target !== inner) return;
+        inner.querySelectorAll('.sfd-field-selected').forEach(el => el.classList.remove('sfd-field-selected'));
+        selectedId = null;
+        renderProps();
+    });
+
+    // Pan: right-click drag anywhere in canvas
+    canvas.addEventListener('mousedown', function(e) {
+        if (e.button !== 2) return;
+        e.preventDefault();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startPanX = panX;
+        const startPanY = panY;
+        document.body.classList.add('sfd-panning');
+
+        function onMove(e) {
+            // If right mouse button was released outside the window, end pan
+            if (!(e.buttons & 2)) { onEnd(); return; }
+            panX = startPanX + (e.clientX - startX);
+            panY = Math.min(0, startPanY + (e.clientY - startY));
+            inner.style.transform = 'translate(' + panX + 'px, ' + panY + 'px)';
+            const { cw, rh } = cellSize();
+            canvas.style.backgroundPosition = (panX % cw) + 'px ' + (panY % rh) + 'px';
+        }
+        function onEnd() {
+            document.body.classList.remove('sfd-panning');
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onEnd);
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onEnd);
+    });
+
+    // Suppress context menu
+    canvas.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+
+    // 'f' key: reset pan to (0,0) — ignore when typing in inputs
+    document.addEventListener('keydown', function(e) {
+        const tag = document.activeElement && document.activeElement.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if (e.key === 'f' || e.key === 'F') {
+            panX = 0;
+            panY = 0;
+            inner.style.transform = 'translate(0px, 0px)';
+        }
+        if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+            deleteField(selectedId);
+        }
+    });
+}
+
+// ================================================================
+// APPINIT CALLBACKS
+// ================================================================
+window.getAppStateAction = () => 'designer_get_state';
+window.state_update = function(updates) {};
+
+window.onAppStateLoaded = function(state) {
+    if (state && state.file) {
+        document.getElementById('tb-filepath').value = state.file;
+    }
+    if (state && state.schema) {
+        jsonToForm(state.schema);
+    }
+};
+
+function onViewActivated() { renderCanvas(); }
+function onLanguageChange(lang) {}
+
+// ================================================================
+// INIT
+// ================================================================
+initPalette();
+initCanvas();
+renderCanvas();
+renderProps();
+
+// Make title editable
+document.getElementById('tb-title').setAttribute('contenteditable', 'true');
+
+window.addEventListener('resize', () => renderCanvas());
+
+</script>
+</body>
+</html>

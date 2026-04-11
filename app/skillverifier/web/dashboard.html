@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Skillup Verifier</title>
+
+    <!-- Skillup AppInit - Must be loaded first -->
+    <script src="/common/script/appinit.js" onerror="this.onerror=null; this.src='../../../../web/common/script/appinit.js';"></script>
+</head>
+<body>
+    <!-- App-specific CSS -->
+    <link rel="stylesheet" href="skillverifier.css" onerror="this.onerror=null; this.href='/app/skillverifier/skillverifier.css';">
+
+    <!-- App-specific JS - loaded after initialization -->
+    <script src="skillverifier.js" onerror="this.onerror=null; this.src='/app/skillverifier/skillverifier.js';"></script>
+
+    <div class="content-container">
+        <div id="stats-container"></div>
+        <div class="app-section">
+            <h3>
+                <svg viewBox="0 0 24 24"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
+                <span data-i18n="recentActivity">Recent Activity</span>
+            </h3>
+            <div class="terminal-log" id="dashboard-log">
+                <div class="log-line" style="color: var(--text-secondary)" data-i18n="noActivity">No recent activity</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Define which Python action to call for state
+        window.getAppStateAction = () => 'verify_status';
+
+        // Mock data for web browser mode (debugging)
+        let verifierState = null;
+        if (isInWebBrowser) {
+            verifierState = {
+                files: ['/path/to/sample.il', '/path/to/test.il'],
+                defineFile: '',
+                dataDb: '',
+                results: [
+                    {
+                        filepath: '/path/to/sample.il',
+                        errors: [
+                            { type: 'error', line: 10, function: 'myFunc', message: 'Undeclared variable: foo' },
+                            { type: 'warning', line: 25, function: 'myFunc', message: 'Unused parameter: bar' }
+                        ],
+                        source: '; Sample SKILL code\nprocedure(myFunc(x y)\n  let((result)\n    result = x + y\n    foo = result  ; error: undeclared\n    result\n  )\n)'
+                    },
+                    {
+                        filepath: '/path/to/test.il',
+                        errors: [],
+                        source: '; Clean file\nprocedure(testFunc(a b)\n  a + b\n)'
+                    }
+                ],
+                logs: [
+                    { type: 'info', message: '\x1b[92m[info ]\x1b[0m Found 2 files to verify' },
+                    { type: 'info', message: '\x1b[92m[info ]\x1b[0m verify /path/to/sample.il' },
+                    { type: 'error', message: '\x1b[91m[error]\x1b[0m\x1b[91m[E01]\x1b[0m line \x1b[93m10\x1b[0m, in function \x1b[93mmyFunc\x1b[0m, Undeclared variable: foo' },
+                    { type: 'info', message: '\x1b[92m[info ]\x1b[0m verify /path/to/test.il' },
+                    { type: 'info', message: '\x1b[92m[info ]\x1b[0m Verification complete: 2 files, 1 errors' }
+                ],
+                running: false
+            };
+            window.appState = verifierState;
+        }
+
+        // Callback when state is loaded from Python backend
+        window.onAppStateLoaded = function(state) {
+            verifierState = state;
+            updateDashboard();
+        };
+
+        function updateDashboard() {
+            if (!verifierState) return;
+            const statsContainer = document.getElementById('stats-container');
+            const logContainer = document.getElementById('dashboard-log');
+            const t = i18n[currentLanguage] || i18n.en;
+
+            const results = verifierState.results || [];
+            const errorCount = results.reduce((sum, r) => sum + (r.errors || []).filter(e => e.type === 'error').length, 0);
+            const warnCount = results.reduce((sum, r) => sum + (r.errors || []).filter(e => e.type === 'warning').length, 0);
+            const passedCount = results.filter(r => (r.errors || []).length === 0).length;
+
+            statsContainer.innerHTML = createStatsGrid({
+                totalFiles: results.length,
+                errors: errorCount,
+                warnings: warnCount,
+                passed: passedCount
+            });
+
+            const logs = verifierState.logs || [];
+            if (logs.length > 0) {
+                logContainer.innerHTML = logs.slice(-10)
+                    .map(log => createLogLine(log))
+                    .join('');
+            } else {
+                logContainer.innerHTML = `<div class="log-line" style="color: var(--text-secondary)">${t.noActivity}</div>`;
+            }
+        }
+
+        // Called when state is updated from parent
+        function onStateUpdate() {
+            updateDashboard();
+        }
+
+        // Called when language changes
+        function onLanguageChange() {
+            updateDashboard();
+        }
+
+        // Called when this view becomes visible (tab switched)
+        function onViewActivated() {
+            updateDashboard();
+        }
+
+        // Real-time update handler called from Python via postMessage (forwarded from desktop.html)
+        window.onVerifierStateUpdate = function(statusOrJson) {
+            try {
+                // Handle both parsed object (from postMessage) and JSON string (legacy)
+                const status = typeof statusOrJson === 'string' ? JSON.parse(statusOrJson) : statusOrJson;
+
+                // Direct assignment (fastest)
+                verifierState = status;
+                window.appState = status;
+
+                // Update UI
+                updateDashboard();
+            } catch (error) {
+                console.error('[Dashboard] Failed to parse state update:', error, error.stack);
+            }
+        };
+
+        // Note: updateDashboard is now called from onAppStateLoaded callback
+        // (triggered by common.js after state is loaded from Python backend)
+    </script>
+</body>
+</html>
