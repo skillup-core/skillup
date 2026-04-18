@@ -712,6 +712,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     editor.setOption('mode', 'skill');
                 }
             }
+            if (res && res.all_functions) {
+                ISK.setIntellisenseFuncs(res.all_functions);
+            }
         }).catch(() => {});
     }
 
@@ -1038,12 +1041,13 @@ function onConnectionChange(data) {
 
 // ── Debug ─────────────────────────────────────────────────────────────────────
 
-function clearAllBreakpoints() {
+async function clearAllBreakpoints() {
     const tabs = EXP.getTabs();
     const hasAny = tabs.some(t => t.debugBreakpoints.size > 0);
     if (!hasAny) return;
     const msg = currentLanguage === 'ko' ? '모든 중단점을 삭제하시겠습니까?' : 'Clear all breakpoints?';
-    if (!confirm(msg)) return;
+    const title = currentLanguage === 'ko' ? '중단점 삭제' : 'Clear Breakpoints';
+    if (!await parent.showConfirmDialog(title, msg)) return;
     const activeTab = EXP.getActiveTab();
     tabs.forEach(t => {
         if (t === activeTab) {
@@ -1063,54 +1067,65 @@ function openNewTab() { EXP.openNewTab(); }
 // ── Preferences ───────────────────────────────────────────────────────────────
 const PREFS_DEFAULT = { 'editor.font_size': 16 };
 const PREFS_FONT_SIZES = [10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24];
-let _prefsOriginal = null;
 
 function openPreferences() {
-    const overlay = document.getElementById('prefsOverlay');
-    const dialog  = document.getElementById('prefsDialog');
-    if (!overlay || !dialog) return;
+    const modal = window.parent && window.parent.desktopModal;
+    if (!modal) return;
 
-    // Populate font size combobox
-    const sel = document.getElementById('prefsFontSize');
-    sel.innerHTML = '';
-    PREFS_FONT_SIZES.forEach(sz => {
-        const opt = document.createElement('option');
-        opt.value = sz;
-        opt.textContent = sz + 'px';
-        sel.appendChild(opt);
-    });
+    const ko = currentLanguage === 'ko';
 
-    // Load current prefs then show dialog
+    // Build select element HTML
+    const options = PREFS_FONT_SIZES.map(sz => `<option value="${sz}">${sz}px</option>`).join('');
+    const labelText = ko ? '편집기 글꼴 크기' : 'Editor Font Size';
+    const selectStyle = 'background:var(--bg-primary,#1a1d23);border:1px solid var(--border-color,#373c47);' +
+        'color:var(--text-primary,#e0e0e0);border-radius:4px;padding:4px 8px;font-size:13px;outline:none;' +
+        'cursor:pointer;min-width:80px;';
+    const html = `<div style="display:flex;align-items:center;">` +
+        `<span style="font-size:13px;color:var(--text-secondary,#a0a0a0);flex:1;margin-right:12px;white-space:nowrap;">${labelText}</span>` +
+        `<select id="prefsFontSize" style="${selectStyle}">${options}</select>` +
+        `</div>`;
+
+    // Load current prefs then open modal
     callPython('get_editor_prefs', {}).then(res => {
         const prefs = (res && res.success && res.prefs) ? res.prefs : Object.assign({}, PREFS_DEFAULT);
-        _prefsOriginal = Object.assign({}, prefs);
-        sel.value = prefs['editor.font_size'] || PREFS_DEFAULT['editor.font_size'];
-        // Apply i18n to dialog elements
-        dialog.querySelectorAll('[data-en]').forEach(el => {
-            el.textContent = currentLanguage === 'ko' ? el.dataset.ko : el.dataset.en;
+        const parentDoc = window.parent.document;
+        modal.open({
+            title: ko ? '환경설정' : 'Preferences',
+            html: html,
+            buttons: [
+                {
+                    label: ko ? '확인' : 'OK',
+                    primary: true,
+                    onClick: function() {
+                        const sel = parentDoc.getElementById('prefsFontSize');
+                        if (!sel) return;
+                        const fontSize = parseInt(sel.value, 10);
+                        callPython('save_editor_prefs', { prefs: { 'editor.font_size': fontSize } }).then(() => {
+                            _applyEditorFontSize(fontSize);
+                        });
+                        modal.close();
+                    }
+                },
+                {
+                    label: ko ? '디폴트' : 'Default',
+                    onClick: function() {
+                        const sel = parentDoc.getElementById('prefsFontSize');
+                        if (sel) sel.value = PREFS_DEFAULT['editor.font_size'];
+                    }
+                },
+                { label: ko ? '취소' : 'Cancel' }
+            ],
+            onClose: function() {}
         });
-        overlay.style.display = 'block';
-        dialog.style.display  = 'block';
+        // Set current value after modal.open() synchronously inserts HTML into parent DOM
+        const sel = parentDoc.getElementById('prefsFontSize');
+        if (sel) sel.value = prefs['editor.font_size'] || PREFS_DEFAULT['editor.font_size'];
     });
 }
 
 function hidePreferences() {
-    document.getElementById('prefsOverlay').style.display = 'none';
-    document.getElementById('prefsDialog').style.display  = 'none';
-    _prefsOriginal = null;
-}
-
-function resetPreferences() {
-    document.getElementById('prefsFontSize').value = PREFS_DEFAULT['editor.font_size'];
-}
-
-function applyPreferences() {
-    const fontSize = parseInt(document.getElementById('prefsFontSize').value, 10);
-    const prefs = { 'editor.font_size': fontSize };
-    callPython('save_editor_prefs', { prefs }).then(() => {
-        _applyEditorFontSize(fontSize);
-    });
-    hidePreferences();
+    const modal = window.parent && window.parent.desktopModal;
+    if (modal && modal.isOpen()) modal.close();
 }
 
 function _applyEditorFontSize(size) {
@@ -1312,20 +1327,29 @@ function _applyRunDebug(code) {
 
 function _collectDebugFiles() {
     // Save current editor content to active tab first
-    const cur = EXP.getActiveTab();
-    if (cur && editor) cur.content = editor.getValue();
-    // Collect all IL tabs
-    const ilTabs = EXP.getTabs().filter(t => _isILTab(t));
-    return ilTabs.map((tab, idx) => {
+    const mainTab = EXP.getActiveTab();
+    if (mainTab && editor) mainTab.content = editor.getValue();
+
+    // Main tab: current active tab (always included if IL, even if debugEnabled=false)
+    // Other tabs: included only if debugEnabled=true
+    const allILTabs = EXP.getTabs().filter(t => _isILTab(t));
+    const includedTabs = allILTabs.filter(t => t === mainTab || t.debugEnabled);
+
+    let idx = 0;
+    return includedTabs.map(tab => {
         tab.debugFileId = idx;
-        return {
+        const isMain = (tab === mainTab);
+        const entry = {
             file_id: idx,
             tab_id: tab.id,
             name: tab.name,
             path: tab.path,
-            code: _applyRunDebug(tab.content),
+            // @skillbot(run-debug:...) only applied to main tab
+            code: isMain ? _applyRunDebug(tab.content) : tab.content,
             breakpoints: Array.from(tab.debugBreakpoints).sort((a, b) => a - b),
         };
+        idx++;
+        return entry;
     });
 }
 
@@ -2018,6 +2042,7 @@ const ISK = (() => {
     let _undefMarks = [];           // active TextMarkers for undef warnings
     let _nowarnNames = new Set();   // names suppressed via ;; @skillbot(no-warn:name)
     const _skillBuiltins = new Set();  // populated by CodeMirror.initSKILLBuiltins
+    const _intellisenseFuncs = new Set(); // all DB function names (intellisense candidates)
 
     // ── Occurrence highlight state ──
     let _occurrenceMarks = [];      // active TextMarkers for same-word highlights
@@ -2524,6 +2549,15 @@ const ISK = (() => {
                 if (line[i] === "'") { i++; while (i < line.length && /[\w!?]/.test(line[i])) i++; continue; }
                 // Skip keyword arg: ?name
                 if (line[i] === '?') { i++; while (i < line.length && /[\w!?]/.test(line[i])) i++; continue; }
+                // Skip @rest/@optional/@key tags in procedure parameter lists
+                if (line[i] === '@') {
+                    const atStart = i; i++;
+                    const tagEnd = i;
+                    while (i < line.length && /[\w!?]/.test(line[i])) i++;
+                    const tag = line.slice(tagEnd, i);
+                    if (tag === 'rest' || tag === 'optional' || tag === 'key') continue;
+                    i = atStart + 1; // not a known tag — rewind and let normal scanning handle the word
+                }
                 // Skip -> and ~> slot access: the identifier after -> or ~> is a slot name, not a variable
                 if ((line[i] === '-' && line[i + 1] === '>') || (line[i] === '~' && line[i + 1] === '>')) {
                     i += 2;
@@ -2569,6 +2603,7 @@ const ISK = (() => {
                     // Skip SKILL keywords and builtins
                     if (CodeMirror.skillKeywords && CodeMirror.skillKeywords[name]) continue;
                     if (_skillBuiltins.has(name)) continue;
+                    if (_intellisenseFuncs.has(name)) continue;
 
                     // Skip nowarn names
                     if (_nowarnNames.has(name)) continue;
@@ -2736,6 +2771,10 @@ const ISK = (() => {
         const endCoords   = cm.charCoords({ line: pos.line, ch: token.end },   'window');
         if (e.clientX < startCoords.left || e.clientX > endCoords.right ||
             e.clientY < startCoords.top  || e.clientY > endCoords.bottom) return null;
+        // Suppress underline for tokens immediately after -> or ~> (slot/method access)
+        const lineText = cm.getLine(pos.line);
+        const before = lineText.slice(0, token.start).trimEnd();
+        if (before.endsWith('->') || before.endsWith('~>')) return null;
         // Compute offset of token start
         const src = cm.getValue();
         const lines = src.split('\n');
@@ -2752,7 +2791,7 @@ const ISK = (() => {
         _gotoCm = null;
     }
 
-    // Apply underline to token under mouse
+    // Apply underline to token under mouse; show pointer cursor only when Ctrl is held
     function _updateGotoMark(cm, e) {
         const tok = _getTokenAtMouseEvent(cm, e);
         if (!tok) { _clearGotoMark(cm); return; }
@@ -2766,14 +2805,18 @@ const ISK = (() => {
             if (range && range.from.line === tok.tokenStart.line &&
                 range.from.ch === tok.tokenStart.ch &&
                 range.to.ch === tok.tokenEnd.ch) {
-                return; // already marked
+                // Mark exists — just update pointer cursor based on Ctrl state
+                const wrapper = cm.getWrapperElement();
+                if (e && e.ctrlKey) wrapper.classList.add('isk-gotodef-active');
+                else wrapper.classList.remove('isk-gotodef-active');
+                return;
             }
         }
 
         _clearGotoMark(cm);
         _gotoMark = cm.markText(tok.tokenStart, tok.tokenEnd, { className: 'isk-gotodef-mark' });
         _gotoCm = cm;
-        cm.getWrapperElement().classList.add('isk-gotodef-active');
+        if (e && e.ctrlKey) cm.getWrapperElement().classList.add('isk-gotodef-active');
     }
 
     // Handle click: jump to definition (no Ctrl required)
@@ -2811,6 +2854,14 @@ const ISK = (() => {
                 _handleGotoClick(cm, e);
             }
         }, true); // capture phase so we get it before CodeMirror
+
+        // Update pointer cursor when Ctrl is pressed/released while hovering
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Control' && _gotoMark) wrapper.classList.add('isk-gotodef-active');
+        });
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'Control') wrapper.classList.remove('isk-gotodef-active');
+        });
     }
 
     function init() {
@@ -2978,9 +3029,13 @@ const ISK = (() => {
         _dropdown.style.display = 'block';
     }
 
+    let _suppressSigRestore = false;
+
     function hideDropdown() {
         if (_dropdown) _dropdown.style.display = 'none';
         _items = [];
+        // Restore signature hint if cursor is still inside a function call
+        if (editor && !_suppressSigRestore) onCursorActivity(editor);
     }
 
     function setActive(idx) {
@@ -3025,7 +3080,9 @@ const ISK = (() => {
         const { word, cur, start } = _currentWordAndPos(editor);
         // Pre-set _lastWord to the completed name so onChange does not re-trigger completion
         _lastWord = item.name;
+        _suppressSigRestore = true;
         editor.replaceRange(item.name, { line: cur.line, ch: start }, cur);
+        _suppressSigRestore = false;
 
         // Trigger signature hint for the picked function
         setTimeout(() => _fetchSignature(editor, item.name, 0, []), 50);
@@ -3336,13 +3393,10 @@ const ISK = (() => {
             }
             const localHits = localPrefix;
 
-            // While a signature hint is visible, only show local variable/param completions
-            // (no DB lookup, to avoid clobbering the signature hint context)
-            if (sigVisible) {
-                if (localHits.length) _showDropdown(cm, localHits);
-                else hideDropdown();
-                return;
-            }
+            // While a signature hint is visible, hide it temporarily so the completion
+            // dropdown can show DB results. The signature is restored when the dropdown
+            // closes (via onCursorActivity) or when the user picks an item (via pick()).
+            if (sigVisible) hideSig();
 
             if (typeof callPython !== 'function') {
                 // No backend — show local-only results
@@ -3374,6 +3428,7 @@ const ISK = (() => {
 
     function _fetchSignature(cm, funcName, argIdx, argTokens, delay, byCursor) {
         if (!funcName) return;
+        if (_debugActive) return;
         if (delay === undefined) delay = 80;
         clearTimeout(_sigTimer);
         _sigRequestMouseX = _lastMouseX;
@@ -3552,8 +3607,7 @@ const ISK = (() => {
                 }
                 return;
             }
-            if (e.key === 'Escape') {
-                e.preventDefault();
+            if (e.key === 'Escape' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
                 hideDropdown();
                 return;
             }
@@ -3672,6 +3726,7 @@ const ISK = (() => {
     let _hoverTimer = null;
 
     function onHover(cm, e) {
+        if (_debugActive) return;
         clearTimeout(_hoverTimer);
         _hoverTimer = setTimeout(() => {
             const coords = { left: e.clientX, top: e.clientY };
@@ -3681,15 +3736,23 @@ const ISK = (() => {
             // Check we're hovering over an actual word token
             const word = token.string.trim();
             if (!word || word.length < 2 || /^[0-9]/.test(word)) return;
-            // Move cursor temporarily to hover position to use _parseFuncContext
-            // Instead, directly fetch signature for the hovered word
+            // Only show signature if the token is immediately followed by '('
+            // (i.e. the hovered word is a function call site, not a variable or keyword)
+            const line = cm.getLine(pos.line) || '';
+            const charAfterToken = line[token.end];
+            if (charAfterToken !== '(') return;
             _fetchSignature(cm, word, 0, [], 0, true);
         }, 2000);
     }
 
     function trackMouseMove(e) { _lastMouseX = e.clientX; _lastMouseY = e.clientY; _cursorMovedByKeyboard = false; }
 
-    return { init, initWithEditor, pick, setActive, hideDropdown, hideSig, onKeyDown, onChange, onCursorActivity, setEditorValue, onHover, trackMouseMove, tabFuncsCache: _tabFuncsCache, parseSymbols: _parseLocalSymbols };
+    function setIntellisenseFuncs(names) {
+        _intellisenseFuncs.clear();
+        for (const name of names) _intellisenseFuncs.add(name);
+    }
+
+    return { init, initWithEditor, pick, setActive, hideDropdown, hideSig, onKeyDown, onChange, onCursorActivity, setEditorValue, onHover, trackMouseMove, tabFuncsCache: _tabFuncsCache, parseSymbols: _parseLocalSymbols, setIntellisenseFuncs };
 })();
 
 // ── File Explorer ─────────────────────────────────────────────────────────────
@@ -3702,7 +3765,7 @@ const EXP = (() => {
     let _ctxEntry = null;
 
     // ── Tab management ──────────────────────────────────────────────────────
-    // Each tab: { id, path (null=untitled), name, dirty, content, debugBreakpoints, debugCurrentLine, debugInsertableLines, debugFileId }
+    // Each tab: { id, path (null=untitled), name, dirty, content, debugBreakpoints, debugCurrentLine, debugInsertableLines, debugFileId, debugEnabled }
     let _tabs = [];
     let _activeTabId = null;
     let _nextTabId = 1;
@@ -3712,12 +3775,13 @@ const EXP = (() => {
         return {
             id: _nextTabId++, path, name: name || 'untitled.il', dirty: false, content: c, savedContent: c,
             mtime: mtime || null,
-            cursor: null, scrollInfo: null,
+            cursor: null, scrollInfo: null, history: null,
             debugBreakpoints: new Set(),
             debugCurrentLine: 0,
             debugInsertableLines: [],
             debugFileId: null,
             changedOnDisk: false,
+            debugEnabled: false,
         };
     }
 
@@ -3786,6 +3850,17 @@ const EXP = (() => {
                 const tab = _tabs.find(t => t.id === _tabCtxId);
                 const copyItem = document.getElementById('tabCtxCopyPath');
                 if (copyItem) copyItem.style.opacity = (tab && tab.path) ? '' : '0.4';
+                // "Allow Debugging" item: only for IL tabs, show check mark when enabled
+                const debugItem = document.getElementById('tabCtxDebugEnable');
+                const debugSep  = document.getElementById('tabCtxDebugSep');
+                if (debugItem) {
+                    const isIL = tab && _isILTab(tab);
+                    debugItem.style.display = isIL ? '' : 'none';
+                    if (debugSep) debugSep.style.display = isIL ? '' : 'none';
+                    const checked = tab && tab.debugEnabled;
+                    const label = currentLanguage === 'ko' ? '디버깅 허용' : 'Allow Debugging';
+                    debugItem.innerHTML = '<span class="sb-ctx-check' + (checked ? ' checked' : '') + '"></span>' + label;
+                }
                 menu.style.left = e.clientX + 'px';
                 menu.style.top = e.clientY + 'px';
                 menu.style.display = 'block';
@@ -3913,6 +3988,13 @@ const EXP = (() => {
         }
     }
 
+    function tabCtxToggleDebug() {
+        _hideTabCtxMenu();
+        const tab = _tabs.find(t => t.id === _tabCtxId);
+        if (!tab || !_isILTab(tab)) return;
+        tab.debugEnabled = !tab.debugEnabled;
+    }
+
     function _updateILButtons() {
         const il = isILFile();
         const btnRun   = document.getElementById('btnRun');
@@ -3942,17 +4024,20 @@ const EXP = (() => {
     function _switchTab(tabId) {
         const tab = _tabs.find(t => t.id === tabId);
         if (!tab || tab.id === _activeTabId) return;
-        // Save current editor content and cursor/scroll state to current tab
+        // Save current editor content and cursor/scroll/history state to current tab
         const cur = _getActiveTab();
         if (cur && editor) {
             cur.content = editor.getValue();
             cur.cursor = editor.getCursor();
             cur.scrollInfo = editor.getScrollInfo();
+            cur.history = editor.getHistory();
         }
         _activeTabId = tabId;
         _activeFile = tab.path;
         _suppressDirty = true;
         ISK.setEditorValue(editor, tab.content, tabId);
+        // Restore undo history for the new tab (setEditorValue clears it)
+        if (tab.history) editor.setHistory(tab.history);
         setTimeout(() => { _suppressDirty = false; }, 0);
         // Restore cursor and scroll position for the new tab
         if (tab.cursor) editor.setCursor(tab.cursor);
@@ -3968,7 +4053,7 @@ const EXP = (() => {
         editor.focus();
     }
 
-    function _closeTab(tabId) {
+    async function _closeTab(tabId) {
         if (_debugActive) return; // Block tab closing during debug
         const tab = _tabs.find(t => t.id === tabId);
         if (!tab) return;
@@ -3976,7 +4061,8 @@ const EXP = (() => {
             const msg = currentLanguage === 'ko'
                 ? `'${tab.name}' 저장하지 않은 변경사항이 있습니다. 닫으시겠습니까?`
                 : `'${tab.name}' has unsaved changes. Close anyway?`;
-            if (!confirm(msg)) return;
+            const title = currentLanguage === 'ko' ? '저장하지 않은 변경사항' : 'Unsaved Changes';
+            if (!await parent.showConfirmDialog(title, msg)) return;
         }
         const idx = _tabs.indexOf(tab);
         _tabs.splice(idx, 1);
@@ -4214,14 +4300,14 @@ const EXP = (() => {
     }
 
     function _openFile(filePath) {
-        if (_debugActive) return; // Block new file opens during debug
+        if (_debugActive) return Promise.resolve(); // Block new file opens during debug
         // If already open in a tab, just switch to it
         const existing = _tabs.find(t => t.path === filePath);
-        if (existing) { _switchTab(existing.id); return; }
+        if (existing) { _switchTab(existing.id); return Promise.resolve(); }
         // Save current tab content before loading
         const cur = _getActiveTab();
         if (cur && editor) cur.content = editor.getValue();
-        _loadFile(filePath);
+        return _loadFile(filePath);
     }
 
     function _modeForFile(name) {
@@ -4239,7 +4325,7 @@ const EXP = (() => {
     }
 
     function _loadFile(filePath) {
-        callPython('file_read', { path: filePath }).then(res => {
+        return callPython('file_read', { path: filePath }).then(res => {
             if (res && res.error) { appendOutput('err', 'Cannot open: ' + res.error); return; }
             const name = filePath.split('/').pop();
             const content = res.content || '';
@@ -4304,12 +4390,12 @@ const EXP = (() => {
         }).catch(e => appendOutput('err', 'Save error: ' + e));
     }
 
-    function promptNewFile() {
+    async function promptNewFile() {
         if (_debugActive) return; // Block new file creation during debug
         const dirPath = _activeFile
             ? _activeFile.split('/').slice(0, -1).join('/') || _root
             : _root;
-        const name = prompt(currentLanguage === 'ko' ? '새 파일 이름:' : 'New file name:', 'untitled.il');
+        const name = await parent.showInputDialog(currentLanguage === 'ko' ? '새 파일 이름:' : 'New file name:', 'untitled.il');
         if (!name || !name.trim()) return;
         const newPath = dirPath + '/' + name.trim();
         callPython('file_new_file', { path: newPath }).then(res => {
@@ -4401,7 +4487,7 @@ const EXP = (() => {
         input.addEventListener('blur', _doRename);
     }
 
-    function ctxDelete() {
+    async function ctxDelete() {
         hideCtxMenu();
         if (!_ctxEntry) return;
         const entry = _ctxEntry;
@@ -4409,7 +4495,8 @@ const EXP = (() => {
         const msg = currentLanguage === 'ko'
             ? `"${entry.name}" 파일을 삭제하시겠습니까?`
             : `Delete "${entry.name}"?`;
-        if (!confirm(msg)) return;
+        const title = currentLanguage === 'ko' ? '파일 삭제' : 'Delete File';
+        if (!await parent.showConfirmDialog(title, msg, { yesStyle: 'danger' })) return;
         callPython('file_delete', { path: entry.path }).then(res => {
             if (!res || !res.success) { appendOutput('err', 'Delete failed: ' + (res && res.error)); return; }
             // Close tab for deleted file
@@ -4562,7 +4649,7 @@ const EXP = (() => {
         editor.focus();
     }
 
-    return { init, reloadRoot, onEditorChange, saveCurrentFile, promptNewFile, openNewTab, ctxRename, ctxDelete, hideCtxMenu, tabCtxClose, tabCtxCopyPath, isILFile, renderIcons: _render, loadIconTheme: _loadIconThemeOverrides, getActiveTab: _getActiveTab, getTabs: () => _tabs, switchTab: _switchTab, renderTabs: _renderTabs, startDiskChangePolling: _startDiskChangePolling, stopDiskChangePolling: _stopDiskChangePolling };
+    return { init, reloadRoot, onEditorChange, saveCurrentFile, promptNewFile, openNewTab, openFile: _openFile, closeTab: _closeTab, ctxRename, ctxDelete, hideCtxMenu, tabCtxClose, tabCtxCopyPath, tabCtxToggleDebug, isILFile, renderIcons: _render, loadIconTheme: _loadIconThemeOverrides, getActiveTab: _getActiveTab, getTabs: () => _tabs, switchTab: _switchTab, renderTabs: _renderTabs, startDiskChangePolling: _startDiskChangePolling, stopDiskChangePolling: _stopDiskChangePolling };
 })();
 
 // ── Explorer open folder ───────────────────────────────────────────────────────
@@ -4664,6 +4751,7 @@ const SBFind = (function() {
     let _highlightMark = null;
     let _allMarks = [];
     let _noResultsText = 'No results';
+    let _dialogOpen = false;
 
     function _clearMarks() {
         _allMarks.forEach(m => m.clear());
@@ -4730,30 +4818,25 @@ const SBFind = (function() {
 
     function findNext(reverse) {
         if (!_lastQuery) return;
-        if (_matches.length === 0) {
+        if (!_dialogOpen) {
+            // Dialog is closed: always re-scan so edits are reflected
+            const cur = editor ? editor.indexFromPos(editor.getCursor()) : 0;
             _buildMatches(_lastQuery, _lastCase, _lastRegex);
-            if (_matches.length === 0) return;
-            // Start from cursor position
-            if (editor) {
-                const cur = editor.indexFromPos(editor.getCursor());
-                let best = 0;
-                for (let i = 0; i < _matches.length; i++) {
-                    const mIdx = editor.indexFromPos(_matches[i].from);
-                    if (reverse ? mIdx <= cur : mIdx >= cur) { best = i; break; }
-                    best = i;
-                }
-                _matchIdx = reverse ? best : best;
-            } else {
-                _matchIdx = 0;
+            if (_matches.length === 0) { _updateStatus(); return; }
+            let best = reverse ? _matches.length - 1 : 0;
+            for (let i = 0; i < _matches.length; i++) {
+                const mIdx = editor ? editor.indexFromPos(_matches[i].from) : 0;
+                if (reverse ? mIdx < cur : mIdx >= cur) { best = i; break; }
+                if (!reverse) best = i;
             }
-            _highlightCurrent();
-            _updateStatus();
-            return;
-        }
-        if (reverse) {
-            _matchIdx = (_matchIdx <= 0) ? _matches.length - 1 : _matchIdx - 1;
+            _matchIdx = best;
         } else {
-            _matchIdx = (_matchIdx >= _matches.length - 1) ? 0 : _matchIdx + 1;
+            if (_matches.length === 0) return;
+            if (reverse) {
+                _matchIdx = (_matchIdx <= 0) ? _matches.length - 1 : _matchIdx - 1;
+            } else {
+                _matchIdx = (_matchIdx >= _matches.length - 1) ? 0 : _matchIdx + 1;
+            }
         }
         _highlightCurrent();
         _updateStatus();
@@ -4836,6 +4919,7 @@ const SBFind = (function() {
         </div>`;
 
         _noResultsText = t.noResults;
+        _dialogOpen = true;
 
         modal.open({
             title: withReplace ? t.findReplace : t.find,
@@ -4844,7 +4928,10 @@ const SBFind = (function() {
             position: 'bottom-right',
             buttons: [],
             onClose: function() {
+                _dialogOpen = false;
                 _clearMarks();
+                _matches = [];
+                _matchIdx = -1;
                 if (editor) editor.focus();
             }
         });
@@ -4869,7 +4956,8 @@ const SBFind = (function() {
                     inp.value = _lastQuery;
                 }
             }
-            setTimeout(() => { inp.focus(); inp.select(); _onQueryInput(); }, 0);
+            // Qt WebEngine cross-frame focus needs a small delay; 0ms is unreliable.
+            setTimeout(() => { inp.focus(); inp.select(); _onQueryInput(); }, 50);
         }
 
         const btnNext = pd.getElementById('sb-btn-next');
@@ -4891,4 +4979,262 @@ const SBFind = (function() {
     }
 
     return { open, findNext };
+})();
+
+// ── PRJ: Project Manager ──────────────────────────────────────────────────────
+const PRJ = (function() {
+    let _projects = [];       // [{id, name, description, files:[]}]
+    let _editingId = null;    // project id currently shown in edit panel (null = new)
+    let _editFiles = [];      // mutable file list for the edit panel
+    let _activeProjectId = null; // project id that was last switched to
+
+    // ── helpers ──
+
+    function _t(en, ko) {
+        return currentLanguage === 'ko' ? ko : en;
+    }
+
+    function _esc(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ── public: open / close ──
+
+    function openDialog() {
+        _load(function() {
+            document.getElementById('prjOverlay').classList.add('visible');
+            document.getElementById('prjDialog').classList.add('visible');
+            document.getElementById('prjBtn').classList.add('active');
+            _renderList();
+            // Default: select first project or blank new-form
+            if (_projects.length > 0) {
+                _selectProject(_projects[0].id);
+            } else {
+                startNew();
+            }
+        });
+    }
+
+    function closeDialog() {
+        document.getElementById('prjOverlay').classList.remove('visible');
+        document.getElementById('prjDialog').classList.remove('visible');
+        document.getElementById('prjBtn').classList.remove('active');
+    }
+
+    // ── list rendering ──
+
+    function _renderList() {
+        const list = document.getElementById('prjList');
+        if (!list) return;
+        if (_projects.length === 0) {
+            list.innerHTML = '<div class="prj-list-empty">' +
+                _esc(_t('No projects yet', '프로젝트가 없습니다')) + '</div>';
+            return;
+        }
+        list.innerHTML = _projects.map(p => {
+            let cls = 'prj-list-item';
+            if (_editingId === p.id) cls += ' active';
+            if (_activeProjectId === p.id) cls += ' current';
+            return `<div class="${cls}" data-id="${_esc(p.id)}">${_esc(p.name)}</div>`;
+        }).join('');
+        list.querySelectorAll('.prj-list-item').forEach(el => {
+            el.addEventListener('click', () => _selectProject(el.dataset.id));
+        });
+        // i18n labels
+        _applyI18n(document.getElementById('prjDialog'));
+    }
+
+    function _selectProject(id) {
+        const p = _projects.find(x => x.id === id);
+        if (!p) return;
+        _editingId = id;
+        _editFiles = p.files.slice();
+        document.getElementById('prjNameInput').value = p.name;
+        document.getElementById('prjDescInput').value = p.description || '';
+        document.getElementById('prjDeleteBtn').style.display = '';
+        document.getElementById('prjSwitchBtn').style.display = '';
+        _renderFileList();
+        _renderList();
+    }
+
+    // ── new project ──
+
+    function startNew() {
+        _editingId = null;
+        _editFiles = [];
+        document.getElementById('prjNameInput').value = '';
+        document.getElementById('prjDescInput').value = '';
+        document.getElementById('prjDeleteBtn').style.display = 'none';
+        document.getElementById('prjSwitchBtn').style.display = 'none';
+        _renderFileList();
+        _renderList();
+        setTimeout(() => {
+            const inp = document.getElementById('prjNameInput');
+            if (inp) inp.focus();
+        }, 50);
+    }
+
+    // ── file list in edit panel ──
+
+    function _renderFileList() {
+        const el = document.getElementById('prjFileList');
+        if (!el) return;
+        if (_editFiles.length === 0) {
+            el.innerHTML = '<div class="prj-list-empty" style="padding:8px 10px;">' +
+                _esc(_t('No files', '파일 없음')) + '</div>';
+            return;
+        }
+        el.innerHTML = _editFiles.map((f, i) => {
+            const name = f.split('/').pop() || f;
+            return `<div class="prj-file-item">` +
+                `<span class="prj-file-name">${_esc(name)}</span>` +
+                `<button class="prj-file-remove" data-idx="${i}">✕</button>` +
+                `</div>`;
+        }).join('');
+        el.querySelectorAll('.prj-file-remove').forEach(btn => {
+            btn.addEventListener('click', () => {
+                _editFiles.splice(parseInt(btn.dataset.idx), 1);
+                _renderFileList();
+            });
+        });
+    }
+
+    function addCurrentTabs() {
+        // Add all open tabs that have a real file path and are not already in list
+        const tabs = EXP.getTabs();
+        tabs.forEach(t => {
+            if (t.path && !_editFiles.includes(t.path)) {
+                _editFiles.push(t.path);
+            }
+        });
+        _renderFileList();
+    }
+
+    // ── save / delete ──
+
+    function _showToast(msg) {
+        const el = document.getElementById('prjToast');
+        if (!el) return;
+        el.textContent = msg;
+        el.classList.add('visible');
+        setTimeout(() => el.classList.remove('visible'), 2000);
+    }
+
+    function saveProject() {
+        const name = (document.getElementById('prjNameInput').value || '').trim();
+        if (!name) {
+            document.getElementById('prjNameInput').focus();
+            return;
+        }
+        const desc = (document.getElementById('prjDescInput').value || '').trim();
+        const payload = {
+            id:          _editingId || '',
+            name:        name,
+            description: desc,
+            files:       _editFiles.slice(),
+        };
+        callPython('project_save', payload).then(res => {
+            if (res && res.success) {
+                _editingId = res.project.id;
+                _load(function() {
+                    _renderList();
+                    _renderFileList();
+                    _showToast(_t('Project saved.', '저장되었습니다.'));
+                });
+            }
+        }).catch(() => {});
+    }
+
+    async function switchProject() {
+        if (!_editingId) return;
+        const p = _projects.find(x => x.id === _editingId);
+        if (!p || !p.files || p.files.length === 0) return;
+        const msg = _t(
+            `Close all tabs and switch to project "${p.name}"?`,
+            `현재 탭을 모두 닫고 "${p.name}" 프로젝트로 전환할까요?`
+        );
+        if (!await parent.showConfirmDialog(_t('Switch Project', '프로젝트 전환'), msg)) return;
+        closeDialog();
+        // Close all existing tabs, then open project files in order
+        const tabs = EXP.getTabs().slice();
+        for (const t of tabs) {
+            await EXP.closeTab(t.id);
+        }
+        for (const path of p.files) {
+            await EXP.openFile(path);
+        }
+        // Activate the first tab
+        const opened = EXP.getTabs();
+        if (opened.length > 0) EXP.switchTab(opened[0].id);
+        _activeProjectId = p.id;
+    }
+
+    async function deleteProject() {
+        if (!_editingId) return;
+        const name = (_projects.find(p => p.id === _editingId) || {}).name || '';
+        const msg = _t(`Delete project "${name}"?`, `"${name}" 프로젝트를 삭제할까요?`);
+        if (!await parent.showConfirmDialog(_t('Delete Project', '프로젝트 삭제'), msg)) return;
+        callPython('project_delete', { id: _editingId }).then(res => {
+            if (res && res.success) {
+                _editingId = null;
+                _load(function() {
+                    _renderList();
+                    if (_projects.length > 0) {
+                        _selectProject(_projects[0].id);
+                    } else {
+                        startNew();
+                    }
+                });
+            }
+        }).catch(() => {});
+    }
+
+    // ── load from backend ──
+
+    function _load(cb) {
+        if (typeof callPython !== 'function') { setTimeout(() => _load(cb), 200); return; }
+        callPython('project_list', {}).then(res => {
+            if (res && res.success) _projects = res.projects || [];
+            if (cb) cb();
+        }).catch(() => { if (cb) cb(); });
+    }
+
+    // ── i18n helper for dialog ──
+
+    function _applyI18n(root) {
+        if (!root) return;
+        root.querySelectorAll('[data-en]').forEach(el => {
+            const txt = currentLanguage === 'ko' ? el.dataset.ko : el.dataset.en;
+            if (txt !== undefined) el.textContent = txt;
+        });
+    }
+
+    // Attach overlay click + ESC key to close (done once at module init)
+    (function() {
+        function _attach() {
+            const ov = document.getElementById('prjOverlay');
+            if (ov) { ov.addEventListener('click', closeDialog); }
+            else { setTimeout(_attach, 200); }
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', _attach);
+        } else {
+            _attach();
+        }
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && document.getElementById('prjDialog').classList.contains('visible')) {
+                closeDialog();
+            }
+        });
+    })();
+
+    return {
+        openDialog,
+        closeDialog,
+        startNew,
+        addCurrentTabs,
+        saveProject,
+        deleteProject,
+        switchProject,
+    };
 })();

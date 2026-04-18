@@ -11,22 +11,8 @@
 
 <div class="sfr-root">
 
-    <!-- Toolbar -->
-    <div class="sfr-topbar">
-        <input type="text" id="sfr-path" class="sfr-path-input" placeholder="form.json path…"/>
-        <button class="sfd-btn" onclick="doLoad()">Load</button>
-        <div class="sfr-spacer"></div>
-        <button class="sfd-btn" id="sfr-cancel-btn" onclick="doCancel()" style="display:none">Cancel</button>
-        <button class="sfd-btn sfd-btn-primary" id="sfr-submit-btn" onclick="doSubmit()" style="display:none">Submit</button>
-    </div>
-
-    <div class="sfr-status" id="sfr-status"></div>
-
-    <!-- Empty state (outside sfr-form so innerHTML='' never removes it) -->
-    <div class="sfr-empty" id="sfr-empty">Load a form file to begin.</div>
-
     <!-- Form area (grid-rendered) -->
-    <div class="sfr-form" id="sfr-form" style="display:none"></div>
+    <div class="sfr-form" id="sfr-form"></div>
 
     <!-- Result area -->
     <div class="sfr-result" id="sfr-result" style="display:none">
@@ -44,47 +30,56 @@ let currentSchema = null;
 let formValues    = {};
 
 // ================================================================
-// LOAD
-// ================================================================
-async function doLoad() {
-    const path = document.getElementById('sfr-path').value.trim();
-    if (!path) { setStatus('Enter a file path', 'err'); return; }
-    const r = await callPython('runner_load_schema', { path });
-    if (r && r.success && r.schema) {
-        renderForm(r.schema);
-        setStatus('', '');
-    } else {
-        setStatus((r && r.error) || 'Failed to load', 'err');
-    }
-}
-
-// ================================================================
 // RENDER FORM from skillform JSON schema
 // ================================================================
 function renderForm(schema) {
     currentSchema = schema;
     formValues    = {};
 
+    // Set window title from docProps
+    const formName = (schema.docProps && schema.docProps.formName) || schema.title || '';
+    if (formName) document.title = formName;
+
     const formEl = document.getElementById('sfr-form');
-    document.getElementById('sfr-empty').style.display = 'none';
     formEl.style.display = 'block';
 
-    const gridRowH = (schema.grid && schema.grid.rowHeight) || 56;
-    const cellW    = (schema.grid && schema.grid.cellW)    || 56;
+    // Apply document font size; scale grid proportionally to base size of 14px
+    const fontSize = (schema.docProps && schema.docProps.fontSize) || 16;
+    const scale = fontSize / 14;
+    const rootEl = document.querySelector('.sfr-root');
+    rootEl.style.fontSize = fontSize + 'px';
+    rootEl.style.setProperty('--runner-font-size', fontSize + 'px');
+
+    const MARGIN   = 16; // inner margin around the form grid (px)
+
+    const baseRowH = (schema.grid && schema.grid.rowHeight) || 56;
+    const baseCellW = (schema.grid && schema.grid.cellW)    || 56;
+    const gridRowH = Math.round(baseRowH * scale);
+    const cellW    = Math.round(baseCellW * scale);
     const fields   = schema.fields || [];
 
-    // Compute canvas size
+    // Compute canvas size based on formSize setting
+    const docProps = schema.docProps || {};
+    const formSize = docProps.formSize || { mode: 'auto', cols: 0, rows: 0 };
+
     let maxRow = 0, maxCol = 0;
     fields.forEach(f => {
         maxRow = Math.max(maxRow, f.row + f.h);
         maxCol = Math.max(maxCol, f.col + f.w);
     });
 
+    // Apply formSize override if in 'fixed' mode
+    if (formSize.mode === 'fixed') {
+        if (formSize.cols > 0) maxCol = formSize.cols;
+        if (formSize.rows > 0) maxRow = formSize.rows;
+    }
+
     // Clear previous form content
     formEl.innerHTML = '';
     formEl.style.position = 'relative';
-    formEl.style.minHeight = (maxRow * gridRowH + 24) + 'px';
-    formEl.style.width = (maxCol * cellW) + 'px';
+    formEl.style.minHeight = (maxRow * gridRowH + MARGIN * 2) + 'px';
+    formEl.style.minWidth  = (maxCol * cellW    + MARGIN * 2) + 'px';
+    formEl.style.width = '';
     formEl.style.overflowX = 'auto';
 
     // Render separators first so they appear below other components
@@ -98,15 +93,15 @@ function renderForm(schema) {
             const isEdge = f.align === 'edge';
             const ox = isEdge ? 0 : cellW / 2;
             const oy = isEdge ? 0 : gridRowH / 2;
-            el.style.left   = (f.col * cellW   + ox) + 'px';
-            el.style.top    = (f.row * gridRowH + oy) + 'px';
+            el.style.left   = (f.col * cellW   + ox + MARGIN) + 'px';
+            el.style.top    = (f.row * gridRowH + oy + MARGIN) + 'px';
             el.style.width  = (f.w   * cellW   - ox * 2) + 'px';
             el.style.height = (f.h   * gridRowH - oy * 2) + 'px';
             el.style.padding = '0';
         } else {
-            el.style.left   = (f.col * cellW) + 'px';
+            el.style.left   = (f.col * cellW   + MARGIN) + 'px';
             el.style.width  = (f.w   * cellW) + 'px';
-            el.style.top    = (f.row * gridRowH) + 'px';
+            el.style.top    = (f.row * gridRowH + MARGIN) + 'px';
             el.style.height = (f.h   * gridRowH) + 'px';
         }
 
@@ -114,10 +109,14 @@ function renderForm(schema) {
         formEl.appendChild(el);
     });
 
-    // Show action buttons
-    document.getElementById('sfr-submit-btn').style.display = '';
-    document.getElementById('sfr-cancel-btn').style.display = '';
     document.getElementById('sfr-result').style.display = 'none';
+
+    // Standalone mode: resize Qt window to fit form content
+    if (_isStandaloneMode) {
+        const contentW = maxCol * cellW + MARGIN * 2;
+        const contentH = maxRow * gridRowH + MARGIN * 2;
+        callPython('resize_window', { w: contentW, h: contentH }).catch(() => {});
+    }
 }
 
 function buildFieldWidget(f, rowH) {
@@ -366,40 +365,17 @@ function buildFieldWidget(f, rowH) {
     return wrap;
 }
 
-// ================================================================
-// SUBMIT / CANCEL
-// ================================================================
-async function doSubmit() {
-    if (currentSchema) {
-        const missing = (currentSchema.fields || []).filter(f => f.required && !formValues[f.id]);
-        if (missing.length) {
-            setStatus('Required: ' + missing.map(f => f.label || f.id).join(', '), 'err');
-            return;
-        }
-    }
-    await callPython('runner_submit', { values: formValues });
-    setStatus('Submitted', 'ok');
-    document.getElementById('sfr-submit-btn').style.display = 'none';
-    document.getElementById('sfr-cancel-btn').style.display = 'none';
-    document.getElementById('sfr-result-json').textContent = JSON.stringify(formValues, null, 2);
-    document.getElementById('sfr-result').style.display = '';
-}
+function setStatus(msg, type) {}
 
-async function doCancel() {
-    await callPython('runner_cancel', {});
-    setStatus('Cancelled', '');
-    document.getElementById('sfr-submit-btn').style.display = 'none';
-    document.getElementById('sfr-cancel-btn').style.display = 'none';
-    document.getElementById('sfr-form').innerHTML = '';
-    document.getElementById('sfr-form').style.display = 'none';
-    document.getElementById('sfr-empty').style.display = '';
-    document.getElementById('sfr-result').style.display = 'none';
-}
+// ================================================================
+// STANDALONE MODE
+// ================================================================
+let _isStandaloneMode = false;
 
-function setStatus(msg, type) {
-    const el = document.getElementById('sfr-status');
-    el.textContent = msg;
-    el.className = 'sfr-status' + (type ? ' sfd-status-' + type : '');
+function initStandaloneMode(state) {
+    if (!state || !state.auto_run) return;
+    _isStandaloneMode = true;
+    stopPolling(); // no live updates from designer in standalone mode
 }
 
 // ================================================================
@@ -413,19 +389,18 @@ window.state_update = function(updates) {
 };
 
 window.onAppStateLoaded = function(state) {
+    initStandaloneMode(state);
     if (state && state.schema) {
         _pollVersion = state.runner_schema_version || 0;
-        if (state.schema_path) document.getElementById('sfr-path').value = state.schema_path;
         renderForm(state.schema);
     }
-    startPolling();
+    if (!_isStandaloneMode) startPolling();
 };
 
 async function onViewActivated() {
     // When tab is switched to Runner, check if designer pushed a schema
     const state = await callPython('runner_get_state', {});
     if (state && state.schema && state.waiting) {
-        if (state.schema_path) document.getElementById('sfr-path').value = state.schema_path;
         renderForm(state.schema);
         setStatus('', '');
     }
@@ -482,7 +457,7 @@ if (window.opener) {
 if (typeof isInWebBrowser !== 'undefined' && isInWebBrowser) {
     setTimeout(function() {
         renderForm({
-            title: "Sample Form",
+            docProps: { formName: "Sample Form", fontSize: 14 },
             grid: { cols: 12, rowHeight: 48 },
             fields: [
                 { id:'name',  type:'text',     label:'이름',   col:0, row:0, w:6, h:1, required:true },

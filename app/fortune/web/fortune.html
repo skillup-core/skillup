@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Today's Fortune</title>
+    <script src="/common/script/appinit.js" onerror="this.onerror=null; this.src='../../../../web/common/script/appinit.js';"></script>
+</head>
+<body>
+    <style>
+        .fortune-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 24px;
+            min-height: 60vh;
+        }
+
+        .fortune-star {
+            width: 72px;
+            height: 72px;
+            margin-bottom: 20px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.08); opacity: 0.85; }
+        }
+
+        .fortune-date {
+            font-size: 13px;
+            color: var(--text-primary);
+            margin-bottom: 24px;
+            letter-spacing: 0.5px;
+        }
+
+        .fortune-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 32px 36px;
+            max-width: 560px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+        }
+
+        .fortune-text {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-primary);
+            line-height: 1.7;
+        }
+
+        .fortune-loading {
+            color: var(--text-secondary);
+            font-size: 15px;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .fortune-error {
+            color: var(--danger-color, #e74c3c);
+            font-size: 14px;
+            text-align: center;
+            padding: 12px;
+        }
+
+        .settings-btn {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 6px 16px;
+            font-size: 13px;
+            color: var(--text-primary);
+            cursor: pointer;
+            margin-top: 20px;
+        }
+
+        .settings-btn:hover {
+            border-color: var(--accent-color, #4a90e2);
+            color: var(--accent-color, #4a90e2);
+        }
+
+    </style>
+
+    <div class="content-container">
+        <div class="fortune-container">
+            <div class="fortune-star">
+                <img src="/app/f0rtune0/icon.svg" alt="clover" style="width:100%;height:100%;">
+            </div>
+            <div class="fortune-date" id="fortune-date"></div>
+
+            <div id="fortune-display">
+                <div class="fortune-loading" id="loading-text">Loading...</div>
+            </div>
+
+            <button class="settings-btn" id="btn-settings" style="display:none;" onclick="openSettings()">
+                &#9881; <span id="settings-label">Settings</span>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const i18n = {
+            en: {
+                loading: 'Loading your fortune...',
+                settings: 'Settings',
+                error: 'Failed to load fortune.',
+                settingsTitle: 'Fortune Settings',
+            },
+            ko: {
+                loading: '운세를 불러오는 중...',
+                settings: '설정',
+                error: '운세를 불러오지 못했습니다.',
+                settingsTitle: '운세 설정',
+            }
+        };
+
+        let currentLang = 'ko';
+        let fortuneData = null;
+        let _langPref = 'auto'; // tracks language_pref from config
+
+        function t(key) {
+            return (i18n[currentLang] && i18n[currentLang][key]) || key;
+        }
+
+        function formatDate(yyyymmdd) {
+            if (!yyyymmdd || yyyymmdd.length < 8) return '';
+            const y = yyyymmdd.slice(0, 4);
+            const m = yyyymmdd.slice(4, 6);
+            const d = yyyymmdd.slice(6, 8);
+            if (currentLang === 'ko') return `${y}년 ${parseInt(m)}월 ${parseInt(d)}일`;
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            return `${months[parseInt(m)-1]} ${parseInt(d)}, ${y}`;
+        }
+
+        function escapeHtml(s) {
+            return String(s)
+                .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        // ----------------------------------------------------------------
+        // Fortune display
+        // ----------------------------------------------------------------
+
+        function renderFortune(data) {
+            fortuneData = data;
+            const text = currentLang === 'ko' ? data.ko : data.en;
+            document.getElementById('fortune-display').innerHTML =
+                `<div class="fortune-card"><div class="fortune-text">${escapeHtml(text)}</div></div>`;
+            document.getElementById('fortune-date').textContent = formatDate(data.date);
+            document.getElementById('btn-settings').style.display = '';
+            document.getElementById('settings-label').textContent = t('settings');
+        }
+
+        function _applyLangPref(pref) {
+            _langPref = pref || 'auto';
+            if (_langPref === 'ko' || _langPref === 'en') {
+                currentLang = _langPref;
+            } else {
+                // 'auto': read desktop UI language immediately from parent
+                try {
+                    const parentLang = window.parent.currentLanguage;
+                    if (parentLang) currentLang = parentLang;
+                } catch(e) {}
+            }
+        }
+
+        async function loadFortune() {
+            document.getElementById('fortune-display').innerHTML =
+                `<div class="fortune-loading">${escapeHtml(t('loading'))}</div>`;
+            document.getElementById('btn-settings').style.display = 'none';
+
+            try {
+                // Load config first to apply language_pref before rendering
+                const cfg = await callPython('fortune_get_config', {});
+                if (cfg && cfg.success) _applyLangPref(cfg.language_pref);
+
+                const result = await callPython('get_fortune', {});
+                if (!result || result.need_birth || result.error === 'invalid_birth') {
+                    // No birth set — open settings dialog immediately
+                    openSettings({ firstTime: true });
+                } else if (result.success) {
+                    renderFortune(result);
+                } else {
+                    document.getElementById('fortune-display').innerHTML =
+                        `<div class="fortune-error">${escapeHtml(t('error'))}</div>`;
+                    document.getElementById('btn-settings').style.display = '';
+                }
+            } catch (e) {
+                document.getElementById('fortune-display').innerHTML =
+                    `<div class="fortune-error">${escapeHtml(t('error'))}</div>`;
+                document.getElementById('btn-settings').style.display = '';
+            }
+        }
+
+        // ----------------------------------------------------------------
+        // Settings dialog (via desktopModal)
+        // ----------------------------------------------------------------
+
+        const SEL_STYLE = 'background:var(--bg-primary,#1a1d23);border:1px solid var(--border-color,#373c47);' +
+            'color:var(--text-primary,#e0e0e0);border-radius:4px;padding:4px 6px;font-size:13px;outline:none;cursor:pointer;';
+        const ROW_STYLE = 'display:flex;align-items:center;margin-bottom:10px;';
+        const LABEL_STYLE = 'font-size:13px;color:var(--text-secondary,#a0a0a0);flex:1;margin-right:12px;white-space:nowrap;';
+
+        function _opts(items, selected) {
+            return items.map(([v, label]) =>
+                `<option value="${escapeHtml(v)}"${v === selected ? ' selected' : ''}>${escapeHtml(label)}</option>`
+            ).join('');
+        }
+
+        function _yearOpts(sel) {
+            const y = new Date().getFullYear();
+            const ph = currentLang === 'ko' ? '년' : 'Year';
+            let h = `<option value="">${ph}</option>`;
+            for (let i = y; i >= 1900; i--)
+                h += `<option value="${i}"${String(i)===sel?' selected':''}>${currentLang==='ko'?i+'년':i}</option>`;
+            return h;
+        }
+
+        function _monthOpts(sel) {
+            const names = currentLang === 'ko'
+                ? ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
+                : ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            const ph = currentLang === 'ko' ? '월' : 'Mo';
+            let h = `<option value="">${ph}</option>`;
+            for (let m = 1; m <= 12; m++) {
+                const v = String(m).padStart(2,'0');
+                h += `<option value="${v}"${v===sel?' selected':''}>${names[m-1]}</option>`;
+            }
+            return h;
+        }
+
+        function _dayOpts(year, month, sel) {
+            const days = (year && month) ? new Date(year, month, 0).getDate() : 31;
+            const ph = currentLang === 'ko' ? '일' : 'Day';
+            let h = `<option value="">${ph}</option>`;
+            for (let d = 1; d <= days; d++) {
+                const v = String(d).padStart(2,'0');
+                h += `<option value="${v}"${v===sel?' selected':''}>${currentLang==='ko'?d+'일':d}</option>`;
+            }
+            return h;
+        }
+
+        function _hourOpts(sel) {
+            const unknown = currentLang === 'ko' ? '모름' : 'Unknown';
+            // sel='99' means unknown; empty string also treated as unknown
+            const isSel99 = (sel === '99' || sel === '');
+            let h = `<option value="99"${isSel99?' selected':''}>${unknown}</option>`;
+            for (let i = 0; i < 24; i++) {
+                const v = String(i).padStart(2,'0');
+                const label = currentLang === 'ko' ? i+'시'
+                    : (i===0?'12 AM':i<12?i+' AM':i===12?'12 PM':(i-12)+' PM');
+                h += `<option value="${v}"${v===sel?' selected':''}>${label}</option>`;
+            }
+            return h;
+        }
+
+        function _buildSettingsHtml(cfg) {
+            const birth = cfg.birth || '';
+            const sy = birth.slice(0,4), sm = birth.slice(4,6), sd = birth.slice(6,8);
+            const sh = birth.length >= 10 ? birth.slice(8,10) : '';
+            const showOnStart = cfg.show_on_start !== 'false';
+            const langPref = cfg.language_pref || 'auto';
+            const ko = currentLang === 'ko';
+
+            const toggleChecked = showOnStart ? ' checked' : '';
+            const toggleStyle = 'position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0;';
+            const sliderStyle = 'position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;' +
+                'background:var(--border-color,#444);border-radius:20px;transition:background 0.2s;';
+            const knobStyle = 'content:\'\';position:absolute;height:14px;width:14px;left:3px;bottom:3px;' +
+                'background:white;border-radius:50%;transition:transform 0.2s;';
+
+            return `
+<div style="${ROW_STYLE}">
+  <span style="${LABEL_STYLE}">${ko ? '생년월일시' : 'Birth Date & Hour'}</span>
+  <div style="display:flex;">
+    <select id="fs-year"  style="${SEL_STYLE}width:76px;margin-right:3px;">${_yearOpts(sy)}</select>
+    <select id="fs-month" style="${SEL_STYLE}width:62px;margin-right:3px;">${_monthOpts(sm)}</select>
+    <select id="fs-day"   style="${SEL_STYLE}width:62px;margin-right:3px;">${_dayOpts(parseInt(sy)||0,parseInt(sm)||0,sd)}</select>
+    <select id="fs-hour"  style="${SEL_STYLE}width:90px;">${_hourOpts(sh)}</select>
+  </div>
+</div>
+<div id="fs-birth-invalid" style="font-size:11px;color:var(--danger-color,#e74c3c);margin-bottom:8px;display:none;">${ko?'년, 월, 일을 선택하세요':'Select year, month, and day'}</div>
+<div style="${ROW_STYLE}">
+  <span style="${LABEL_STYLE}">${ko ? '시작시 운세 표시' : 'Show Fortune on Startup'}</span>
+  <label style="${toggleStyle}">
+    <input type="checkbox" id="fs-show-on-start"${toggleChecked} style="opacity:0;width:0;height:0;position:absolute;">
+    <span id="fs-slider" style="${sliderStyle}"><span style="${knobStyle}display:block;"></span></span>
+  </label>
+</div>
+<div style="${ROW_STYLE}margin-bottom:0;">
+  <span style="${LABEL_STYLE}">${ko ? '운세 언어' : 'Fortune Language'}</span>
+  <select id="fs-lang-pref" style="${SEL_STYLE}width:160px;">
+    ${_opts([['auto', ko?'자동 (UI 언어 따름)':'Auto (follow UI)'],['ko','한국어'],['en','English']], langPref)}
+  </select>
+</div>`;
+        }
+
+        async function openSettings(opts) {
+            const modal = window.parent && window.parent.desktopModal;
+            if (!modal) return;
+
+            let cfg = {};
+            if (typeof callPython === 'function') {
+                try {
+                    const r = await callPython('fortune_get_config', {});
+                    if (r && r.success) cfg = r;
+                } catch (e) { /* ignore */ }
+            }
+
+            const ko = currentLang === 'ko';
+            modal.open({
+                title: t('settingsTitle'),
+                html: _buildSettingsHtml(cfg),
+                position: 'iframe-center',
+                buttons: [
+                    { label: ko ? '저장' : 'Save', primary: true, onClick: function() { _saveFromDialog(); } },
+                    { label: ko ? '취소' : 'Cancel' }
+                ]
+            });
+
+            // Attach day repopulate after modal inserts HTML into parent DOM
+            const pd = window.parent.document;
+            function repopDay() {
+                const y = parseInt(pd.getElementById('fs-year').value) || 0;
+                const m = parseInt(pd.getElementById('fs-month').value) || 0;
+                const cur = pd.getElementById('fs-day').value;
+                pd.getElementById('fs-day').innerHTML = _dayOpts(y, m, cur);
+            }
+            pd.getElementById('fs-year').onchange  = repopDay;
+            pd.getElementById('fs-month').onchange = repopDay;
+
+            // Apply toggle slider style dynamically (CSS :checked unavailable in inline style)
+            const chk = pd.getElementById('fs-show-on-start');
+            const slider = pd.getElementById('fs-slider');
+            function updateSlider() {
+                slider.style.background = chk.checked
+                    ? 'var(--accent-color,#4a90e2)' : 'var(--border-color,#444)';
+                slider.firstElementChild.style.transform = chk.checked ? 'translateX(16px)' : '';
+            }
+            updateSlider();
+            chk.onchange = updateSlider;
+        }
+
+        async function _saveFromDialog() {
+            const pd = window.parent.document;
+            const year  = pd.getElementById('fs-year')  && pd.getElementById('fs-year').value;
+            const month = pd.getElementById('fs-month') && pd.getElementById('fs-month').value;
+            const day   = pd.getElementById('fs-day')   && pd.getElementById('fs-day').value;
+            const hour  = pd.getElementById('fs-hour')  && pd.getElementById('fs-hour').value;
+            const invalidEl = pd.getElementById('fs-birth-invalid');
+
+            if (!year || !month || !day) {
+                if (invalidEl) invalidEl.style.display = 'block';
+                return;
+            }
+            if (invalidEl) invalidEl.style.display = 'none';
+
+            const birth = year + month + day + (hour || '99');
+            const showOnStart = pd.getElementById('fs-show-on-start')
+                ? pd.getElementById('fs-show-on-start').checked : true;
+            const langPref = pd.getElementById('fs-lang-pref')
+                ? pd.getElementById('fs-lang-pref').value : 'auto';
+
+            if (typeof callPython === 'function') {
+                try {
+                    await callPython('fortune_save_config', {
+                        birth, show_on_start: showOnStart, language_pref: langPref,
+                    });
+                } catch (e) {
+                    console.error('Failed to save settings:', e);
+                    return;
+                }
+            }
+
+            const modal = window.parent && window.parent.desktopModal;
+            if (modal) modal.close();
+            _applyLangPref(langPref);
+            loadFortune();
+        }
+
+        // Called by Python via callJS on startup
+        function showStartupFortune(data) {
+            if (data.language_pref) _applyLangPref(data.language_pref);
+            renderFortune(data);
+        }
+
+        // Handle messages from desktop
+        window.addEventListener('message', function(event) {
+            const data = event.data;
+            if (!data || !data.action) return;
+            if (data.action === 'setLanguage') {
+                // Only follow desktop UI language when fortune language is set to auto
+                if (_langPref === 'auto') {
+                    currentLang = data.language || 'en';
+                    if (fortuneData) renderFortune(fortuneData);
+                }
+                const settingsLabelEl = document.getElementById('settings-label');
+                if (settingsLabelEl) settingsLabelEl.textContent = t('settings');
+            }
+        });
+
+        function init() {
+            if (window.isInWebBrowser) {
+                const now = new Date();
+                const today = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+                renderFortune({
+                    ko: '오늘은 뜻밖의 기쁜 소식이 당신을 찾아올 것입니다.',
+                    en: 'Unexpected good news will find you today.',
+                    date: today,
+                });
+                return;
+            }
+
+            if (window.callPythonReady) {
+                loadFortune();
+            } else {
+                window.addEventListener('callPythonReady', loadFortune, { once: true });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            init();
+            if (window.parent !== window) {
+                window.parent.postMessage({ action: 'viewReady' }, '*');
+            }
+        });
+    </script>
+</body>
+</html>

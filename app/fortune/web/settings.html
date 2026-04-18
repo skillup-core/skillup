@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fortune Settings</title>
+    <script src="/common/script/appinit.js" onerror="this.onerror=null; this.src='../../../../web/common/script/appinit.js';"></script>
+</head>
+<body>
+    <style>
+        .settings-container {
+            padding: 28px 24px;
+            max-width: 520px;
+        }
+
+        .settings-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 24px;
+        }
+
+        .settings-group {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        .settings-group-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin-bottom: 16px;
+        }
+
+        .settings-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .settings-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .settings-label {
+            font-size: 14px;
+            color: var(--text-primary);
+            flex: 1;
+            margin-right: 16px;
+        }
+
+        .settings-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 3px;
+        }
+
+        .settings-input {
+            background: var(--bg-primary, var(--bg-secondary));
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 6px 10px;
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+            width: 180px;
+            flex-shrink: 0;
+        }
+
+        .settings-input:focus {
+            border-color: var(--accent-color, #4a90e2);
+        }
+
+        /* Birth date selects row */
+        .birth-selects {
+            display: flex;
+            flex-shrink: 0;
+        }
+
+        .birth-select {
+            background: var(--bg-primary, var(--bg-secondary));
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 6px 4px;
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+        }
+
+        .birth-select:focus {
+            border-color: var(--accent-color, #4a90e2);
+        }
+
+        .birth-select-year  { width: 72px; margin-right: 4px; }
+        .birth-select-month { width: 52px; margin-right: 4px; }
+        .birth-select-day   { width: 52px; margin-right: 4px; }
+        .birth-select-hour  { width: 60px; }
+
+        /* Toggle switch */
+        .toggle-switch {
+            position: relative;
+            width: 40px;
+            height: 22px;
+            flex-shrink: 0;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+            position: absolute;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--border-color);
+            border-radius: 22px;
+            transition: background 0.2s;
+        }
+
+        .toggle-slider:before {
+            content: '';
+            position: absolute;
+            height: 16px;
+            width: 16px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.2s;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background: var(--accent-color, #4a90e2);
+        }
+
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(18px);
+        }
+
+        .btn-save {
+            background: var(--accent-color, #4a90e2);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 9px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+
+        .btn-save:hover { opacity: 0.9; }
+
+        .save-notice {
+            font-size: 13px;
+            color: var(--success-color, #27ae60);
+            margin-top: 10px;
+            display: none;
+        }
+
+        .birth-invalid {
+            font-size: 12px;
+            color: var(--danger-color, #e74c3c);
+            margin-top: 4px;
+            display: none;
+        }
+    </style>
+
+    <div class="content-container">
+        <div class="settings-container">
+            <div class="settings-title" data-i18n="title">Fortune Settings</div>
+
+            <!-- Birth date group -->
+            <div class="settings-group">
+                <div class="settings-group-title" data-i18n="groupPersonal">Personal Info</div>
+                <div class="settings-row">
+                    <div class="settings-label">
+                        <span data-i18n="birthLabel">Birth Date &amp; Hour</span>
+                        <div class="settings-desc" data-i18n="birthDesc">Year / Month / Day / Hour</div>
+                        <div class="birth-invalid" id="birth-invalid" data-i18n="birthInvalid">
+                            Required — select year, month, and day
+                        </div>
+                    </div>
+                    <div class="birth-selects">
+                        <select class="birth-select birth-select-year"  id="sel-year"></select>
+                        <select class="birth-select birth-select-month" id="sel-month"></select>
+                        <select class="birth-select birth-select-day"   id="sel-day"></select>
+                        <select class="birth-select birth-select-hour"  id="sel-hour"></select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Startup group -->
+            <div class="settings-group">
+                <div class="settings-group-title" data-i18n="groupStartup">Startup</div>
+                <div class="settings-row">
+                    <div class="settings-label">
+                        <span data-i18n="showOnStartLabel">Show on Startup</span>
+                        <div class="settings-desc" data-i18n="showOnStartDesc">
+                            Show today's fortune when Skillup starts (once per day)
+                        </div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-show-on-start" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Language preference -->
+            <div class="settings-group">
+                <div class="settings-group-title" data-i18n="groupDisplay">Display</div>
+                <div class="settings-row">
+                    <div class="settings-label">
+                        <span data-i18n="langPrefLabel">Fortune Language</span>
+                        <div class="settings-desc" data-i18n="langPrefDesc">
+                            Language to display fortune text
+                        </div>
+                    </div>
+                    <select class="settings-input" id="select-lang-pref">
+                        <option value="auto" data-i18n-opt="langAuto">Auto (follow UI)</option>
+                        <option value="ko" data-i18n-opt="langKo">한국어</option>
+                        <option value="en" data-i18n-opt="langEn">English</option>
+                    </select>
+                </div>
+            </div>
+
+            <button class="btn-save" onclick="saveSettings()" data-i18n="btnSave">Save</button>
+            <div class="save-notice" id="save-notice" data-i18n="saved">Settings saved.</div>
+        </div>
+    </div>
+
+    <script>
+        const i18n = {
+            en: {
+                title: 'Fortune Settings',
+                groupPersonal: 'Personal Info',
+                birthLabel: 'Birth Date & Hour',
+                birthDesc: 'Year / Month / Day / Hour',
+                birthInvalid: 'Required — select year, month, and day',
+                groupStartup: 'Startup',
+                showOnStartLabel: 'Show on Startup',
+                showOnStartDesc: 'Show today\'s fortune when Skillup starts (once per day)',
+                groupDisplay: 'Display',
+                langPrefLabel: 'Fortune Language',
+                langPrefDesc: 'Language used to display fortune text',
+                langAuto: 'Auto (follow UI)',
+                langKo: '한국어',
+                langEn: 'English',
+                btnSave: 'Save',
+                saved: 'Settings saved.',
+            },
+            ko: {
+                title: '운세 설정',
+                groupPersonal: '개인 정보',
+                birthLabel: '생년월일시',
+                birthDesc: '년 / 월 / 일 / 시',
+                birthInvalid: '필수 항목 — 년, 월, 일을 선택하세요',
+                groupStartup: '시작 설정',
+                showOnStartLabel: '시작시 보기',
+                showOnStartDesc: 'Skillup 시작 시 오늘의 운세를 표시합니다 (하루 1회)',
+                groupDisplay: '표시',
+                langPrefLabel: '운세 언어',
+                langPrefDesc: '운세 텍스트 표시 언어를 선택합니다',
+                langAuto: '자동 (UI 언어 따름)',
+                langKo: '한국어',
+                langEn: 'English',
+                btnSave: '저장',
+                saved: '설정이 저장되었습니다.',
+            }
+        };
+
+        let currentLang = 'ko';
+
+        function t(key) {
+            return (i18n[currentLang] && i18n[currentLang][key]) || key;
+        }
+
+        function applyI18n() {
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                el.textContent = t(key);
+            });
+            document.querySelectorAll('[data-i18n-opt]').forEach(el => {
+                const key = el.getAttribute('data-i18n-opt');
+                el.textContent = t(key);
+            });
+        }
+
+        // ----------------------------------------------------------------
+        // Birth date select population
+        // ----------------------------------------------------------------
+
+        function populateYear() {
+            const sel = document.getElementById('sel-year');
+            const cur = sel.value;
+            const placeholder = currentLang === 'ko' ? '년' : 'Year';
+            sel.innerHTML = `<option value="">${placeholder}</option>`;
+            const thisYear = new Date().getFullYear();
+            for (let y = thisYear; y >= 1900; y--) {
+                sel.innerHTML += `<option value="${y}">${currentLang === 'ko' ? y + '년' : y}</option>`;
+            }
+            if (cur) sel.value = cur;
+        }
+
+        function populateMonth() {
+            const sel = document.getElementById('sel-month');
+            const cur = sel.value;
+            const placeholder = currentLang === 'ko' ? '월' : 'Mo';
+            sel.innerHTML = `<option value="">${placeholder}</option>`;
+            const monthNames = currentLang === 'ko'
+                ? ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
+                : ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            for (let m = 1; m <= 12; m++) {
+                sel.innerHTML += `<option value="${String(m).padStart(2,'0')}">${monthNames[m-1]}</option>`;
+            }
+            if (cur) sel.value = cur;
+        }
+
+        function populateDay() {
+            const sel = document.getElementById('sel-day');
+            const cur = sel.value;
+            const year  = parseInt(document.getElementById('sel-year').value)  || 0;
+            const month = parseInt(document.getElementById('sel-month').value) || 0;
+            const daysInMonth = (year && month)
+                ? new Date(year, month, 0).getDate()
+                : 31;
+            const placeholder = currentLang === 'ko' ? '일' : 'Day';
+            sel.innerHTML = `<option value="">${placeholder}</option>`;
+            for (let d = 1; d <= daysInMonth; d++) {
+                sel.innerHTML += `<option value="${String(d).padStart(2,'0')}">${currentLang === 'ko' ? d + '일' : d}</option>`;
+            }
+            // Restore previous value only if still valid
+            if (cur && parseInt(cur) <= daysInMonth) sel.value = cur;
+        }
+
+        function populateHour() {
+            const sel = document.getElementById('sel-hour');
+            const cur = sel.value;
+            const placeholder = currentLang === 'ko' ? '시' : 'Hr';
+            sel.innerHTML = `<option value="">${placeholder}</option>`;
+            for (let h = 0; h < 24; h++) {
+                const label = currentLang === 'ko'
+                    ? h + '시'
+                    : (h === 0 ? '12 AM' : h < 12 ? h + ' AM' : h === 12 ? '12 PM' : (h - 12) + ' PM');
+                sel.innerHTML += `<option value="${String(h).padStart(2,'0')}">${label}</option>`;
+            }
+            if (cur !== undefined) sel.value = cur;
+        }
+
+        function initBirthSelects() {
+            populateYear();
+            populateMonth();
+            populateDay();
+            populateHour();
+            // Re-populate day when year or month changes
+            document.getElementById('sel-year').onchange  = populateDay;
+            document.getElementById('sel-month').onchange = populateDay;
+        }
+
+        // ----------------------------------------------------------------
+        // Load / Save
+        // ----------------------------------------------------------------
+
+        // Track whether birth was empty before this save (to know whether to redirect)
+        let _birthWasEmpty = false;
+
+        async function loadSettings() {
+            if (typeof callPython !== 'function') {
+                // Web browser mode defaults
+                document.getElementById('toggle-show-on-start').checked = true;
+                _birthWasEmpty = true;
+                return;
+            }
+            try {
+                const result = await callPython('fortune_get_config', {});
+                console.log('[fortune-settings] loadSettings result:', JSON.stringify(result));
+                if (result && result.success) {
+                    const birth = result.birth || '';
+                    console.log('[fortune-settings] birth:', birth, 'length:', birth.length);
+                    if (birth.length >= 8) {
+                        const y = birth.slice(0, 4);
+                        const m = birth.slice(4, 6);
+                        const d = birth.slice(6, 8);
+                        const h = birth.length >= 10 ? birth.slice(8, 10) : '';
+                        console.log('[fortune-settings] setting y=%s m=%s d=%s h=%s', y, m, d, h);
+                        // Set year and month first, then re-populate day list, then set day
+                        document.getElementById('sel-year').value  = y;
+                        document.getElementById('sel-month').value = m;
+                        populateDay();
+                        document.getElementById('sel-day').value   = d;
+                        document.getElementById('sel-hour').value  = h;
+                        console.log('[fortune-settings] after set: year=%s month=%s day=%s hour=%s',
+                            document.getElementById('sel-year').value,
+                            document.getElementById('sel-month').value,
+                            document.getElementById('sel-day').value,
+                            document.getElementById('sel-hour').value);
+                    }
+                    document.getElementById('toggle-show-on-start').checked =
+                        result.show_on_start !== 'false';
+                    document.getElementById('select-lang-pref').value =
+                        result.language_pref || 'auto';
+                    _birthWasEmpty = (birth === '');
+                }
+            } catch (e) {
+                console.error('[fortune-settings] loadSettings ERROR:', e);
+            }
+        }
+
+        async function saveSettings() {
+            const year  = document.getElementById('sel-year').value;
+            const month = document.getElementById('sel-month').value;
+            const day   = document.getElementById('sel-day').value;
+            const hour  = document.getElementById('sel-hour').value;
+            const invalidEl = document.getElementById('birth-invalid');
+
+            if (!year || !month || !day) {
+                invalidEl.style.display = 'block';
+                return;
+            }
+            invalidEl.style.display = 'none';
+
+            // Combine into YYYYMMDDHH (00 if hour not selected)
+            const birth = year + month + day + (hour || '00');
+
+            const showOnStart = document.getElementById('toggle-show-on-start').checked;
+            const langPref = document.getElementById('select-lang-pref').value;
+
+            if (typeof callPython !== 'function') {
+                showSaved();
+                return;
+            }
+            try {
+                const result = await callPython('fortune_save_config', {
+                    birth: birth,
+                    show_on_start: showOnStart,
+                    language_pref: langPref,
+                });
+                if (result && result.success) {
+                    if (_birthWasEmpty) {
+                        // Birth was just set for the first time — go to fortune view
+                        if (window.parent !== window) {
+                            window.parent.postMessage({ action: 'switchView', viewId: 'fortune' }, '*');
+                        }
+                    } else {
+                        showSaved();
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to save settings:', e);
+            }
+        }
+
+        function showSaved() {
+            const el = document.getElementById('save-notice');
+            el.style.display = '';
+            setTimeout(() => { el.style.display = 'none'; }, 2000);
+        }
+
+        window.addEventListener('message', function(event) {
+            const data = event.data;
+            if (!data || !data.action) return;
+            if (data.action === 'setLanguage') {
+                currentLang = data.language || 'en';
+                // Preserve current values across re-population
+                const y = document.getElementById('sel-year').value;
+                const m = document.getElementById('sel-month').value;
+                const d = document.getElementById('sel-day').value;
+                const h = document.getElementById('sel-hour').value;
+                populateYear();
+                populateMonth();
+                populateDay();
+                populateHour();
+                document.getElementById('sel-year').value  = y;
+                document.getElementById('sel-month').value = m;
+                document.getElementById('sel-day').value   = d;
+                document.getElementById('sel-hour').value  = h;
+                applyI18n();
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', function() {
+            initBirthSelects();
+            applyI18n();
+            if (window.parent !== window) {
+                window.parent.postMessage({ action: 'viewReady' }, '*');
+            }
+
+            // Wait for callPython to be available before calling Python
+            if (window.isInWebBrowser) {
+                loadSettings();
+            } else if (window.callPythonReady) {
+                loadSettings();
+            } else {
+                window.addEventListener('callPythonReady', loadSettings, { once: true });
+            }
+        });
+    </script>
+</body>
+</html>

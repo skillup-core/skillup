@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <g transform="rotate(45 32 32)">
+    <!-- Infinity symbol 1: horizontal — loops centered at x=18 and x=46 -->
+    <path d="M32 32 C32 32 30 24 18 24 C6 24 6 40 18 40 C30 40 32 32 32 32 C32 32 34 24 46 24 C58 24 58 40 46 40 C34 40 32 32 32 32 Z"
+          fill="#8dc63f" stroke="#1a1a1a" stroke-width="2.8" stroke-linejoin="round"/>
+
+    <!-- Infinity symbol 2: vertical — loops centered at y=18 and y=46 -->
+    <path d="M32 32 C32 32 24 30 24 18 C24 6 40 6 40 18 C40 30 32 32 32 32 C32 32 24 34 24 46 C24 58 40 58 40 46 C40 34 32 32 32 32 Z"
+          fill="#8dc63f" stroke="#1a1a1a" stroke-width="2.8" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Stem -->
+  <path d="M36 50 Q38 57 34 63" stroke="#1a1a1a" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+</svg>

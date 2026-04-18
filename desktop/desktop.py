@@ -420,6 +420,40 @@ def unregister_hotkey(key_combination='<Primary><Alt>s'):
 
 
 # ============================================================================
+# Wayland IME Warning Detection
+# ============================================================================
+
+def _is_redhat8() -> bool:
+    try:
+        with open('/etc/redhat-release', 'r') as f:
+            content = f.read()
+        return 'release 8' in content
+    except Exception:
+        return False
+
+
+def _has_ibus_korean() -> bool:
+    try:
+        result = subprocess.run(
+            ['ibus', 'list-engine'],
+            capture_output=True, text=True, timeout=3
+        )
+        return 'hangul' in result.stdout.lower() or 'korean' in result.stdout.lower()
+    except Exception:
+        return False
+
+
+def should_show_wayland_ime_warning() -> bool:
+    if os.environ.get('XDG_SESSION_TYPE', '').lower() != 'wayland':
+        return False
+    if not _is_redhat8():
+        return False
+    if not _has_ibus_korean():
+        return False
+    return True
+
+
+# ============================================================================
 # App Metadata
 # ============================================================================
 
@@ -646,6 +680,16 @@ class DesktopManager:
         self.subprocess_response_queues: Dict[str, Dict[int, Any]] = {}
         self.subprocess_request_id_counter: int = 0
 
+        # Extra CLI args to inject into specific app subprocesses on first launch
+        # {app_id: [arg, ...]}  — set by run() for auto-launched apps
+        self._auto_launch_extra_args: Dict[str, List[str]] = {}
+
+        # Initial menu to open for the auto-launched app (None = first menu)
+        self._auto_launch_menu: Optional[str] = None
+
+        # True when running in standalone app mode (no desktop shell)
+        self._standalone_mode: bool = False
+
         # In-process app instances: {app_id: app_instance} (for legacy mode)
         self._app_instances: Dict[str, Any] = {}
 
@@ -683,13 +727,16 @@ class DesktopManager:
             'general.account_db': '',
             'layout.app_order': '',
             'hotkey.key': 'CTRL, ALT, s',
-            'hotkey.last_cmd': ''
+            'hotkey.last_cmd': '',
+            'notice.wayland_ime_dismissed': 'false'
         }, app_id='desktop')
 
         self.language = config['general.language']
         self.theme = config['general.theme']
+        self.app_order = config['layout.app_order']
         self.hotkey_key = config['hotkey.key']
         self.hotkey_last_cmd = config['hotkey.last_cmd']
+        self.wayland_ime_dismissed = config.get('notice.wayland_ime_dismissed', 'false').strip().lower() == 'true'
         self.account_type = config.get('general.account_type', 'sqlite').strip()
 
         # Account DB path: used when account_type == 'sqlite'
@@ -713,18 +760,23 @@ class DesktopManager:
         # Determine current user from $USER env
         self.current_user = os.environ.get('USER', os.environ.get('USERNAME', 'user'))
 
-    def _save_settings(self, hotkey_last_cmd=None):
+    def _save_settings(self, hotkey_last_cmd=None, wayland_ime_dismissed=None):
         """Save desktop settings"""
         config_path = get_desktop_config_path()
         settings = {
             'general.language': self.language,
             'general.theme': self.theme,
+            'layout.app_order': self.app_order,
             'hotkey.key': self.hotkey_key
         }
 
         if hotkey_last_cmd is not None:
             settings['hotkey.last_cmd'] = hotkey_last_cmd
             self.hotkey_last_cmd = hotkey_last_cmd
+
+        if wayland_ime_dismissed is not None:
+            settings['notice.wayland_ime_dismissed'] = 'true' if wayland_ime_dismissed else 'false'
+            self.wayland_ime_dismissed = wayland_ime_dismissed
 
         save_config(config_path, settings)
 
@@ -866,6 +918,10 @@ class DesktopManager:
             # Prepare environment with app mode indicator
             env = os.environ.copy()
             env['_SKILLUP_APP_MODE'] = 'desktop'
+            # Forward extra launch args as JSON via environment variable
+            extra_args = self._auto_launch_extra_args.pop(app_id, None)
+            if extra_args:
+                env['_SKILLUP_APP_ARGS'] = json.dumps(extra_args)
 
             process = subprocess.Popen(
                 cmd,
@@ -951,6 +1007,13 @@ class DesktopManager:
                             log("error", message=f"Error parsing stdout message: {e}", tag="desktop")
                 except Exception as e:
                     log("error", message=f"Error reading stdout: {e}", tag="desktop")
+                finally:
+                    # In standalone mode, quit the Qt app when the subprocess exits
+                    if self._standalone_mode and hasattr(self.engine, 'qt_app') and self.engine.qt_app:
+                        try:
+                            self.engine.qt_app.quit()
+                        except Exception:
+                            pass
 
             stdout_thread = threading.Thread(target=read_stdout, daemon=True)
             stdout_thread.start()
@@ -1203,6 +1266,9 @@ class DesktopManager:
                     if ret and ret != 0:
                         return {'success': False, 'error': f'App initialization failed (exit code {ret})'}
 
+                    # Register app's handlers into engine so QWebChannel can route them
+                    self._register_app_handlers_to_engine(app_instance)
+
                     # Store instance for reuse (key is app_id)
                     self._app_instances[app_id] = app_instance
 
@@ -1219,11 +1285,8 @@ class DesktopManager:
             """Get list of all apps"""
             app_list = []
 
-            # Get app order from config
-            config_path = get_desktop_config_path()
-            config = load_config(config_path)
-            app_order_str = config.get('layout.app_order', '')
-            app_order = [x.strip() for x in app_order_str.split(',') if x.strip()]
+            # Get app order from instance variable (kept in sync with config)
+            app_order = [x.strip() for x in self.app_order.split(',') if x.strip()]
 
             # Sort apps by order
             sorted_app_ids = []
@@ -1260,12 +1323,21 @@ class DesktopManager:
                 build = _build
             except Exception:
                 pass
+            # Consume auto_launch_menu once (reset after first read)
+            auto_launch_menu = self._auto_launch_menu
+            self._auto_launch_menu = None
+            # Check if wayland IME warning should be shown
+            show_wayland_ime_warning = (
+                not self.wayland_ime_dismissed and should_show_wayland_ime_warning()
+            )
             return {
                 'language': self.language,
                 'theme': self.theme,
                 'auto_launch_app': self.current_app,
+                'auto_launch_menu': auto_launch_menu,
                 'version': version,
-                'build': build
+                'build': build,
+                'show_wayland_ime_warning': show_wayland_ime_warning
             }
 
         def handle_set_config(data):
@@ -1274,7 +1346,12 @@ class DesktopManager:
                 self.language = data['language']
             if 'theme' in data:
                 self.theme = data['theme']
-            self._save_settings()
+            if 'app_order' in data:
+                self.app_order = data['app_order']
+            wayland_dismissed = None
+            if 'wayland_ime_dismissed' in data:
+                wayland_dismissed = bool(data['wayland_ime_dismissed'])
+            self._save_settings(wayland_ime_dismissed=wayland_dismissed)
             return {'success': True}
 
         def handle_launch_app(data):
@@ -1547,6 +1624,10 @@ class DesktopManager:
             url = data.get('url', '')
             title = data.get('title', 'Skillup')
             mode = data.get('mode', 'true')  # 'true', 'single', or 'single_open'
+            width = int(data.get('width', 0))
+            height = int(data.get('height', 0))
+            min_w = int(data.get('min_w', 0))
+            min_h = int(data.get('min_h', 0))
             if not url:
                 return {'success': False}
             full_url = f"http://localhost:{self.engine.port}/{url.lstrip('/')}"
@@ -1557,7 +1638,7 @@ class DesktopManager:
                 if mode == 'single':
                     # focus-only: do not open new window, let caller decide
                     return {'success': True, 'focused': False}
-            self.engine.open_window(full_url, title, mode)
+            self.engine.open_window(full_url, title, mode, width, height, min_w, min_h)
             return {'success': True, 'focused': False}
 
         def handle_detach_to_new_window(data):
@@ -1585,6 +1666,14 @@ class DesktopManager:
             self.engine.detach_to_new_window(full_url, title, desktop_url, multi=multi)
             return {'success': True}
 
+        def handle_desktop_ready(data):
+            """
+            Called by desktop JavaScript when the UI is fully loaded and ready.
+            Triggers on_skillup_started() on all non-subprocess in-process apps.
+            """
+            self._fire_skillup_started()
+            return {'success': True}
+
         self.engine.register_handler('open_window', handle_open_window)
         self.engine.register_handler('detach_to_new_window', handle_detach_to_new_window)
         self.engine.register_handler('msgbox', handle_msgbox)
@@ -1593,6 +1682,86 @@ class DesktopManager:
         self.engine.register_handler('get_account_photo', handle_get_account_photo)
         self.engine.register_handler('save_account', handle_save_account)
         self.engine.register_handler('clear_account_photo', handle_clear_account_photo)
+        self.engine.register_handler('desktop_ready', handle_desktop_ready)
+
+    def _register_app_handlers_to_engine(self, app_instance):
+        """
+        Register an in-process app's handlers directly into the engine's
+        message_handlers so that QWebChannel callPython() can route to them
+        without going through the GUID-based REST API route.
+
+        Each handler is wrapped to inject the current language.
+        """
+        for handler_name, handler_fn in app_instance._handlers.items():
+            # Capture variables in closure
+            def make_wrapper(fn):
+                def wrapper(data):
+                    return fn(data, self.language)
+                return wrapper
+            self.engine.register_handler(handler_name, make_wrapper(handler_fn))
+
+    def _fire_skillup_started(self):
+        """
+        Fire on_skillup_started() on all non-subprocess in-process apps
+        that implement the method.
+
+        Called once after the desktop UI reports it is fully loaded.
+        Apps that want startup behavior (e.g. daily fortune dialog) implement
+        on_skillup_started() in their app class.
+        """
+        script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for app_id, app_info in self.apps.items():
+            app_dir = os.path.join(script_dir, 'app', app_info.dir_name)
+            app_ini_path = os.path.join(app_dir, 'app.ini')
+
+            from configparser import ConfigParser as _CP
+            _cfg = _CP()
+            _cfg.read(app_ini_path, encoding='utf-8')
+
+            # Only trigger for non-subprocess (in-process) apps
+            if _cfg.getboolean('app', 'subprocess', fallback=False):
+                continue
+
+            # Lazily instantiate the app if not already created
+            if app_id not in self._app_instances:
+                try:
+                    from lib.appmgr import load_app_module, get_app_class, AppContext
+                    from lib.config import get_app_config_path
+
+                    app_module = load_app_module(app_info.dir_name)
+                    app_class = get_app_class(app_module)
+
+                    if app_class is None:
+                        continue
+
+                    config_path = get_app_config_path(app_info.id, app_info.id_name)
+                    context = AppContext(
+                        mode='desktop', args=[],
+                        config_path=config_path, app_id=app_info.id
+                    )
+                    app_instance = app_class(engine=self.engine, context=context)
+                    ret = app_instance.on_run_desktop_initialize()
+                    if ret and ret != 0:
+                        continue
+                    self._register_app_handlers_to_engine(app_instance)
+                    self._app_instances[app_id] = app_instance
+                except Exception as e:
+                    log("error", message=f"Failed to initialize app {app_id} for startup: {e}",
+                        tag="desktop")
+                    continue
+
+            app_instance = self._app_instances.get(app_id)
+            if app_instance is None:
+                continue
+
+            if not hasattr(app_instance, 'on_skillup_started'):
+                continue
+
+            try:
+                app_instance.on_skillup_started()
+            except Exception as e:
+                log("error", message=f"Error in on_skillup_started for {app_id}: {e}",
+                    tag="desktop")
 
     def _generate_desktop_html(self) -> str:
         """Generate desktop HTML content"""
@@ -1626,12 +1795,13 @@ class DesktopManager:
 
         return None
 
-    def run(self, auto_launch_app: str = None):
+    def run(self, auto_launch_app: str = None, app_extra_args: list = None):
         """
         Run the desktop.
 
         Args:
             auto_launch_app: App ID or GUID to launch automatically
+            app_extra_args: Extra CLI args forwarded to the auto-launched app subprocess
         """
         # Resolve auto_launch_app (could be ID or GUID)
         auto_launch_app_id = None
@@ -1668,14 +1838,36 @@ class DesktopManager:
         url = self.engine.start_server(index_html_generator=self._generate_desktop_html)
         log("info", message=f"Desktop running at {url}")
 
-        # Handle auto-launch
-        if auto_launch_app_id:
-            self.current_app = auto_launch_app_id
-            log("info", message=f"Auto-launching app: {auto_launch_app_id}")
+        # Detect standalone app mode (skip desktop shell entirely)
+        # Currently supports --skillform-run=<path> → open runner.html directly
+        standalone_url = None
+        if auto_launch_app_id and app_extra_args:
+            for _arg in app_extra_args:
+                if _arg.startswith('--skillform-run='):
+                    schema_path = os.path.expanduser(_arg[len('--skillform-run='):])
+                    self._auto_launch_extra_args[auto_launch_app_id] = app_extra_args
+                    self.current_app = auto_launch_app_id
+                    self._standalone_mode = True
+                    self._start_app_process(auto_launch_app_id)
+                    standalone_url = f'app/{auto_launch_app_id}/runner.html?standalone=1&lang=en'
+                    break
+
+        if standalone_url:
+            # Standalone mode: open app page directly, no desktop shell
+            load_url = url.rstrip('/') + '/' + standalone_url
+            log("info", message=f"Standalone mode: {load_url}")
+        else:
+            load_url = url
+            # Handle auto-launch inside desktop shell
+            if auto_launch_app_id:
+                self.current_app = auto_launch_app_id
+                log("info", message=f"Auto-launching app: {auto_launch_app_id}")
+                if app_extra_args:
+                    self._auto_launch_extra_args[auto_launch_app_id] = app_extra_args
 
         # Run Qt
         try:
-            return self.engine.run_qt(url)
+            return self.engine.run_qt(load_url)
         finally:
             # Call on_close for all in-process app instances
             for app_id, app_instance in list(self._app_instances.items()):
@@ -1690,15 +1882,16 @@ class DesktopManager:
                 self._stop_app_process(app_id)
 
 
-def run_desktop(auto_launch_app: str = None) -> int:
+def run_desktop(auto_launch_app: str = None, app_extra_args: list = None) -> int:
     """
     Run the Skillup Desktop.
 
     Args:
         auto_launch_app: App ID to launch automatically
+        app_extra_args: Extra CLI args to pass to the auto-launched app subprocess
 
     Returns:
         Exit code
     """
     manager = DesktopManager()
-    return manager.run(auto_launch_app)
+    return manager.run(auto_launch_app, app_extra_args=app_extra_args)

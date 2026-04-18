@@ -74,7 +74,7 @@ const COMPONENT_TYPES = [
 // CONFIG
 // ================================================================
 const GRID_CELL_W = 56;
-const GRID_ROW_H = 56;
+const GRID_ROW_H = 64;
 
 // ================================================================
 // STATE
@@ -85,6 +85,13 @@ let selectedId = null;
 let currentFile = '';
 let panX = 0;
 let panY = 0;
+
+// Document-level properties
+let docProps = {
+    formName: 'My Form',
+    fontSize: 16,   // px
+    formSize: { mode: 'auto', cols: 0, rows: 0 },  // window size: auto=fit to fields, fixed=explicit grid count
+};
 
 let _idSeq = 0;
 function newId() { return 'f' + (++_idSeq); }
@@ -575,10 +582,75 @@ function onDragEnd(e) {
 // ================================================================
 // PROPERTIES PANEL
 // ================================================================
+function renderDocProps() {
+    const fs = docProps.formSize || { mode: 'auto', cols: 0, rows: 0 };
+    const isFixed = fs.mode === 'fixed';
+    const body = document.getElementById('sfd-props-body');
+    body.innerHTML = `
+        <div class="sfd-prop-section">Document</div>
+        <div class="sfd-prop-row">
+            <label>Title Name</label>
+            <input type="text" value="${escHtml(docProps.formName)}"
+                   oninput="docProps.formName=this.value;"
+                   onchange="docProps.formName=this.value;"/>
+        </div>
+        <div class="sfd-prop-row">
+            <label>Font Size (px)</label>
+            <input type="number" value="${docProps.fontSize}" min="8" max="32" step="1"
+                   oninput="updateDocFontSize(parseInt(this.value)||14)"
+                   onchange="updateDocFontSize(parseInt(this.value)||14)"/>
+        </div>
+        <div class="sfd-prop-section">Form Initial Size</div>
+        <div class="sfd-prop-row">
+            <label>Mode</label>
+            <select onchange="updateFormSizeMode(this.value)">
+                <option value="auto"  ${!isFixed ? 'selected' : ''}>Auto Fit</option>
+                <option value="fixed" ${isFixed  ? 'selected' : ''}>Set</option>
+            </select>
+        </div>
+        <div id="sfd-formsize-fixed" style="display:${isFixed ? '' : 'none'}">
+            <div class="sfd-prop-row">
+                <label>Cols</label>
+                <input type="number" value="${fs.cols || ''}" min="1" step="1"
+                       oninput="updateFormSizeCols(parseInt(this.value)||0)"
+                       onchange="updateFormSizeCols(parseInt(this.value)||0)"/>
+            </div>
+            <div class="sfd-prop-row">
+                <label>Rows</label>
+                <input type="number" value="${fs.rows || ''}" min="1" step="1"
+                       oninput="updateFormSizeRows(parseInt(this.value)||0)"
+                       onchange="updateFormSizeRows(parseInt(this.value)||0)"/>
+            </div>
+        </div>
+    `;
+}
+
+function updateDocFontSize(size) {
+    docProps.fontSize = size;
+    pushSchemaToRunner();
+}
+
+function updateFormSizeMode(mode) {
+    if (!docProps.formSize) docProps.formSize = { mode: 'auto', cols: 0, rows: 0 };
+    docProps.formSize.mode = mode;
+    const fixedRow = document.getElementById('sfd-formsize-fixed');
+    if (fixedRow) fixedRow.style.display = mode === 'fixed' ? '' : 'none';
+}
+
+function updateFormSizeCols(v) {
+    if (!docProps.formSize) docProps.formSize = { mode: 'fixed', cols: 0, rows: 0 };
+    docProps.formSize.cols = v;
+}
+
+function updateFormSizeRows(v) {
+    if (!docProps.formSize) docProps.formSize = { mode: 'fixed', cols: 0, rows: 0 };
+    docProps.formSize.rows = v;
+}
+
 function renderProps() {
     const body = document.getElementById('sfd-props-body');
     if (!selectedId) {
-        body.innerHTML = '<div class="sfd-props-empty">Select a component</div>';
+        renderDocProps();
         return;
     }
     const f = fields.find(f => f.id === selectedId);
@@ -707,7 +779,8 @@ function escHtml(s) {
 // ================================================================
 function formToJson() {
     return {
-        title: document.getElementById('tb-title').textContent.trim(),
+        title: docProps.formName,
+        docProps: Object.assign({}, docProps),
         grid: { rowHeight: gridRowH, cellW: GRID_CELL_W },
         fields: fields.map(f => Object.assign({}, f))
     };
@@ -715,7 +788,12 @@ function formToJson() {
 
 function jsonToForm(data) {
     if (!data) return;
-    if (data.title) document.getElementById('tb-title').textContent = data.title;
+    // Load docProps (backwards-compatible: fall back to title field)
+    if (data.docProps) {
+        docProps = Object.assign({ formName: 'My Form', fontSize: 16, formSize: { mode: 'auto', cols: 0, rows: 0 } }, data.docProps);
+    } else if (data.title) {
+        docProps.formName = data.title;
+    }
     if (data.grid) {
         gridRowH  = data.grid.rowHeight || GRID_ROW_H;
     }
@@ -760,7 +838,7 @@ function doNew() {
     fields = [];
     selectedId = null;
     _idSeq = 0;
-    document.getElementById('tb-title').textContent = 'My Form';
+    docProps = { formName: 'My Form', fontSize: 16, formSize: { mode: 'auto', cols: 0, rows: 0 } };
     renderCanvas();
     renderProps();
     setStatus('New form', '');
@@ -796,14 +874,48 @@ async function doRun() {
     const appId = appIdMatch ? appIdMatch[1] : 'skillform';
     const runnerUrl = `/app/${appId}/runner.html?standalone=1`;
 
+    // Calculate window size from grid dimensions
+    const RUNNER_BASE_FONT_SIZE = 14;  // runner.html base font size (px)
+    const RUNNER_MARGIN         = 16;  // form grid inner margin each side (px, must match runner.html MARGIN)
+    const MIN_GRID_COLS         = 4;   // minimum window width in grid columns
+    const MIN_GRID_ROWS         = 2;   // minimum window height in grid rows
+
+    const fontSize = (schema.docProps && schema.docProps.fontSize) || 16;
+    const scale = fontSize / RUNNER_BASE_FONT_SIZE;
+    const baseRowH = (schema.grid && schema.grid.rowHeight) || GRID_ROW_H;
+    const baseCellW = (schema.grid && schema.grid.cellW) || GRID_CELL_W;
+    const runnerRowH = Math.round(baseRowH * scale);
+    const runnerCellW = Math.round(baseCellW * scale);
+    const formSizeMode = (schema.docProps && schema.docProps.formSize && schema.docProps.formSize.mode) || 'auto';
+    let formMaxRow = 0, formMaxCol = 0;
+    if (formSizeMode === 'fixed') {
+        formMaxCol = (schema.docProps.formSize.cols > 0) ? schema.docProps.formSize.cols : 0;
+        formMaxRow = (schema.docProps.formSize.rows > 0) ? schema.docProps.formSize.rows : 0;
+    } else {
+        (schema.fields || []).forEach(f => {
+            formMaxRow = Math.max(formMaxRow, f.row + f.h);
+            formMaxCol = Math.max(formMaxCol, f.col + f.w);
+        });
+    }
+    const chromeH = RUNNER_MARGIN * 2;
+    const chromeW = RUNNER_MARGIN * 2;
+    const winW = formMaxCol * runnerCellW + chromeW;
+    const winH = formMaxRow * runnerRowH + chromeH;
+    const minW = MIN_GRID_COLS * runnerCellW + chromeW;
+    const minH = MIN_GRID_ROWS * runnerRowH + chromeH;
+
     if (window.isInIframe) {
         // window.open is blocked inside an iframe — use Python open_window API instead
         // Save schema first, then open window so runner loads it on startup
         await callPython('designer_run', { schema });
         const r = await callPython('open_window', {
             url: runnerUrl,
-            title: 'Skill Form Runner',
-            mode: 'true'
+            title: docProps.formName || 'Skill Form Runner',
+            mode: 'true',
+            width: winW,
+            height: winH,
+            min_w: minW,
+            min_h: minH,
         });
         setStatus('Runner opened', 'ok');
         return;
@@ -817,7 +929,7 @@ async function doRun() {
     }
 
     _runnerWin = window.open(runnerUrl, 'skillform_runner',
-        'width=800,height=600,resizable=yes,scrollbars=yes');
+        `width=${winW},height=${winH},resizable=yes,scrollbars=yes`);
 
     if (!_runnerWin) {
         setStatus('Popup blocked', 'err');
@@ -869,7 +981,7 @@ function initCanvas() {
         function onMove(e) {
             // If right mouse button was released outside the window, end pan
             if (!(e.buttons & 2)) { onEnd(); return; }
-            panX = startPanX + (e.clientX - startX);
+            panX = Math.min(0, startPanX + (e.clientX - startX));
             panY = Math.min(0, startPanY + (e.clientY - startY));
             inner.style.transform = 'translate(' + panX + 'px, ' + panY + 'px)';
             const { cw, rh } = cellSize();
@@ -895,6 +1007,7 @@ function initCanvas() {
             panX = 0;
             panY = 0;
             inner.style.transform = 'translate(0px, 0px)';
+            canvas.style.backgroundPosition = '0px 0px';
         }
         if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
             deleteField(selectedId);

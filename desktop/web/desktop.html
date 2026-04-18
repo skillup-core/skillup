@@ -514,6 +514,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            width: 100px;
             padding: 15px 10px;
             border-radius: 12px;
             cursor: pointer;
@@ -573,6 +574,16 @@
             text-align: center;
             word-wrap: break-word;
             max-width: 100px;
+        }
+
+        /* App icon drag-and-drop */
+        .app-icon {
+            cursor: grab;
+        }
+
+        .app-icon.dragging {
+            opacity: 0;
+            pointer-events: none;
         }
 
         /* App Content Area */
@@ -1651,6 +1662,7 @@
         };
 
         let currentLanguage = 'en';
+        window.currentLanguage = currentLanguage; // exposed for iframe access
         let currentPage = 'home';  // Track current page
         let currentApp = null;
         let apps = [];
@@ -1700,10 +1712,13 @@
         // Initialization
         // ============================================================================
         async function init() {
+            initDragDrop();
+
             // Load config
             const config = await apiCall('get_config');
             if (config && config.language) {
                 currentLanguage = config.language;
+                window.currentLanguage = currentLanguage;
                 document.getElementById('language-select').value = currentLanguage;
             }
 
@@ -1750,7 +1765,7 @@
 
             // Auto-launch app if specified
             if (config && config.auto_launch_app) {
-                await launchApp(config.auto_launch_app);
+                await launchApp(config.auto_launch_app, config.auto_launch_menu || null);
             }
 
             // Start clock
@@ -1758,6 +1773,15 @@
 
             // Load account info (topbar avatar + settings form)
             loadAccount();
+
+            // Show Wayland IME warning if conditions are met
+            if (config && config.show_wayland_ime_warning) {
+                showWaylandImeDialog();
+            }
+
+            // Notify Python that the desktop UI is ready.
+            // This triggers on_skillup_started() on apps that implement it.
+            apiCall('desktop_ready', {}).catch(function() {});
         }
 
         async function loadApps() {
@@ -1766,6 +1790,154 @@
                 apps = result.apps;
                 renderApps();
             }
+        }
+
+        // Mouse-based drag state (module level, persists across renderApps calls)
+        let dragState = null;
+        let dragOccurred = false;
+
+        async function saveAppOrder() {
+            const order = apps.map(a => a.id).join(',');
+            await apiCall('set_config', { app_order: order });
+        }
+
+        // FLIP: animate icons to their new positions after a DOM reorder
+        function flipReorder(grid, srcEl, refEl, before) {
+            const allIcons = Array.from(grid.querySelectorAll('.app-icon'));
+
+            // FIRST: snapshot current positions
+            const firstRects = new Map();
+            allIcons.forEach(el => firstRects.set(el, el.getBoundingClientRect()));
+
+            // INVERT: change DOM order
+            if (before) {
+                grid.insertBefore(srcEl, refEl);
+            } else {
+                grid.insertBefore(srcEl, refEl.nextSibling);
+            }
+
+            // LAST + PLAY: slide non-source icons from old → new position
+            allIcons.forEach(el => {
+                if (el === srcEl) return;
+                const first = firstRects.get(el);
+                const last = el.getBoundingClientRect();
+                const dx = first.left - last.left;
+                const dy = first.top - last.top;
+                if (dx === 0 && dy === 0) return;
+                el.style.transition = 'none';
+                el.style.transform = `translate(${dx}px, ${dy}px)`;
+                el.offsetHeight; // force reflow
+                el.style.transition = 'transform 0.15s ease';
+                el.style.transform = '';
+            });
+        }
+
+        // Find the icon under cursor (excluding source), return { icon, before }
+        function findDropTarget(e, grid, srcId) {
+            const icons = Array.from(grid.querySelectorAll('.app-icon')).filter(el => el.dataset.appId !== srcId);
+            if (icons.length === 0) return null;
+
+            // Direct hit
+            for (const el of icons) {
+                const r = el.getBoundingClientRect();
+                if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+                    return { icon: el, before: e.clientX < r.left + r.width / 2 };
+                }
+            }
+
+            // No direct hit: find nearest icon in the same horizontal band, then nearest overall
+            const sameRow = icons.filter(el => {
+                const r = el.getBoundingClientRect();
+                return e.clientY >= r.top && e.clientY <= r.bottom;
+            });
+            const pool = sameRow.length > 0 ? sameRow : icons;
+            let nearest = null, nearestDist = Infinity;
+            for (const el of pool) {
+                const r = el.getBoundingClientRect();
+                const cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
+                const d = Math.hypot(e.clientX - cx, e.clientY - cy);
+                if (d < nearestDist) { nearestDist = d; nearest = el; }
+            }
+            if (nearest) {
+                const r = nearest.getBoundingClientRect();
+                return { icon: nearest, before: e.clientX < r.left + r.width / 2 };
+            }
+            return null;
+        }
+
+        function initDragDrop() {
+            document.addEventListener('mousemove', (e) => {
+                if (!dragState) return;
+
+                const dx = e.clientX - dragState.startX;
+                const dy = e.clientY - dragState.startY;
+                if (!dragState.active && Math.sqrt(dx * dx + dy * dy) < 6) return;
+
+                const grid = document.getElementById('app-grid');
+                const srcIcon = grid.querySelector(`[data-app-id="${dragState.appId}"]`);
+                if (!srcIcon) return;
+
+                if (!dragState.active) {
+                    dragState.active = true;
+                    document.body.style.userSelect = 'none';
+
+                    srcIcon.classList.add('dragging');
+                    const rect = srcIcon.getBoundingClientRect();
+                    const ghost = srcIcon.cloneNode(true);
+                    ghost.classList.remove('dragging');
+                    ghost.style.cssText = `position:fixed;pointer-events:none;opacity:0.8;z-index:9999;` +
+                        `width:${srcIcon.offsetWidth}px;top:${rect.top}px;left:${rect.left}px;`;
+                    document.body.appendChild(ghost);
+                    dragState.ghost = ghost;
+                    dragState.ghostOffX = e.clientX - rect.left;
+                    dragState.ghostOffY = e.clientY - rect.top;
+                }
+
+                // Move ghost
+                dragState.ghost.style.left = (e.clientX - dragState.ghostOffX) + 'px';
+                dragState.ghost.style.top  = (e.clientY - dragState.ghostOffY) + 'px';
+
+                // Find drop position and reorder if changed
+                const drop = findDropTarget(e, grid, dragState.appId);
+                if (drop) {
+                    const key = drop.icon.dataset.appId + (drop.before ? 'B' : 'A');
+                    if (key !== dragState.lastDropKey) {
+                        dragState.lastDropKey = key;
+                        flipReorder(grid, srcIcon, drop.icon, drop.before);
+                    }
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (!dragState) return;
+
+                const grid = document.getElementById('app-grid');
+                document.body.style.userSelect = '';
+
+                if (dragState.ghost) dragState.ghost.remove();
+
+                const srcIcon = grid.querySelector(`[data-app-id="${dragState.appId}"]`);
+                if (srcIcon) {
+                    srcIcon.classList.remove('dragging');
+                    srcIcon.style.transform = '';
+                    srcIcon.style.transition = '';
+                }
+                // Clear any in-progress transitions
+                grid.querySelectorAll('.app-icon').forEach(el => {
+                    el.style.transform = '';
+                    el.style.transition = '';
+                });
+
+                if (dragState.active) {
+                    dragOccurred = true;
+                    // Read final DOM order and sync apps array
+                    const orderedIds = Array.from(grid.querySelectorAll('.app-icon')).map(el => el.dataset.appId);
+                    apps = orderedIds.map(id => apps.find(a => a.id === id)).filter(Boolean);
+                    saveAppOrder();
+                }
+
+                dragState = null;
+            });
         }
 
         function renderApps() {
@@ -1781,12 +1953,16 @@
 
             emptyState.style.display = 'none';
 
-            apps.forEach(app => {
+            apps.forEach((app, index) => {
                 const iconDiv = document.createElement('div');
                 iconDiv.className = 'app-icon';
                 iconDiv.tabIndex = 0;
                 iconDiv.setAttribute('role', 'button');
-                iconDiv.onclick = () => launchApp(app.id);
+                iconDiv.dataset.appId = app.id;
+                iconDiv.onclick = () => {
+                    if (dragOccurred) { dragOccurred = false; return; }
+                    launchApp(app.id);
+                };
                 iconDiv.onfocus = () => {
                     iconDiv.classList.add('custom-focused');
                 };
@@ -1819,9 +1995,24 @@
                     }
                 };
 
+                iconDiv.addEventListener('mousedown', (e) => {
+                    if (e.button !== 0) return;
+                    dragState = {
+                        appId: app.id,
+                        startX: e.clientX,
+                        startY: e.clientY,
+                        active: false,
+                        ghost: null,
+                        targetAppId: null,
+                        insertBefore: true,
+                        ghostOffX: 0,
+                        ghostOffY: 0
+                    };
+                });
+
                 iconDiv.innerHTML = `
                     <div class="app-icon-image">
-                        <img src="/app/${app.id}/icon.svg" alt="${app.name}" onerror="this.parentElement.innerHTML='<svg viewBox=\\'0 0 24 24\\' fill=\\'#4cc9f0\\'><path d=\\'M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z\\'/></svg>'">
+                        <img draggable="false" src="/app/${app.id}/icon.svg" alt="${app.name}" onerror="this.parentElement.innerHTML='<svg viewBox=\\'0 0 24 24\\' fill=\\'#4cc9f0\\'><path d=\\'M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z\\'/></svg>'">
                     </div>
                     <span class="app-icon-name">${app.name}</span>
                 `;
@@ -2057,7 +2248,7 @@
             });
         }
 
-        async function launchApp(appId) {
+        async function launchApp(appId, initialMenu) {
             const appInfo = apps.find(a => a.id === appId);
             if (appInfo && appInfo.new_window === 'single') {
                 const lang = currentLanguage || 'en';
@@ -2112,6 +2303,9 @@
                 if (hasCachedIframes && lastAppMenu[appId]) {
                     // Restore last active menu - iframe already in DOM with preserved state
                     handleAppMenuClick(lastAppMenu[appId]);
+                } else if (initialMenu) {
+                    // Caller specified which menu to open first (e.g. --skillform-run opens runner)
+                    handleAppMenuClick(initialMenu);
                 } else if (currentApp && currentApp.menu_items && currentApp.menu_items.length > 0) {
                     // First launch - render initial app view
                     handleAppMenuClick(currentApp.menu_items[0].id);
@@ -2547,6 +2741,7 @@
         // ============================================================================
         async function changeLanguage(lang) {
             currentLanguage = lang;
+            window.currentLanguage = currentLanguage;
             await apiCall('set_config', { language: lang });
             applyTranslations();
 
@@ -3078,6 +3273,119 @@
         // ============================================================================
         // Handler is defined in <head> section before common.js loads    </script>
 
+<!-- Startup Fortune Dialog -->
+<div id="startup-fortune-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.55);z-index:10500;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:28px 32px;min-width:340px;max-width:480px;box-shadow:0 8px 40px rgba(0,0,0,0.4);text-align:center;">
+        <div style="width:56px;height:56px;margin:0 auto 12px;"><img src="/app/f0rtune0/icon.svg" alt="clover" style="width:100%;height:100%;"></div>
+        <div id="sfd-date" style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;"></div>
+        <div id="sfd-title" style="font-size:14px;font-weight:600;color:var(--text-secondary);margin-bottom:16px;"></div>
+        <div id="sfd-text" style="font-size:18px;font-weight:600;color:var(--text-primary);line-height:1.7;margin-bottom:24px;"></div>
+        <button onclick="document.getElementById('startup-fortune-overlay').style.display='none';"
+                style="background:var(--accent-color,#4a90e2);color:white;border:none;border-radius:6px;padding:8px 28px;font-size:14px;cursor:pointer;"
+                id="sfd-ok-btn">OK</button>
+    </div>
+</div>
+
+<script>
+    // showStartupFortune: called via callJS from Python (fortune app on_skillup_started)
+    window.showStartupFortune = function(args) {
+        const ko = args.ko || '';
+        const en = args.en || '';
+        const date = args.date || '';
+        const langPref = args.language_pref || 'auto';
+
+        const uiLang = (typeof currentLanguage !== 'undefined') ? currentLanguage : 'en';
+        const lang = (langPref === 'ko' || langPref === 'en') ? langPref : uiLang;
+
+        // Format date
+        let dateStr = '';
+        if (date && date.length >= 8) {
+            const y = date.slice(0,4), m = date.slice(4,6), d = date.slice(6,8);
+            if (lang === 'ko') {
+                dateStr = y + '년 ' + parseInt(m) + '월 ' + parseInt(d) + '일';
+            } else {
+                const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                dateStr = months[parseInt(m)-1] + ' ' + parseInt(d) + ', ' + y;
+            }
+        }
+
+        const text  = (lang === 'ko') ? ko : en;
+        const title = (lang === 'ko') ? '오늘의 운세' : "Today's Fortune";
+        const okLabel = (lang === 'ko') ? '확인' : 'OK';
+
+        document.getElementById('sfd-date').textContent = dateStr;
+        document.getElementById('sfd-title').textContent = title;
+        document.getElementById('sfd-text').textContent = text;
+        document.getElementById('sfd-ok-btn').textContent = okLabel;
+
+        const overlay = document.getElementById('startup-fortune-overlay');
+        overlay.style.display = 'flex';
+
+        // Close on overlay click (outside the dialog box)
+        overlay.onclick = function(e) {
+            if (e.target === overlay) overlay.style.display = 'none';
+        };
+    };
+</script>
+
+<!-- Wayland IME Warning Dialog -->
+<div id="wayland-ime-dialog" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.55);z-index:10600;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:24px 28px;min-width:360px;max-width:540px;box-shadow:0 8px 40px rgba(0,0,0,0.4);">
+        <div id="wayland-ime-title" style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:14px;"></div>
+        <div id="wayland-ime-desc" style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:14px;"></div>
+        <div style="text-align:center;margin-bottom:16px;">
+            <img src="/common/resource/img/wayland_x11.jpg" alt="login session selection"
+                 style="max-width:100%;border-radius:6px;border:1px solid var(--border-color);">
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+            <label style="display:flex;align-items:center;font-size:13px;color:var(--text-secondary);cursor:pointer;">
+                <input type="checkbox" id="wayland-ime-dismiss-check"
+                       style="margin-right:6px;cursor:pointer;">
+                <span id="wayland-ime-dismiss-label"></span>
+            </label>
+            <button id="wayland-ime-ok-btn"
+                    style="background:var(--accent-color,#4a90e2);color:white;border:none;border-radius:6px;padding:7px 24px;font-size:13px;cursor:pointer;"></button>
+        </div>
+    </div>
+</div>
+<script>
+    (function() {
+        var _WAYLAND_IME_I18N = {
+            ko: {
+                title: '한글 입력 안내',
+                desc: '현재 <b>Wayland</b> 세션에서 실행 중입니다.<br>한글 등 다국어 입력을 사용하려면, 로그인 화면에서 아래 그림과 같이 <b>Standard (X11 display server)</b>를 선택한 후 다시 로그인하세요.',
+                dismiss: '다시 보지 않기',
+                ok: '확인'
+            },
+            en: {
+                title: 'Input Method Notice',
+                desc: 'You are running under a <b>Wayland</b> session.<br>To enable Korean and other multilingual input, please log out and select <b>Standard (X11 display server)</b> at the login screen as shown below.',
+                dismiss: "Don't show again",
+                ok: 'OK'
+            }
+        };
+
+        window.showWaylandImeDialog = function() {
+            var lang = (typeof currentLanguage !== 'undefined' && currentLanguage === 'ko') ? 'ko' : 'en';
+            var t = _WAYLAND_IME_I18N[lang];
+            document.getElementById('wayland-ime-title').textContent = t.title;
+            document.getElementById('wayland-ime-desc').innerHTML = t.desc;
+            document.getElementById('wayland-ime-dismiss-label').textContent = t.dismiss;
+            document.getElementById('wayland-ime-ok-btn').textContent = t.ok;
+            document.getElementById('wayland-ime-dialog').style.display = 'flex';
+        };
+
+        function closeWaylandImeDialog() {
+            var dismiss = document.getElementById('wayland-ime-dismiss-check').checked;
+            document.getElementById('wayland-ime-dialog').style.display = 'none';
+            if (dismiss) {
+                apiCall('set_config', { wayland_ime_dismissed: true }).catch(function() {});
+            }
+        }
+        document.getElementById('wayland-ime-ok-btn').addEventListener('click', closeWaylandImeDialog);
+    })();
+</script>
+
 <!-- Ctrl+Tab App Switcher -->
 <div id="app-switcher">
     <div id="app-switcher-panel">
@@ -3102,6 +3410,18 @@
         <div id="msgbox-dialog-text" style="font-size:13px;color:var(--text-secondary);margin-bottom:24px;line-height:1.5;white-space:pre-wrap;"></div>
         <div style="display:flex;justify-content:flex-end;">
             <button id="msgbox-dialog-ok" class="btn btn-primary" style="font-size:13px;padding:6px 20px;" data-i18n="dialog.ok">OK</button>
+        </div>
+    </div>
+</div>
+
+<!-- Input Dialog -->
+<div id="input-dialog" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:24px;min-width:300px;max-width:420px;">
+        <div id="input-dialog-title" style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:12px;"></div>
+        <input id="input-dialog-value" type="text" class="form-control" style="font-size:13px;margin-bottom:16px;">
+        <div style="display:flex;justify-content:flex-end;">
+            <button id="input-dialog-cancel" class="btn btn-secondary" style="font-size:13px;padding:6px 16px;margin-right:8px;" data-i18n="dialog.cancel">Cancel</button>
+            <button id="input-dialog-ok" class="btn btn-primary" style="font-size:13px;padding:6px 16px;" data-i18n="dialog.ok">OK</button>
         </div>
     </div>
 </div>
@@ -3155,6 +3475,55 @@
         btn.focus();
     };
 
+    // showInputDialog: reusable JS input dialog, returns Promise<string|null>
+    window.showInputDialog = function(title, defaultValue) {
+        return new Promise(function(resolve) {
+            document.getElementById('input-dialog-title').textContent = title;
+            const input = document.getElementById('input-dialog-value');
+            input.value = defaultValue || '';
+            const dialog = document.getElementById('input-dialog');
+            dialog.style.display = 'flex';
+
+            const onOk = function() {
+                dialog.style.display = 'none';
+                cleanup();
+                resolve(input.value);
+            };
+            const onCancel = function() {
+                dialog.style.display = 'none';
+                cleanup();
+                resolve(null);
+            };
+            const onKeydown = function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    onOk();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    onCancel();
+                }
+            };
+            const onBackdrop = function(e) {
+                if (e.target === dialog) onCancel();
+            };
+            function cleanup() {
+                document.getElementById('input-dialog-ok').removeEventListener('click', onOk);
+                document.getElementById('input-dialog-cancel').removeEventListener('click', onCancel);
+                document.removeEventListener('keydown', onKeydown, true);
+                dialog.removeEventListener('click', onBackdrop);
+            }
+            document.getElementById('input-dialog-ok').addEventListener('click', onOk);
+            document.getElementById('input-dialog-cancel').addEventListener('click', onCancel);
+            document.addEventListener('keydown', onKeydown, true);
+            dialog.addEventListener('click', onBackdrop);
+            setTimeout(function() { input.select(); input.focus(); }, 50);
+        });
+    };
+
     // showConfirmBox: called via callJS from Python (lib/msgbox.py confirm())
     window.showConfirmBox = function(args) {
         const confirmId = args.confirm_id;
@@ -3206,15 +3575,20 @@
                     else yesBtn.focus();
                 }
             };
+            const onBackdrop = function(e) {
+                if (e.target === dialog) onNo();
+            };
             const cleanup = function() {
                 document.getElementById('confirm-dialog-yes').removeEventListener('click', onYes);
                 document.getElementById('confirm-dialog-no').removeEventListener('click', onNo);
                 document.removeEventListener('keydown', onKeydown, true);
+                dialog.removeEventListener('click', onBackdrop);
             };
 
             document.getElementById('confirm-dialog-yes').addEventListener('click', onYes);
             document.getElementById('confirm-dialog-no').addEventListener('click', onNo);
             document.addEventListener('keydown', onKeydown, true);
+            dialog.addEventListener('click', onBackdrop);
             yesBtn.focus();
         });
     };
@@ -3269,7 +3643,9 @@
             }
 
             // Position the modal box.
-            // position values: 'center' | 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
+            // position values: 'center' | 'iframe-center' | 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
+            // 'center': centered within the full window
+            // 'iframe-center': centered within the currently visible iframe area
             // For corner positions the box is first shown off-screen, measured, then placed.
             function _positionBox(boxEl, position) {
                 const MARGIN = 24;
@@ -3279,7 +3655,7 @@
                     boxEl.style.transform = 'translate(-50%, -50%)';
                     return;
                 }
-                // Corner placement: need real size, so show invisible then measure
+                // All other positions need real size: show invisible, measure, then place
                 boxEl.style.transform = 'none';
                 boxEl.style.visibility = 'hidden';
                 boxEl.style.left = '0px';
@@ -3288,7 +3664,16 @@
                     const bw = boxEl.offsetWidth, bh = boxEl.offsetHeight;
                     const vw = window.innerWidth, vh = window.innerHeight;
                     let left, top;
-                    if (position === 'bottom-right') {
+                    if (position === 'iframe-center') {
+                        const iframe = document.querySelector('iframe.iframe-visible');
+                        if (iframe) {
+                            const r = iframe.getBoundingClientRect();
+                            left = r.left + (r.width - bw) / 2;
+                            top = r.top + (r.height - bh) / 2;
+                        } else {
+                            left = vw / 2 - bw / 2; top = vh / 2 - bh / 2;
+                        }
+                    } else if (position === 'bottom-right') {
                         left = vw - bw - MARGIN; top = vh - bh - MARGIN;
                     } else if (position === 'bottom-left') {
                         left = MARGIN; top = vh - bh - MARGIN;
@@ -3410,11 +3795,13 @@
                 // draggable mode: no background dimming, box positioned freely
                 if (config.draggable) {
                     overlay.style.background = 'transparent';
+                    overlay.style.pointerEvents = 'none';
                     overlay.onclick = null;
                     _positionBox(boxEl, config.position || 'center');
                     _dragCleanup = _setupDrag(boxEl);
                 } else {
                     overlay.style.background = 'rgba(0,0,0,0.5)';
+                    overlay.style.pointerEvents = 'all';
                     overlay.onclick = function(e) { if (e.target === overlay) close(); };
                     _positionBox(boxEl, config.position || 'center');
                     _dragCleanup = null;

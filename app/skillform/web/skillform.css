@@ -311,38 +311,12 @@ body[style*="grabbing"] * { cursor: grabbing !important; }
     flex-direction: column;
     height: 100%;
     overflow: hidden;
-    font-size: 0.88rem;
+    font-size: 14px; /* default; overridden by docProps.fontSize via inline style */
     color: var(--text-primary, #212529);
 }
 
-.sfr-topbar {
-    display: flex;
-    align-items: center;
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--border-color, #dee2e6);
-    background: var(--bg-secondary, #f8f9fa);
-    flex-shrink: 0;
-}
-.sfr-topbar > * { margin-left: 4px; }
-.sfr-topbar > *:first-child { margin-left: 0; }
-.sfr-path-input {
-    flex: 1;
-    font-size: 0.82rem;
-    padding: 3px 8px;
-    border: 1px solid var(--border-color, #ced4da);
-    border-radius: 4px;
-    background: var(--bg-primary, #fff);
-    color: var(--text-primary, #212529);
-}
-.sfr-spacer { flex: 1; }
 
-.sfr-status {
-    font-size: 0.78rem;
-    padding: 3px 12px;
-    min-height: 20px;
-    color: var(--text-secondary, #6c757d);
-    flex-shrink: 0;
-}
+
 
 /* Form grid area */
 .sfr-form {
@@ -350,12 +324,6 @@ body[style*="grabbing"] * { cursor: grabbing !important; }
     position: relative;
     overflow-y: auto;
     padding: 0;
-}
-
-.sfr-empty {
-    padding: 40px 20px;
-    text-align: center;
-    color: var(--text-secondary, #6c757d);
 }
 
 /* Field wrapper inside runner grid */
@@ -375,7 +343,7 @@ body[style*="grabbing"] * { cursor: grabbing !important; }
 }
 
 .sfr-label {
-    font-size: 0.78rem;
+    font-size: 1em;
     color: var(--text-secondary, #6c757d);
     margin-bottom: 2px;
     display: block;
@@ -389,11 +357,11 @@ body[style*="grabbing"] * { cursor: grabbing !important; }
     flex: 1;
     min-height: 0;
     padding: 4px 8px;
+    font-size: var(--runner-font-size, 14px);
     border: 1px solid var(--border-color, #ced4da);
     border-radius: 4px;
     background: var(--bg-primary, #fff);
     color: var(--text-primary, #212529);
-    font-size: 0.88rem;
     font-family: inherit;
     line-height: 1.4;
     box-sizing: border-box;
@@ -416,7 +384,7 @@ body[style*="grabbing"] * { cursor: grabbing !important; }
     border-radius: 4px;
     background: var(--bg-primary, #fff);
     color: var(--text-primary, #212529);
-    font-size: 0.88rem;
+    font-size: var(--runner-font-size, 14px);
     box-sizing: border-box;
 }
 
@@ -457,7 +425,7 @@ body[style*="grabbing"] * { cursor: grabbing !important; }
 .sfr-radio-group > * { margin-bottom: 4px; }
 .sfr-radio-group-inline { flex-direction: row; flex-wrap: wrap; align-items: center; }
 .sfr-radio-group-inline > * { margin-bottom: 0; margin-right: 16px; }
-.sfr-radio-row { display: flex; align-items: center; cursor: pointer; font-size: 0.88rem; }
+.sfr-radio-row { display: flex; align-items: center; cursor: pointer; font-size: 0.88em; }
 .sfr-radio-row input { margin-right: 6px; }
 
 /* File */
@@ -480,7 +448,7 @@ body[style*="grabbing"] * { cursor: grabbing !important; }
 /* Slider */
 .sfr-slider-row { display: flex; align-items: center; width: 100%; }
 .sfr-slider-row input[type="range"] { flex: 1; margin-right: 8px; }
-.sfr-slider-val { font-size: 0.82rem; color: var(--text-secondary, #6c757d); min-width: 32px; text-align: right; }
+.sfr-slider-val { font-size: 0.82em; color: var(--text-secondary, #6c757d); min-width: 32px; text-align: right; }
 
 /* Label widget */
 .sfr-label-widget { margin: 0; padding: 2px 0; }

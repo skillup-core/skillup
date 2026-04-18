@@ -976,6 +976,24 @@ class _ScanCtx:
     #   Used for forms like exists/forall where the body is a single expression.
     # Returns (li, ci, in_string) positioned just AFTER the closing ')'.
     # ------------------------------------------------------------------
+    # SKILL infix operators that can appear at line-end inside a condition,
+    # indicating the expression continues on the next line.
+    _INFIX_OPS = frozenset(['&&', '||', '==', '!=', '<', '>', '<=', '>=',
+                            '+', '-', '*', '/', '%', '**', '~>', '->',
+                            '&', '|', '^', '!'])
+
+    @staticmethod
+    def _line_ends_with_infix_op(line, ops):
+        """Return True if the line ends (before ; comment) with an infix operator."""
+        import re as _re
+        # Strip trailing comment
+        stripped = _re.split(r';', line)[0].rstrip()
+        if not stripped:
+            return False
+        # Extract last token
+        m = _re.search(r'([^\s()"]+)$', stripped)
+        return bool(m and m.group(1) in ops)
+
     def _scan_special(self, start_li, start_ci, form_depth, skip_count, insertable,
                       max_body=None):
         li, ci = start_li, start_ci
@@ -1092,6 +1110,13 @@ class _ScanCtx:
 
                 ci += 1
 
+            # When moving to the next line while still skipping non-body args:
+            # if the current line ends with an infix operator, the next line is
+            # a continuation of the same expression — undo the args_skipped bump
+            # so that tokens on the next line are still treated as the same arg.
+            if args_skipped > 0 and args_skipped <= skip_count and not in_string:
+                if self._line_ends_with_infix_op(line, self._INFIX_OPS):
+                    args_skipped -= 1
             li += 1; ci = 0; last_ident = None
 
         return li, ci, in_string

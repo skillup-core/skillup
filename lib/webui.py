@@ -519,7 +519,7 @@ class WebUIEngine:
             # Signals: Python → JavaScript events
             messageReceived = Signal(str, str)  # (type, message)
             callJS = Signal(str, str)  # (function_name, json_args) - Python → JavaScript function call
-            openWindow = Signal(str, str, str)  # (url, title, mode) - open new window from main thread
+            openWindow = Signal(str, str, str, int, int, int, int)  # (url, title, mode, width, height, min_w, min_h) - open new window from main thread
             focusWindow = Signal(str)  # (url_prefix) - focus existing popup window
             detachToNewWindow = Signal(str, str, str)  # (url_key, title, desktop_url)
             runJSInPopup = Signal(str, str)  # (url_key, js_code) - run JS in a popup window page
@@ -834,6 +834,24 @@ class WebUIEngine:
         if hasattr(self, 'on_view_created') and callable(self.on_view_created):
             self.on_view_created(self.view)
 
+        # Sync document.title → Qt window title
+        self.view.page().titleChanged.connect(self.view.setWindowTitle)
+
+        # Built-in handler: resize the Qt window from JavaScript
+        def _handle_resize_window(data):
+            w = int(data.get('w', 0))
+            h = int(data.get('h', 0))
+            if w > 0 and h > 0 and self.view:
+                try:
+                    from PySide2.QtCore import QSize as _QSize  # type: ignore
+                except ImportError:
+                    from PySide6.QtCore import QSize as _QSize  # type: ignore
+                self.view.resize(w, h)
+                self.view.setMinimumSize(_QSize(w, h))
+                self.view.setMaximumSize(_QSize(w, h))
+            return {'success': True}
+        self.register_handler('resize_window', _handle_resize_window)
+
         # Enable developer tools (F12 or right-click -> Inspect)
         if pyside_version == 2:
             from PySide2.QtWebEngineWidgets import QWebEngineSettings  # type: ignore
@@ -865,14 +883,24 @@ class WebUIEngine:
 
             _popup_counter = [0]
 
-            def _do_open_window(w_url, w_title, w_mode='true'):
+            def _do_open_window(w_url, w_title, w_mode='true', w_width=0, w_height=0, w_min_w=0, w_min_h=0):
                 try:
                     new_view = CustomWebEngineView()
                     new_page = ConsolePage(new_view)
                     new_view.setPage(new_page)
                     new_view.setWindowTitle(w_title)
-                    new_view.resize(1200, 800)
-                    new_view.setMinimumSize(QSize(600, 400))
+
+                    # Determine window size, capping height at 80% of screen height
+                    screen = engine_ref.qt_app.primaryScreen()
+                    screen_h = screen.availableGeometry().height() if screen else 900
+                    max_h = int(screen_h * 0.8)
+                    win_w = w_width if w_width > 0 else 1200
+                    win_h = w_height if w_height > 0 else 800
+                    win_h = min(win_h, max_h)
+                    new_view.resize(win_w, win_h)
+                    min_w = w_min_w if w_min_w > 0 else 600
+                    min_h = w_min_h if w_min_h > 0 else 400
+                    new_view.setMinimumSize(QSize(min_w, min_h))
                     # Apply same settings as main window
                     new_settings = new_view.settings()
                     new_settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
@@ -1044,14 +1072,17 @@ class WebUIEngine:
         else:
             log("error", message="detach_to_new_window: bridge not available", tag="qt")
 
-    def open_window(self, url: str, title: str = "Skillup", mode: str = "true"):
+    def open_window(self, url: str, title: str = "Skillup", mode: str = "true",
+                    width: int = 0, height: int = 0, min_w: int = 0, min_h: int = 0):
         """
         Open a new Qt WebEngine window. Emits signal to run in main thread.
         Safe to call from any thread.
+        width/height: desired window size in pixels (0 = use default).
+        min_w/min_h: minimum window size in pixels (0 = use default).
         """
         log("info", message=f"open_window: emitting signal url={url}", tag="qt")
         if self.bridge:
-            self.bridge.openWindow.emit(url, title, mode)
+            self.bridge.openWindow.emit(url, title, mode, width, height, min_w, min_h)
         else:
             log("error", message="open_window: bridge not available", tag="qt")
 

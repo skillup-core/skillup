@@ -117,7 +117,12 @@ def main():
     # ========================================================================
     if desktop_mode:
         from desktop.desktop import run_desktop
-        return run_desktop(auto_launch_app=app_id)
+        # Collect app-specific extra args (e.g. --skillform-run=/tmp/a.json)
+        app_extra_args = [
+            arg for arg in sys.argv[1:]
+            if not arg.startswith('--app:') and arg != '--desktop'
+        ]
+        return run_desktop(auto_launch_app=app_id, app_extra_args=app_extra_args)
 
     # ========================================================================
     # CLI MODE: Route to specified app

@@ -1422,3 +1422,25 @@ procedure(f()
     when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
     x
 )
+
+[testcase45] when with multiline && condition - condition continuation not breakpointable
+INPUT:
+procedure(testProc()
+    a=1
+    b=1
+    when(a==1 && b==1 &&
+        c==1
+        data = 1)
+)
+OUTPUT:
+procedure(testProc()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    a=1
+    when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+    b=1
+    when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+    when(a==1 && b==1 &&
+        c==1
+        when(member(6 __sbk_bp_0) _sbDbgBreak(6 0))
+        data = 1)
+)

@@ -884,4 +884,8 @@
         });
     };
 
+    // Signal that callPython is now available
+    window.callPythonReady = true;
+    window.dispatchEvent(new CustomEvent('callPythonReady'));
+
 })();

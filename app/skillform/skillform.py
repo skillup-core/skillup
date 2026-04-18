@@ -6,8 +6,12 @@ JSON Form Designer and Runner for SKILL automation.
 - Runner: Load a JSON Schema form and collect user input, return result to SKILL
 - Designer: Visually design JSON Schema forms and save as .json files
 
-Usage (desktop):
+Usage
+    desktop:
     python3 skillup.py --desktop --app:skillform
+
+    standalone:
+    python3 skillup.py --desktop --app:skillform --skillform-run=/tmp/form.json
 """
 
 import os
@@ -68,13 +72,38 @@ class SkillFormApp(BaseApp):
             'designer.last_file': '',
         })
 
+        # Check if --skillform-run=<path> was passed via environment
+        auto_run_path = None
+        raw_args = os.environ.get('_SKILLUP_APP_ARGS')
+        if raw_args:
+            try:
+                extra_args = json.loads(raw_args)
+                for arg in extra_args:
+                    if arg.startswith('--skillform-run='):
+                        auto_run_path = arg[len('--skillform-run='):]
+                        break
+            except Exception:
+                pass
+
+        # Load auto-run schema if specified
+        auto_run_schema = None
+        if auto_run_path:
+            auto_run_path = os.path.expanduser(auto_run_path)
+            try:
+                with open(auto_run_path, 'r', encoding='utf-8') as f:
+                    auto_run_schema = json.load(f)
+            except Exception as e:
+                print(f'[warn ] --skillform-run: failed to load {auto_run_path}: {e}',
+                      file=sys.stderr)
+
         self.state.update({
-            'runner_schema': None,
-            'runner_schema_path': config.get('runner.last_schema', ''),
+            'runner_schema': auto_run_schema,
+            'runner_schema_path': auto_run_path if auto_run_schema else config.get('runner.last_schema', ''),
             'runner_result': None,
-            'runner_waiting': False,
+            'runner_waiting': auto_run_schema is not None,
             'designer_schema': None,
             'designer_file': config.get('designer.last_file', ''),
+            'auto_run': auto_run_schema is not None,
         }, notify=False)
 
         self.register_handlers({
@@ -89,6 +118,8 @@ class SkillFormApp(BaseApp):
             'designer_get_state': self._handle_designer_get_state,
             'designer_run': self._handle_designer_run,
             'runner_poll': self._handle_runner_poll,
+            # Standalone mode
+            'standalone_close': self._handle_standalone_close,
         })
 
         return 0
@@ -164,6 +195,7 @@ class SkillFormApp(BaseApp):
             'result': self.state.get('runner_result'),
             'waiting': self.state.get('runner_waiting'),
             'runner_schema_version': self.state.get('runner_schema_version', 0),
+            'auto_run': self.state.get('auto_run', False),
         }
 
     # -------------------------------------------------------------------------
@@ -248,6 +280,16 @@ class SkillFormApp(BaseApp):
             'runner_schema_version': version,
         }, notify=False)
         return {'success': True, 'version': version}
+
+    def _handle_standalone_close(self, data: dict, language: str) -> dict:
+        """Close the standalone window by terminating the subprocess"""
+        import threading
+        def _exit():
+            import time
+            time.sleep(0.1)  # allow response to be sent first
+            sys.exit(0)
+        threading.Thread(target=_exit, daemon=True).start()
+        return {'success': True}
 
     def _handle_runner_poll(self, data: dict, language: str) -> dict:
         """Runner polls for schema updates. Returns schema only if version changed."""

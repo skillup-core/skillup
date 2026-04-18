@@ -132,6 +132,10 @@ class SkillBotApp(BaseApp):
             "file_new_file":          self._handle_file_new_file,
             "file_rename":            self._handle_file_rename,
             "file_delete":            self._handle_file_delete,
+            # Projects
+            "project_list":           self._handle_project_list,
+            "project_save":           self._handle_project_save,
+            "project_delete":         self._handle_project_delete,
         })
         self._intellisense_init()
         return 0
@@ -425,10 +429,11 @@ class SkillBotApp(BaseApp):
             builtins = [row[0] for row in cursor.fetchall()
                         if re.match(r'^[a-zA-Z_][a-zA-Z0-9_?!]*$', row[0])]
             conn.close()
-            return {"success": True, "builtins": builtins}
+            return {"success": True, "builtins": builtins,
+                    "all_functions": self._isk_function_names}
         except Exception as e:
             print(f"[SkillBot] get_skill_syntax error: {e}", file=sys.stderr)
-            return {"success": False, "builtins": []}
+            return {"success": False, "builtins": [], "all_functions": []}
 
     # ──────────────────────────────────────────────────────────
     # Debug handlers
@@ -1156,6 +1161,81 @@ class SkillBotApp(BaseApp):
             p.unlink()
             return {'success': True}
         except OSError as e:
+            return {'success': False, 'error': str(e)}
+
+    # ──────────────────────────────────────────────────────────
+    # Project handlers
+    # ──────────────────────────────────────────────────────────
+
+    def _projects_dir(self):
+        data_dir = self.get_data_dir()
+        p = Path(data_dir) / 'projects'
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    def _handle_project_list(self, data, language):
+        try:
+            index_file = self._projects_dir() / 'list.json'
+            if not index_file.exists():
+                return {'success': True, 'projects': []}
+            projects = json.loads(index_file.read_text(encoding='utf-8'))
+            return {'success': True, 'projects': projects}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def _handle_project_save(self, data, language):
+        """Create or update a project.
+
+        Input: { id, name, description, files: [path, ...] }
+        If id is empty/null, a new id is generated.
+        """
+        import uuid
+        try:
+            proj_id = data.get('id') or str(uuid.uuid4())[:8]
+            name    = data.get('name', '').strip() or 'Untitled'
+            desc    = data.get('description', '').strip()
+            files   = data.get('files', [])
+
+            # Load / update index
+            index_file = self._projects_dir() / 'list.json'
+            if index_file.exists():
+                projects = json.loads(index_file.read_text(encoding='utf-8'))
+            else:
+                projects = []
+
+            entry = {
+                'id':          proj_id,
+                'name':        name,
+                'description': desc,
+                'files':       files,
+            }
+
+            idx = next((i for i, p in enumerate(projects) if p['id'] == proj_id), None)
+            if idx is None:
+                projects.append(entry)
+            else:
+                projects[idx] = entry
+
+            index_file.write_text(json.dumps(projects, ensure_ascii=False, indent=2),
+                                  encoding='utf-8')
+            return {'success': True, 'project': entry}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def _handle_project_delete(self, data, language):
+        try:
+            proj_id = data.get('id', '')
+            if not proj_id:
+                return {'success': False, 'error': 'id required'}
+            index_file = self._projects_dir() / 'list.json'
+            if not index_file.exists():
+                return {'success': True}
+            projects = json.loads(index_file.read_text(encoding='utf-8'))
+            projects = [p for p in projects if p['id'] != proj_id]
+            index_file.write_text(json.dumps(projects, ensure_ascii=False, indent=2),
+                                  encoding='utf-8')
+            return {'success': True}
+        except Exception as e:
             return {'success': False, 'error': str(e)}
 
 register_app_class(SkillBotApp)

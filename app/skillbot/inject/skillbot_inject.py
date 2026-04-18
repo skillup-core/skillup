@@ -569,7 +569,9 @@ def _inject_text_to_ciw(text, log_file="", window_id=None):
     _time.sleep(0.05)  # brief settle after release
 
     # Set clipboard via python-xlib SelectionOwner (no external tools needed).
-    if not _set_clipboard(text):
+    # '\n' is included so ctrl+v delivers text + newline atomically; the
+    # separate Return key is kept as a fallback in case the terminal strips \n.
+    if not _set_clipboard(text + '\n'):
         _log("FAIL: could not set clipboard", "error")
         return False
 
@@ -611,11 +613,7 @@ def _inject_text_to_ciw(text, log_file="", window_id=None):
         _sp.run([_XDOTOOL] + list(args), env=env,
                 capture_output=True, timeout=5)
 
-    _xdt('key', '--clearmodifiers', 'ctrl+a')
-    _time.sleep(0.05)
-    _xdt('key', '--clearmodifiers', 'Delete')
-    _time.sleep(0.05)
-    _xdt('key', '--clearmodifiers', 'ctrl+v')
+    _xdt('key', '--clearmodifiers', 'ctrl+u', 'ctrl+v')
     _time.sleep(0.05)
     _xdt('key', '--clearmodifiers', 'Return')
     _time.sleep(0.05)

@@ -73,7 +73,17 @@
 
     <!-- Editor panel -->
     <div class="sb-editor-panel" id="editorPanel">
-        <div class="sb-tab-bar" id="editorTabBar"></div>
+        <div class="sb-tab-bar-wrap">
+            <button class="sb-project-btn" id="prjBtn" onclick="PRJ.openDialog()"
+                aria-label="Projects">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="1" y1="4" x2="15" y2="4"/>
+                    <line x1="1" y1="8" x2="15" y2="8"/>
+                    <line x1="1" y1="12" x2="15" y2="12"/>
+                </svg>
+            </button>
+            <div class="sb-tab-bar" id="editorTabBar"></div>
+        </div>
         <!-- File-changed-on-disk notification bar (hidden by default) -->
         <div class="sb-disk-change-bar" id="diskChangeBar" style="display:none;">
             <span class="sb-disk-change-msg" id="diskChangeMsg"></span>
@@ -187,9 +197,58 @@
 
 <!-- ── File Explorer Context Menu ── -->
 <div class="sb-ctx-menu" id="tabCtxMenu">
-    <div class="sb-ctx-item" id="tabCtxClose" onclick="EXP.tabCtxClose()" data-en="Close" data-ko="닫기">Close</div>
-    <div class="sb-ctx-sep"></div>
     <div class="sb-ctx-item" id="tabCtxCopyPath" onclick="EXP.tabCtxCopyPath()" data-en="Copy File Path" data-ko="파일 경로 복사">Copy File Path</div>
+    <div class="sb-ctx-sep" id="tabCtxDebugSep"></div>
+    <div class="sb-ctx-item" id="tabCtxDebugEnable" onclick="EXP.tabCtxToggleDebug()">Allow Debugging</div>
+    <div class="sb-ctx-sep"></div>
+    <div class="sb-ctx-item" id="tabCtxClose" onclick="EXP.tabCtxClose()" data-en="Close" data-ko="닫기">Close</div>
+</div>
+
+<!-- ── Project Dialog ── -->
+<div id="prjToast"></div>
+<div id="prjOverlay"></div>
+<div id="prjDialog">
+    <div class="prj-dialog-header">
+        <span id="prjDialogTitle" data-en="Projects" data-ko="프로젝트">Projects</span>
+        <button class="prj-close-btn" onclick="PRJ.closeDialog()">✕</button>
+    </div>
+    <div class="prj-dialog-body">
+        <!-- Left: project list -->
+        <div class="prj-list-panel">
+            <div class="prj-list" id="prjList"></div>
+            <button class="prj-new-btn" id="prjNewBtn" onclick="PRJ.startNew()"
+                data-en="+ New Project" data-ko="+ 새 프로젝트">+ New Project</button>
+        </div>
+        <!-- Right: project editor -->
+        <div class="prj-edit-panel" id="prjEditPanel">
+            <div class="prj-field">
+                <label class="prj-label" data-en="Name" data-ko="이름">Name</label>
+                <input id="prjNameInput" class="prj-input" type="text" maxlength="64">
+            </div>
+            <div class="prj-field">
+                <label class="prj-label" data-en="Description" data-ko="설명">Description</label>
+                <input id="prjDescInput" class="prj-input" type="text" maxlength="200">
+            </div>
+            <div class="prj-field prj-field-files">
+                <label class="prj-label" data-en="Files" data-ko="파일 목록">Files</label>
+                <div class="prj-file-list" id="prjFileList"></div>
+                <button class="prj-add-file-btn" onclick="PRJ.addCurrentTabs()"
+                    data-en="+ Add Open Tabs" data-ko="+ 열린 탭 추가">+ Add Open Tabs</button>
+            </div>
+            <div class="prj-edit-actions">
+                <button class="prj-btn-danger" id="prjDeleteBtn" onclick="PRJ.deleteProject()"
+                    data-en="Delete" data-ko="삭제">Delete</button>
+                <div class="prj-edit-actions-right">
+                    <button class="prj-btn-switch" id="prjSwitchBtn" onclick="PRJ.switchProject()"
+                        data-en="Switch" data-ko="전환">Switch</button>
+                    <button class="prj-btn-primary" onclick="PRJ.saveProject()"
+                        data-en="Save" data-ko="저장">Save</button>
+                    <button class="prj-btn-secondary" onclick="PRJ.closeDialog()"
+                        data-en="Cancel" data-ko="취소">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="sb-ctx-menu" id="explorerCtxMenu">
@@ -200,22 +259,6 @@
     <div class="sb-ctx-item" data-ctx="file" onclick="EXP.ctxDelete()" style="color:#e74c3c;" data-en="Delete" data-ko="삭제">Delete</div>
 </div>
 
-<!-- ── Preferences Dialog ── -->
-<div id="prefsOverlay" onclick="hidePreferences()"></div>
-<div id="prefsDialog">
-    <div class="prefs-title" data-en="Preferences" data-ko="환경설정">Preferences</div>
-    <div class="prefs-body">
-        <div class="prefs-row">
-            <label class="prefs-label" for="prefsFontSize" data-en="Editor Font Size" data-ko="편집기 글꼴 크기">Editor Font Size</label>
-            <select id="prefsFontSize" class="prefs-select"></select>
-        </div>
-    </div>
-    <div class="prefs-footer">
-        <button class="prefs-btn prefs-btn-primary" onclick="applyPreferences()" data-en="OK" data-ko="확인">OK</button>
-        <button class="prefs-btn" onclick="resetPreferences()" data-en="Default" data-ko="디폴트">Default</button>
-        <button class="prefs-btn" onclick="hidePreferences()" data-en="Cancel" data-ko="취소">Cancel</button>
-    </div>
-</div>
 
 <script src="editor.js"></script>
 </body>
