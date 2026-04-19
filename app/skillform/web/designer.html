@@ -68,6 +68,7 @@ const COMPONENT_TYPES = [
     { type:'slider',    label:'Slider',     icon:'↔',  defaultW:6, defaultH:1 },
     { type:'label',     label:'Label',      icon:'Aa', defaultW:6, defaultH:1 },
     { type:'separator', label:'Separator',  icon:'—',  defaultW:12,defaultH:1 },
+    { type:'button',    label:'Button',     icon:'▶',  defaultW:3, defaultH:1 },
 ];
 
 // ================================================================
@@ -90,7 +91,8 @@ let panY = 0;
 let docProps = {
     formName: 'My Form',
     fontSize: 16,   // px
-    formSize: { mode: 'auto', cols: 0, rows: 0 },  // window size: auto=fit to fields, fixed=explicit grid count
+    formSize: { mode: 'auto', cols: 0, rows: 0 },  // window size: auto=fit to fields, set=explicit grid count
+    theme: 'light',  // 'auto'=follow Skillup setting, 'light'=force light, 'dark'=force dark
 };
 
 let _idSeq = 0;
@@ -159,6 +161,7 @@ function renderCanvas(pushToRunner = true) {
 
     // Remove old field elements (placeholder survives, but reset ref if detached)
     Array.from(inner.querySelectorAll('.sfd-field')).forEach(el => el.remove());
+    Array.from(inner.querySelectorAll('.sfd-size-boundary')).forEach(el => el.remove());
     if (_dropPlaceholder && !inner.contains(_dropPlaceholder)) _dropPlaceholder = null;
 
     // Render fields into inner
@@ -169,8 +172,34 @@ function renderCanvas(pushToRunner = true) {
         inner.appendChild(el);
     });
 
-    // Live-push to runner window if open
-    if (pushToRunner) pushSchemaToRunner();
+    // Draw form size boundary if mode is "set"
+    const fs = docProps.formSize || { mode: 'auto', cols: 0, rows: 0 };
+    if (fs.mode === 'set' && fs.cols > 0 && fs.rows > 0) {
+        const boundaryW = fs.cols * cw;
+        const boundaryH = fs.rows * rh;
+        const vline = document.createElement('div');
+        vline.className = 'sfd-size-boundary';
+        vline.style.position = 'absolute';
+        vline.style.left = boundaryW + 'px';
+        vline.style.top = '0';
+        vline.style.width = '1px';
+        vline.style.height = boundaryH + 'px';
+        vline.style.borderLeft = '2px dashed var(--color-primary, #0d6efd)';
+        vline.style.pointerEvents = 'none';
+        inner.appendChild(vline);
+
+        const hline = document.createElement('div');
+        hline.className = 'sfd-size-boundary';
+        hline.style.position = 'absolute';
+        hline.style.left = '0';
+        hline.style.top = boundaryH + 'px';
+        hline.style.width = boundaryW + 'px';
+        hline.style.height = '1px';
+        hline.style.borderTop = '2px dashed var(--color-primary, #0d6efd)';
+        hline.style.pointerEvents = 'none';
+        inner.appendChild(hline);
+    }
+
 }
 
 function createFieldEl(f) {
@@ -296,9 +325,10 @@ function addField(type, col, row) {
         placeholder: '',
         default:     '',
         options:     (type === 'dropdown' || type === 'radio') ? ['Option 1', 'Option 2'] : undefined,
-        font:        (type !== 'separator') ? 'mono' : undefined,
+        font:        (type !== 'separator' && type !== 'button') ? 'mono' : undefined,
         align:       (type === 'separator') ? 'center' : undefined,
         lineType:    (type === 'separator') ? 'horizontal' : undefined,
+        variant:     (type === 'button') ? 'primary' : undefined,
         dirOnly:     (type === 'file') ? false : undefined,
         filter:      (type === 'file') ? '' : undefined,
         min:         (type === 'number' || type === 'slider') ? '' : undefined,
@@ -584,7 +614,7 @@ function onDragEnd(e) {
 // ================================================================
 function renderDocProps() {
     const fs = docProps.formSize || { mode: 'auto', cols: 0, rows: 0 };
-    const isFixed = fs.mode === 'fixed';
+    const isFixed = fs.mode === 'set';
     const body = document.getElementById('sfd-props-body');
     body.innerHTML = `
         <div class="sfd-prop-section">Document</div>
@@ -600,12 +630,20 @@ function renderDocProps() {
                    oninput="updateDocFontSize(parseInt(this.value)||14)"
                    onchange="updateDocFontSize(parseInt(this.value)||14)"/>
         </div>
+        <div class="sfd-prop-row">
+            <label>Theme</label>
+            <select onchange="docProps.theme=this.value">
+                <option value="light" ${(docProps.theme||'light')==='light' ? 'selected' : ''}>Light</option>
+                <option value="dark"  ${(docProps.theme||'light')==='dark'  ? 'selected' : ''}>Dark</option>
+                <option value="auto"  ${(docProps.theme||'light')==='auto'  ? 'selected' : ''}>Auto</option>
+            </select>
+        </div>
         <div class="sfd-prop-section">Form Initial Size</div>
         <div class="sfd-prop-row">
             <label>Mode</label>
             <select onchange="updateFormSizeMode(this.value)">
                 <option value="auto"  ${!isFixed ? 'selected' : ''}>Auto Fit</option>
-                <option value="fixed" ${isFixed  ? 'selected' : ''}>Set</option>
+                <option value="set" ${isFixed  ? 'selected' : ''}>Set</option>
             </select>
         </div>
         <div id="sfd-formsize-fixed" style="display:${isFixed ? '' : 'none'}">
@@ -627,24 +665,41 @@ function renderDocProps() {
 
 function updateDocFontSize(size) {
     docProps.fontSize = size;
-    pushSchemaToRunner();
+}
+
+function getAutofitDimensions() {
+    let maxCol = 0, maxRow = 0;
+    fields.forEach(f => {
+        maxCol = Math.max(maxCol, f.col + f.w);
+        maxRow = Math.max(maxRow, f.row + f.h);
+    });
+    return { cols: maxCol || 12, rows: maxRow || 1 };
 }
 
 function updateFormSizeMode(mode) {
     if (!docProps.formSize) docProps.formSize = { mode: 'auto', cols: 0, rows: 0 };
     docProps.formSize.mode = mode;
+    if (mode === 'set') {
+        const af = getAutofitDimensions();
+        docProps.formSize.cols = af.cols;
+        docProps.formSize.rows = af.rows;
+        renderProps();
+    }
     const fixedRow = document.getElementById('sfd-formsize-fixed');
-    if (fixedRow) fixedRow.style.display = mode === 'fixed' ? '' : 'none';
+    if (fixedRow) fixedRow.style.display = mode === 'set' ? '' : 'none';
+    renderCanvas();
 }
 
 function updateFormSizeCols(v) {
-    if (!docProps.formSize) docProps.formSize = { mode: 'fixed', cols: 0, rows: 0 };
+    if (!docProps.formSize) docProps.formSize = { mode: 'set', cols: 0, rows: 0 };
     docProps.formSize.cols = v;
+    renderCanvas();
 }
 
 function updateFormSizeRows(v) {
-    if (!docProps.formSize) docProps.formSize = { mode: 'fixed', cols: 0, rows: 0 };
+    if (!docProps.formSize) docProps.formSize = { mode: 'set', cols: 0, rows: 0 };
     docProps.formSize.rows = v;
+    renderCanvas();
 }
 
 function renderProps() {
@@ -661,21 +716,29 @@ function renderProps() {
     // Common fields
     html += propText('label', 'Label', f.label || '');
     html += propText('id', 'Field ID', f.id);
-    if (f.type !== 'separator') {
+    if (f.type !== 'separator' && f.type !== 'button') {
         html += `<div class="sfd-prop-row"><label>Font</label>
             <select onchange="updateField('${f.id}','font',this.value)">
                 <option value="mono" ${(f.font||'mono')==='mono'?'selected':''}>Mono</option>
                 <option value="sans" ${f.font==='sans'?'selected':''}>Sans</option>
             </select></div>`;
     }
-    if (f.type !== 'label' && f.type !== 'separator') {
+    if (f.type === 'button') {
+        html += `<div class="sfd-prop-row"><label>Variant</label>
+            <select onchange="updateField('${f.id}','variant',this.value)">
+                <option value="primary"   ${(f.variant||'primary')==='primary'?'selected':''}>Primary</option>
+                <option value="secondary" ${f.variant==='secondary'?'selected':''}>Secondary</option>
+                <option value="danger"    ${f.variant==='danger'?'selected':''}>Danger</option>
+            </select></div>`;
+    }
+    if (f.type !== 'label' && f.type !== 'separator' && f.type !== 'button') {
         html += propCheck('required', 'Required', f.required);
         html += propCheck('readonly', 'Read-only', f.readonly);
     }
     if (f.type === 'text' || f.type === 'textarea' || f.type === 'file') {
         html += propText('placeholder', 'Placeholder', f.placeholder || '');
     }
-    if (f.type !== 'label' && f.type !== 'separator') {
+    if (f.type !== 'label' && f.type !== 'separator' && f.type !== 'button') {
         html += propText('default', 'Default', f.default !== undefined ? String(f.default) : '');
     }
 
@@ -790,7 +853,7 @@ function jsonToForm(data) {
     if (!data) return;
     // Load docProps (backwards-compatible: fall back to title field)
     if (data.docProps) {
-        docProps = Object.assign({ formName: 'My Form', fontSize: 16, formSize: { mode: 'auto', cols: 0, rows: 0 } }, data.docProps);
+        docProps = Object.assign({ formName: 'My Form', fontSize: 16, formSize: { mode: 'auto', cols: 0, rows: 0 }, theme: 'light' }, data.docProps);
     } else if (data.title) {
         docProps.formName = data.title;
     }
@@ -845,21 +908,8 @@ function doNew() {
 }
 
 // ================================================================
-// LIVE RUNNER WINDOW
+// RUNNER
 // ================================================================
-let _runnerWin = null;
-
-let _pushTimer = null;
-
-function pushSchemaToRunner() {
-    // Debounce: push at most once per 300ms
-    clearTimeout(_pushTimer);
-    _pushTimer = setTimeout(async function() {
-        if (fields.length === 0) return;
-        const schema = formToJson();
-        await callPython('designer_run', { schema });
-    }, 300);
-}
 
 async function doRun() {
     if (fields.length === 0) {
@@ -868,82 +918,12 @@ async function doRun() {
     }
 
     const schema = formToJson();
-
-    // Extract app_id from current URL path: /app/{app_id}/designer.html
-    const appIdMatch = window.location.pathname.match(/\/app\/([^\/]+)\//);
-    const appId = appIdMatch ? appIdMatch[1] : 'skillform';
-    const runnerUrl = `/app/${appId}/runner.html?standalone=1`;
-
-    // Calculate window size from grid dimensions
-    const RUNNER_BASE_FONT_SIZE = 14;  // runner.html base font size (px)
-    const RUNNER_MARGIN         = 16;  // form grid inner margin each side (px, must match runner.html MARGIN)
-    const MIN_GRID_COLS         = 4;   // minimum window width in grid columns
-    const MIN_GRID_ROWS         = 2;   // minimum window height in grid rows
-
-    const fontSize = (schema.docProps && schema.docProps.fontSize) || 16;
-    const scale = fontSize / RUNNER_BASE_FONT_SIZE;
-    const baseRowH = (schema.grid && schema.grid.rowHeight) || GRID_ROW_H;
-    const baseCellW = (schema.grid && schema.grid.cellW) || GRID_CELL_W;
-    const runnerRowH = Math.round(baseRowH * scale);
-    const runnerCellW = Math.round(baseCellW * scale);
-    const formSizeMode = (schema.docProps && schema.docProps.formSize && schema.docProps.formSize.mode) || 'auto';
-    let formMaxRow = 0, formMaxCol = 0;
-    if (formSizeMode === 'fixed') {
-        formMaxCol = (schema.docProps.formSize.cols > 0) ? schema.docProps.formSize.cols : 0;
-        formMaxRow = (schema.docProps.formSize.rows > 0) ? schema.docProps.formSize.rows : 0;
-    } else {
-        (schema.fields || []).forEach(f => {
-            formMaxRow = Math.max(formMaxRow, f.row + f.h);
-            formMaxCol = Math.max(formMaxCol, f.col + f.w);
-        });
-    }
-    const chromeH = RUNNER_MARGIN * 2;
-    const chromeW = RUNNER_MARGIN * 2;
-    const winW = formMaxCol * runnerCellW + chromeW;
-    const winH = formMaxRow * runnerRowH + chromeH;
-    const minW = MIN_GRID_COLS * runnerCellW + chromeW;
-    const minH = MIN_GRID_ROWS * runnerRowH + chromeH;
-
-    if (window.isInIframe) {
-        // window.open is blocked inside an iframe — use Python open_window API instead
-        // Save schema first, then open window so runner loads it on startup
-        await callPython('designer_run', { schema });
-        const r = await callPython('open_window', {
-            url: runnerUrl,
-            title: docProps.formName || 'Skill Form Runner',
-            mode: 'true',
-            width: winW,
-            height: winH,
-            min_w: minW,
-            min_h: minH,
-        });
+    const r = await callPython('designer_run_standalone', { schema });
+    if (r && r.success) {
         setStatus('Runner opened', 'ok');
-        return;
+    } else {
+        setStatus((r && r.error) || 'Failed to open runner', 'err');
     }
-
-    // Non-iframe environment (web browser)
-    if (_runnerWin && !_runnerWin.closed) {
-        _runnerWin.focus();
-        pushSchemaToRunner();
-        return;
-    }
-
-    _runnerWin = window.open(runnerUrl, 'skillform_runner',
-        `width=${winW},height=${winH},resizable=yes,scrollbars=yes`);
-
-    if (!_runnerWin) {
-        setStatus('Popup blocked', 'err');
-        return;
-    }
-
-    window.addEventListener('message', function onRunnerReady(e) {
-        if (e.source === _runnerWin && e.data && e.data.action === 'runnerReady') {
-            window.removeEventListener('message', onRunnerReady);
-            pushSchemaToRunner();
-        }
-    });
-
-    setStatus('Runner opened', 'ok');
 }
 
 function setStatus(msg, type) {

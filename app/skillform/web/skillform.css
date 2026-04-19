@@ -475,3 +475,44 @@ body[style*="grabbing"] * { cursor: grabbing !important; }
     overflow: auto;
     margin-top: 6px;
 }
+
+/* ----------------------------------------------------------------
+   Runner - Button field widget (sfr-btn-*)
+   ---------------------------------------------------------------- */
+.sfr-btn {
+    width: 100%;
+    height: 100%;
+    padding: 4px 12px;
+    font-size: var(--runner-font-size, 14px);
+    border-radius: 4px;
+    border: 1px solid var(--border-color, #ced4da);
+    background: var(--bg-secondary, #f8f9fa);
+    color: var(--text-primary, #212529);
+    cursor: pointer;
+    white-space: nowrap;
+    box-sizing: border-box;
+}
+.sfr-btn:hover { opacity: 0.85; }
+.sfr-btn-primary {
+    background: var(--color-primary, #0d6efd);
+    color: #fff;
+    border-color: var(--color-primary, #0d6efd);
+}
+.sfr-btn-secondary {
+    background: var(--bg-secondary, #6c757d);
+    color: var(--text-primary, #fff);
+    border-color: var(--border-color, #6c757d);
+}
+.sfr-btn-danger {
+    background: var(--color-danger, #dc3545);
+    color: #fff;
+    border-color: var(--color-danger, #dc3545);
+}
+
+/* ================================================================
+   LIGHT THEME OVERRIDES
+   Applied via .sfr-light class on .sfr-root when theme=light/white
+   ================================================================ */
+.sfr-root.sfr-light {
+    --border-color: #b0b0b8;
+}

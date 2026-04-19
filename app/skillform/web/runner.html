@@ -50,6 +50,25 @@ function renderForm(schema) {
     rootEl.style.fontSize = fontSize + 'px';
     rootEl.style.setProperty('--runner-font-size', fontSize + 'px');
 
+    // Apply theme override from docProps (default: light)
+    const theme = (schema.docProps && schema.docProps.theme) || 'light';
+    if (theme !== 'auto') {
+        const isLight = theme !== 'dark';
+        rootEl.classList.toggle('sfr-light', isLight);
+        if (window.SkillupTheme) {
+            window.SkillupTheme.setTheme(isLight ? 'white' : 'default');
+        } else {
+            // appinit.js not yet loaded: inject theme link directly
+            const existingThemeLink = document.querySelector('link[data-skillform-theme]');
+            if (existingThemeLink) existingThemeLink.remove();
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.setAttribute('data-skillform-theme', '1');
+            link.href = isLight ? '/common/style/white.css' : '/common/style/default.css';
+            document.head.appendChild(link);
+        }
+    }
+
     const MARGIN   = 16; // inner margin around the form grid (px)
 
     const baseRowH = (schema.grid && schema.grid.rowHeight) || 56;
@@ -68,8 +87,8 @@ function renderForm(schema) {
         maxCol = Math.max(maxCol, f.col + f.w);
     });
 
-    // Apply formSize override if in 'fixed' mode
-    if (formSize.mode === 'fixed') {
+    // Apply formSize override if in 'set' mode
+    if (formSize.mode === 'set') {
         if (formSize.cols > 0) maxCol = formSize.cols;
         if (formSize.rows > 0) maxRow = formSize.rows;
     }
@@ -77,10 +96,15 @@ function renderForm(schema) {
     // Clear previous form content
     formEl.innerHTML = '';
     formEl.style.position = 'relative';
-    formEl.style.minHeight = (maxRow * gridRowH + MARGIN * 2) + 'px';
-    formEl.style.minWidth  = (maxCol * cellW    + MARGIN * 2) + 'px';
-    formEl.style.width = '';
-    formEl.style.overflowX = 'auto';
+    const contentH = maxRow * gridRowH + MARGIN * 2;
+    const contentW = maxCol * cellW    + MARGIN * 2;
+    formEl.style.height = 'auto';
+    formEl.style.width  = 'auto';
+    formEl.style.minHeight = contentH + 'px';
+    formEl.style.minWidth  = contentW + 'px';
+
+    // Enforce minimum window size
+    const MIN_W = 300, MIN_H = 150;
 
     // Render separators first so they appear below other components
     const sorted = [...fields].sort((a, b) => (a.type === 'separator' ? -1 : 0) - (b.type === 'separator' ? -1 : 0));
@@ -113,9 +137,7 @@ function renderForm(schema) {
 
     // Standalone mode: resize Qt window to fit form content
     if (_isStandaloneMode) {
-        const contentW = maxCol * cellW + MARGIN * 2;
-        const contentH = maxRow * gridRowH + MARGIN * 2;
-        callPython('resize_window', { w: contentW, h: contentH }).catch(() => {});
+        callPython('resize_window', { w: Math.max(contentW, MIN_W), h: Math.max(contentH, MIN_H) }).catch(() => {});
     }
 }
 
@@ -141,7 +163,7 @@ function buildFieldWidget(f, rowH) {
         }
     }
 
-    const label = f.type !== 'separator' && f.type !== 'label';
+    const label = f.type !== 'separator' && f.type !== 'label' && f.type !== 'button';
     if (label && f.label) {
         const lbl = document.createElement('label');
         lbl.className = 'sfr-label';
@@ -353,6 +375,19 @@ function buildFieldWidget(f, rowH) {
             break;
         }
 
+        case 'button': {
+            input = document.createElement('button');
+            input.type = 'button';
+            input.id = 'sfr-' + f.id;
+            input.textContent = f.label || f.id;
+            const variantMap = { primary: 'sfr-btn-primary', secondary: 'sfr-btn-secondary', danger: 'sfr-btn-danger' };
+            input.className = 'sfr-btn ' + (variantMap[f.variant] || 'sfr-btn-primary');
+            input.addEventListener('click', () => {
+                callPython('runner_button_click', { button_id: f.id, values: Object.assign({}, formValues) });
+            });
+            break;
+        }
+
         default:
             input = document.createElement('input');
             input.type = 'text';
@@ -368,6 +403,48 @@ function buildFieldWidget(f, rowH) {
 function setStatus(msg, type) {}
 
 // ================================================================
+// SET VALUES (from caller via TCP → Python state_update → JS)
+// ================================================================
+function applySetValues(values) {
+    if (!currentSchema || !values) return;
+    currentSchema.fields.forEach(f => {
+        if (!(f.id in values)) return;
+        const val = values[f.id];
+        const el = document.getElementById('sfr-' + f.id);
+        if (!el) return;
+        if (f.type === 'checkbox') {
+            el.checked = !!val;
+            formValues[f.id] = !!val;
+        } else if (f.type === 'toggle') {
+            el.checked = !!val;
+            formValues[f.id] = !!val;
+        } else if (f.type === 'number') {
+            el.value = val;
+            formValues[f.id] = Number(val);
+        } else {
+            el.value = val;
+            formValues[f.id] = val;
+        }
+    });
+}
+
+let _lastSetValuesSeq = -1;
+window.state_update = function(updates) {};
+
+// Poll for set_values updates from caller (avoids Qt cross-thread callJS issue)
+async function _pollSetValues() {
+    try {
+        const state = await callPython('runner_get_state', {});
+        if (state && state.set_values_seq !== undefined && state.set_values_seq !== _lastSetValuesSeq) {
+            _lastSetValuesSeq = state.set_values_seq;
+            applySetValues(state.set_values);
+        }
+    } catch(e) {}
+    setTimeout(_pollSetValues, 300);
+}
+setTimeout(_pollSetValues, 500);
+
+// ================================================================
 // STANDALONE MODE
 // ================================================================
 let _isStandaloneMode = false;
@@ -375,26 +452,18 @@ let _isStandaloneMode = false;
 function initStandaloneMode(state) {
     if (!state || !state.auto_run) return;
     _isStandaloneMode = true;
-    stopPolling(); // no live updates from designer in standalone mode
 }
 
 // ================================================================
 // APPINIT CALLBACKS
 // ================================================================
 window.getAppStateAction = () => 'runner_get_state';
-window.state_update = function(updates) {
-    if (updates && updates.runner_schema && updates.runner_waiting) {
-        renderForm(updates.runner_schema);
-    }
-};
 
 window.onAppStateLoaded = function(state) {
     initStandaloneMode(state);
     if (state && state.schema) {
-        _pollVersion = state.runner_schema_version || 0;
         renderForm(state.schema);
     }
-    if (!_isStandaloneMode) startPolling();
 };
 
 async function onViewActivated() {
@@ -407,49 +476,6 @@ async function onViewActivated() {
 }
 function onLanguageChange(lang) {}
 
-// ================================================================
-// LIVE POLLING — detect schema changes from designer
-// ================================================================
-let _pollVersion = -1;
-let _pollTimer = null;
-
-async function startPolling() {
-    if (_pollTimer) return; // already running
-    async function poll() {
-        try {
-            const r = await callPython('runner_poll', { version: _pollVersion });
-            if (r && r.changed && r.schema) {
-                _pollVersion = r.version;
-                renderForm(r.schema);
-                setStatus('Live update', 'ok');
-            } else if (r) {
-                _pollVersion = r.version;
-            }
-        } catch (e) { /* ignore */ }
-        _pollTimer = setTimeout(poll, 800);
-    }
-    poll();
-}
-
-function stopPolling() {
-    clearTimeout(_pollTimer);
-    _pollTimer = null;
-}
-
-// ================================================================
-// LIVE UPDATE from Designer window (postMessage path — web browser)
-// ================================================================
-window.addEventListener('message', function(e) {
-    if (e.data && e.data.action === 'liveSchema' && e.data.schema) {
-        renderForm(e.data.schema);
-        setStatus('Live preview', 'ok');
-    }
-});
-
-// Signal designer that runner is ready to receive schema
-if (window.opener) {
-    window.opener.postMessage({ action: 'runnerReady' }, '*');
-}
 
 // ================================================================
 // WEB BROWSER MOCK

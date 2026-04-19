@@ -687,6 +687,22 @@ class SkillBotApp(BaseApp):
             import time
             time.sleep(0.5)
 
+        # ── Pre-load debug-disabled IL files ─────────────────
+        # Tabs with "Allow Debugging" off are excluded from the debug session
+        # but their functions must be defined in CIW before the main code runs.
+        # Inject load("path") for each saved file so CIW loads them first.
+        preload_paths = data.get("preload_paths", [])
+        if preload_paths:
+            import time as _time
+            for fpath in preload_paths:
+                if not fpath:
+                    continue
+                preload_cmd = f'load("{fpath}")'
+                print(f"[SkillBot] Pre-loading: {preload_cmd}", file=sys.stderr)
+                with self._ibus_suppress():
+                    _inject_text_to_ciw(preload_cmd, log_file, window_id=ciw_info.get("window_id"))
+                _time.sleep(0.3)
+
         # ── Start IPC subprocess ─────────────────────────────
         port = self._ensure_ipc(virt_pid=virt_pid, log_file=log_file)
         if not port:

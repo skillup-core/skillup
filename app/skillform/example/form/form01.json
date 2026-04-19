@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "title": "Sample Form 01",
+  "docProps": {
+    "formName": "Sample Form",
+    "fontSize": 16,
+    "formSize": { "mode": "auto", "cols": 0, "rows": 0 },
+    "theme": "light"
+  },
+  "grid": { "rowHeight": 56, "cellW": 56 },
+  "fields": [
+    {
+      "id": "name",
+      "type": "text",
+      "label": "Name",
+      "col": 0, "row": 0, "w": 8, "h": 1,
+      "required": true,
+      "placeholder": "Enter your name",
+      "default": "",
+      "font": "mono",
+      "readonly": false
+    },
+    {
+      "id": "cell_name",
+      "type": "text",
+      "label": "Cell",
+      "col": 8, "row": 0, "w": 4, "h": 1,
+      "placeholder": "Cell name",
+      "default": "",
+      "font": "mono",
+      "readonly": false
+    },
+    {
+      "id": "run_drc",
+      "type": "checkbox",
+      "label": "Run DRC",
+      "col": 0, "row": 1, "w": 4, "h": 1,
+      "default": false,
+      "font": "mono",
+      "readonly": false
+    },
+    {
+      "id": "layer",
+      "type": "dropdown",
+      "label": "Layer",
+      "col": 4, "row": 1, "w": 4, "h": 1,
+      "options": ["M1", "M2", "Poly", "Active"],
+      "default": "M1",
+      "font": "mono",
+      "readonly": false
+    },
+    {
+      "id": "count",
+      "type": "number",
+      "label": "Count",
+      "col": 8, "row": 1, "w": 4, "h": 1,
+      "min": 1,
+      "max": 100,
+      "default": 1,
+      "font": "mono",
+      "readonly": false
+    },
+    {
+      "id": "note",
+      "type": "textarea",
+      "label": "Note",
+      "col": 0, "row": 2, "w": 12, "h": 2,
+      "placeholder": "Optional notes...",
+      "default": "",
+      "font": "mono",
+      "readonly": false
+    },
+    {
+      "id": "btn_save",
+      "type": "button",
+      "label": "Save",
+      "col": 0, "row": 4, "w": 2, "h": 1,
+      "variant": "secondary"
+    },
+    {
+      "id": "btn_load",
+      "type": "button",
+      "label": "Load",
+      "col": 2, "row": 4, "w": 2, "h": 1,
+      "variant": "secondary"
+    },
+    {
+      "id": "btn_count_plus",
+      "type": "button",
+      "label": "COUNT+1",
+      "col": 4, "row": 4, "w": 3, "h": 1,
+      "variant": "secondary"
+    },
+    {
+      "id": "btn_ok",
+      "type": "button",
+      "label": "OK",
+      "col": 7, "row": 4, "w": 3, "h": 1,
+      "variant": "primary"
+    },
+    {
+      "id": "btn_cancel",
+      "type": "button",
+      "label": "Cancel",
+      "col": 10, "row": 4, "w": 2, "h": 1,
+      "variant": "secondary"
+    }
+  ]
+}

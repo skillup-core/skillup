@@ -17,6 +17,8 @@ Usage
 import os
 import sys
 import json
+import socket
+import threading
 from typing import List, Optional, TYPE_CHECKING
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -33,6 +35,9 @@ class SkillFormApp(BaseApp):
 
     def __init__(self, engine: Optional['WebUIEngine'], context: AppContext):
         super().__init__(engine, context)
+        self._runner_process = None
+        self._caller_conn = None      # TCP socket to parent caller process
+        self._caller_thread = None
 
     def on_run_cli(self, args: List[str]) -> int:
         """CLI mode: run a form and print result as JSON to stdout"""
@@ -72,8 +77,9 @@ class SkillFormApp(BaseApp):
             'designer.last_file': '',
         })
 
-        # Check if --skillform-run=<path> was passed via environment
+        # Check if --skillform-run=<path> and/or --skillform-caller-port=<N> were passed via environment
         auto_run_path = None
+        caller_port = None
         raw_args = os.environ.get('_SKILLUP_APP_ARGS')
         if raw_args:
             try:
@@ -81,7 +87,8 @@ class SkillFormApp(BaseApp):
                 for arg in extra_args:
                     if arg.startswith('--skillform-run='):
                         auto_run_path = arg[len('--skillform-run='):]
-                        break
+                    elif arg.startswith('--skillform-caller-port='):
+                        caller_port = int(arg[len('--skillform-caller-port='):])
             except Exception:
                 pass
 
@@ -112,15 +119,21 @@ class SkillFormApp(BaseApp):
             'runner_submit': self._handle_runner_submit,
             'runner_cancel': self._handle_runner_cancel,
             'runner_get_state': self._handle_runner_get_state,
+            'runner_button_click': self._handle_runner_button_click,
             # Designer handlers
             'designer_load': self._handle_designer_load,
             'designer_save': self._handle_designer_save,
             'designer_get_state': self._handle_designer_get_state,
             'designer_run': self._handle_designer_run,
+            'designer_run_standalone': self._handle_designer_run_standalone,
             'runner_poll': self._handle_runner_poll,
             # Standalone mode
             'standalone_close': self._handle_standalone_close,
         })
+
+        # Connect to caller process if port was provided
+        if caller_port:
+            self._start_caller_connection(caller_port)
 
         return 0
 
@@ -170,6 +183,69 @@ class SkillFormApp(BaseApp):
 
         return {'success': True, 'schema': schema}
 
+    def _handle_runner_button_click(self, data: dict, language: str) -> dict:
+        """Button clicked in runner - forward event to caller process via TCP"""
+        button_id = data.get('button_id', '')
+        values = data.get('values', {})
+        self._send_to_caller({'type': 'button_click', 'button_id': button_id, 'values': values})
+        return {'success': True}
+
+    def _send_to_caller(self, event: dict):
+        """Send a JSON event to the parent caller process"""
+        if not self._caller_conn:
+            return
+        try:
+            self._caller_conn.sendall((json.dumps(event) + '\n').encode('utf-8'))
+        except Exception as e:
+            print(f'[warn ] caller send failed: {e}', file=sys.stderr)
+            self._caller_conn = None
+
+    def _start_caller_connection(self, port: int):
+        """Connect to caller's TCP server and start listener thread"""
+        try:
+            conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            conn.connect(('127.0.0.1', port))
+            self._caller_conn = conn
+        except Exception as e:
+            print(f'[warn ] --skillform-caller-port: failed to connect to {port}: {e}',
+                  file=sys.stderr)
+            return
+
+        self._send_to_caller({'type': 'ready'})
+
+        def _reader():
+            try:
+                for line in conn.makefile('r', encoding='utf-8'):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        msg = json.loads(line)
+                    except Exception:
+                        continue
+                    if msg.get('type') == 'close':
+                        def _exit():
+                            import time
+                            time.sleep(0.05)
+                            sys.exit(0)
+                        threading.Thread(target=_exit, daemon=True).start()
+                        return
+                    elif msg.get('type') == 'set_values':
+                        self.state.update({
+                            'runner_set_values': msg.get('values', {}),
+                            'runner_set_values_seq': self.state.get('runner_set_values_seq', 0) + 1,
+                        }, notify=False)  # JS polls via runner_get_state; no cross-thread callJS needed
+            except Exception:
+                pass
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        self._caller_thread = threading.Thread(target=_reader, daemon=True)
+        self._caller_thread.start()
+
     def _handle_runner_submit(self, data: dict, language: str) -> dict:
         """User submitted the form - save result"""
         values = data.get('values', {})
@@ -196,6 +272,8 @@ class SkillFormApp(BaseApp):
             'waiting': self.state.get('runner_waiting'),
             'runner_schema_version': self.state.get('runner_schema_version', 0),
             'auto_run': self.state.get('auto_run', False),
+            'set_values': self.state.get('runner_set_values'),
+            'set_values_seq': self.state.get('runner_set_values_seq', -1),
         }
 
     # -------------------------------------------------------------------------
@@ -246,6 +324,7 @@ class SkillFormApp(BaseApp):
         path = os.path.expanduser(path)
 
         try:
+            schema = {'schemaVersion': 1, **schema}
             os.makedirs(os.path.dirname(path) if os.path.dirname(path) else '.', exist_ok=True)
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(schema, f, ensure_ascii=False, indent=2)
@@ -281,6 +360,59 @@ class SkillFormApp(BaseApp):
         }, notify=False)
         return {'success': True, 'version': version}
 
+    def _handle_designer_run_standalone(self, data: dict, language: str) -> dict:
+        """Save schema to temp file and launch a standalone runner subprocess"""
+        import tempfile
+        import subprocess as _subprocess
+        import threading
+
+        schema = data.get('schema')
+        if schema is None:
+            return {'success': False, 'error': 'No schema provided'}
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode='w', suffix='.json', prefix='skillform_run_',
+                dir=tempfile.gettempdir(), delete=False, encoding='utf-8'
+            ) as f:
+                json.dump(schema, f, ensure_ascii=False, indent=2)
+                tmp_path = f.name
+        except Exception as e:
+            return {'success': False, 'error': f'Failed to write temp file: {e}'}
+
+        script_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        skillup_py = os.path.join(script_dir, 'skillup.py')
+
+        if self._runner_process and self._runner_process.poll() is None:
+            try:
+                self._runner_process.terminate()
+                self._runner_process.wait(timeout=2)
+            except Exception:
+                try:
+                    self._runner_process.kill()
+                except Exception:
+                    pass
+
+        try:
+            self._runner_process = _subprocess.Popen(
+                [sys.executable, skillup_py, '--desktop', '--app:skillform',
+                 f'--skillform-run={tmp_path}'],
+                stdout=_subprocess.DEVNULL,
+                stderr=_subprocess.DEVNULL,
+            )
+        except Exception as e:
+            return {'success': False, 'error': f'Failed to launch runner: {e}'}
+
+        def _cleanup_temp():
+            self._runner_process.wait()
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
+        threading.Thread(target=_cleanup_temp, daemon=True).start()
+        return {'success': True}
+
     def _handle_standalone_close(self, data: dict, language: str) -> dict:
         """Close the standalone window by terminating the subprocess"""
         import threading
@@ -302,6 +434,26 @@ class SkillFormApp(BaseApp):
             'version': current_version,
             'schema': self.state.get('runner_schema'),
         }
+
+    def on_close(self):
+        """Called when window closes - notify caller, terminate runner subprocess"""
+        self._send_to_caller({'type': 'window_closed'})
+        if self._caller_conn:
+            try:
+                self._caller_conn.close()
+            except Exception:
+                pass
+            self._caller_conn = None
+
+        if self._runner_process and self._runner_process.poll() is None:
+            try:
+                self._runner_process.terminate()
+                self._runner_process.wait(timeout=2)
+            except Exception:
+                try:
+                    self._runner_process.kill()
+                except Exception:
+                    pass
 
 
 register_app_class(SkillFormApp)

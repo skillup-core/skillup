@@ -846,9 +846,9 @@ class WebUIEngine:
                     from PySide2.QtCore import QSize as _QSize  # type: ignore
                 except ImportError:
                     from PySide6.QtCore import QSize as _QSize  # type: ignore
-                self.view.resize(w, h)
                 self.view.setMinimumSize(_QSize(w, h))
-                self.view.setMaximumSize(_QSize(w, h))
+                self.view.setMaximumSize(_QSize(16777215, 16777215))
+                self.view.resize(w, h)
             return {'success': True}
         self.register_handler('resize_window', _handle_resize_window)
 

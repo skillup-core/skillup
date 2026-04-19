@@ -1336,7 +1336,7 @@ function _collectDebugFiles() {
     const includedTabs = allILTabs.filter(t => t === mainTab || t.debugEnabled);
 
     let idx = 0;
-    return includedTabs.map(tab => {
+    const files = includedTabs.map(tab => {
         tab.debugFileId = idx;
         const isMain = (tab === mainTab);
         const entry = {
@@ -1351,6 +1351,14 @@ function _collectDebugFiles() {
         idx++;
         return entry;
     });
+
+    // Collect paths of saved IL tabs that are excluded (debugEnabled=false, not main tab).
+    // These will be pre-loaded into CIW before debug starts so their functions are defined.
+    files._preloadPaths = allILTabs
+        .filter(t => t !== mainTab && !t.debugEnabled && t.path)
+        .map(t => t.path);
+
+    return files;
 }
 
 function debugStart() {
@@ -1365,11 +1373,12 @@ function debugStart() {
     // If a CIW was already selected, skip the selection dialog and use it directly
     if (_selectedCiw) {
         const payload = {
-            window_id:   _selectedCiw.window_id,
-            title:       _selectedCiw.title,
-            pid:         _selectedCiw.pid,
-            files:       files,
-            inject_load: true,
+            window_id:     _selectedCiw.window_id,
+            title:         _selectedCiw.title,
+            pid:           _selectedCiw.pid,
+            files:         files,
+            inject_load:   true,
+            preload_paths: files._preloadPaths || [],
         };
         callPython('debug_start_selected', payload).then(res => {
             if (!res || !res.success) {
@@ -1377,7 +1386,7 @@ function debugStart() {
                     // CIW no longer valid; clear selection and show dialog
                     _selectedCiw = null;
                     _updateCiwCombo(null);
-                    showCiwSelect(res.ciw_windows, res.files, null);
+                    showCiwSelect(res.ciw_windows, res.files, null, files._preloadPaths);
                 } else if (res && res.error === 'ciw_wrong_desktop') {
                     const cur = res.current_desktop, ciw = res.ciw_desktop;
                     const title = currentLanguage === 'ko' ? 'CIW 데스크탑 오류' : 'CIW Desktop Error';
@@ -1414,12 +1423,12 @@ function debugStart() {
         return;
     }
 
-    const payload = { files: files };
+    const payload = { files: files, preload_paths: files._preloadPaths || [] };
 
     callPython('debug_start', payload).then(res => {
         if (!res || !res.success) {
             if (res && res.error === 'ciw_selection_needed') {
-                showCiwSelect(res.ciw_windows, res.files, null);
+                showCiwSelect(res.ciw_windows, res.files, null, files._preloadPaths);
             } else if (res && res.error === 'ciw_wrong_desktop') {
                 const cur = res.current_desktop, ciw = res.ciw_desktop;
                 const title = currentLanguage === 'ko' ? 'CIW 데스크탑 오류' : 'CIW Desktop Error';
@@ -1462,10 +1471,12 @@ function debugStart() {
 
 // ── CIW Selection Modal ───────────────────────────────────────────────────────
 let _ciwSelectFiles = [];
+let _ciwSelectPreloadPaths = [];
 let _ciwSelectMode = 'debug';   // 'debug' | 'run'
 
-function showCiwSelect(ciwWindows, files, mode) {
+function showCiwSelect(ciwWindows, files, mode, preloadPaths) {
     _ciwSelectFiles = files || [];
+    _ciwSelectPreloadPaths = preloadPaths || (files && files._preloadPaths) || [];
     _ciwSelectMode  = mode || 'debug';
 
     if (window.parent && window.parent.desktopModal) {
@@ -1643,11 +1654,12 @@ function selectCiw(ciwInfo) {
     }
 
     const payload = {
-        window_id:   ciwInfo.window_id,
-        title:       ciwInfo.title,
-        pid:         ciwInfo.pid,
-        files:       _ciwSelectFiles,
-        inject_load: true,
+        window_id:     ciwInfo.window_id,
+        title:         ciwInfo.title,
+        pid:           ciwInfo.pid,
+        files:         _ciwSelectFiles,
+        inject_load:   true,
+        preload_paths: _ciwSelectPreloadPaths,
     };
 
     callPython('debug_start_selected', payload).then(res => {

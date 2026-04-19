@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Background -->
+  <rect width="64" height="64" rx="12" fill="#1d4ed8"/>
+
+  <!-- Main form paper -->
+  <rect x="12" y="10" width="40" height="44" rx="3" fill="white" opacity="0.95"/>
+
+  <!-- Form title bar -->
+  <rect x="12" y="10" width="40" height="6" rx="3" fill="#1d4ed8" opacity="0.3"/>
+
+  <!-- Input field 1 -->
+  <rect x="16" y="20" width="32" height="3" rx="1.5" fill="#dbeafe" stroke="#3b82f6" stroke-width="0.5"/>
+
+  <!-- Input field 2 -->
+  <rect x="16" y="27" width="32" height="3" rx="1.5" fill="#dbeafe" stroke="#3b82f6" stroke-width="0.5"/>
+
+  <!-- Input field 3 -->
+  <rect x="16" y="34" width="32" height="3" rx="1.5" fill="#dbeafe" stroke="#3b82f6" stroke-width="0.5"/>
+
+  <!-- Submit button -->
+  <rect x="20" y="43" width="24" height="6" rx="2" fill="#3b82f6"/>
+</svg>

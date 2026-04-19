@@ -268,7 +268,8 @@
             'get_app_icon',
             'get_app_content',
             'browse_path',
-            'open_window'
+            'open_window',
+            'resize_window'
         ]);
 
         return !desktopActions.has(action);
