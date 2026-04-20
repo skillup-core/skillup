@@ -12,13 +12,13 @@
 ;;;
 ;;;   procedure(myHandler(form ev)
 ;;;     let((evType)
-;;;       evType = get(ev 'type)
+;;;       evType = ev->type
 ;;;       cond(
 ;;;         (equal(evType "ready")      println("Form is ready"))
 ;;;         (equal(evType "button_click")
 ;;;          let((btnId vals)
-;;;            btnId = get(ev 'button_id)
-;;;            vals  = get(ev 'values)
+;;;            btnId = ev->button_id
+;;;            vals  = ev->values
 ;;;            when(equal(btnId "btn_ok") skillformClose(form))))
 ;;;         (equal(evType "window_closed") println("Form closed")))))
 ;;;
@@ -184,6 +184,25 @@ procedure(_sfJsonDecode(line)
         (t done = t)))
     reverse(result)))
 
+;;; ---------------------------------------------------------------------------
+;;; Convert association list to disembodied property list
+;;; ---------------------------------------------------------------------------
+procedure(_sfAssocToPlist(alist)
+  let((pl)
+    pl = list(nil)
+    foreach(pair alist
+      putprop(pl cadr(pair) car(pair)))
+    pl))
+
+procedure(_sfDecodeEv(alist)
+  let((pl rawVals)
+    unless(alist return(nil))
+    pl = _sfAssocToPlist(alist)
+    rawVals = pl->values
+    when(and(rawVals stringp(rawVals))
+      pl->values = _sfAssocToPlist(_sfJsonDecode(rawVals)))
+    pl))
+
 ;;; Global state - single active form (one at a time)
 _sfCurHandler = nil
 _sfCurForm    = nil
@@ -197,13 +216,13 @@ procedure(_sfOnData(pid chunk)
   let((ev evType lines)
     lines = _sfSplitLines(chunk)
     foreach(line lines
-      ev = _sfJsonDecode(line)
-      when(ev
-        evType = cadr(assoc("type" ev))
+      ev = _sfDecodeEv(_sfJsonDecode(line))
+      evType = ev && ev->type
+      when(evType
         if(equal(evType "_init")
           then
-            _sfCurPid     = cadr(assoc("pid" ev))
-            _sfCurCmdPort = cadr(assoc("cmd_port" ev))
+            _sfCurPid     = ev->pid
+            _sfCurCmdPort = ev->cmd_port
           else
             when(_sfCurHandler
               funcall(_sfCurHandler _sfCurForm ev)))))))
@@ -263,7 +282,7 @@ procedure(skillformLoadValues(path)
       when(nequal(line "") result = _sfJsonDecode(line)))
     result))
 
-procedure(skillformRun(formPath handler skillupPy pythonBin)
+procedure(skillformRun(formPath handler @optional skillupPy pythonBin)
   let((pyBin pyPath pid formHandle logFile cmd parts repoRoot bridgePy)
     pyBin  = or(pythonBin getShellEnvVar("SKILLUP_PYTHON") "python3")
     pyPath = or(skillupPy getShellEnvVar("SKILLUP_PY"))
@@ -289,4 +308,4 @@ procedure(skillformRun(formPath handler skillupPy pythonBin)
     _sfCurForm    = formHandle
     formHandle))
 
-printf("libform.il loaded v15.\n")
+printf("libform.il loaded v16.\n")

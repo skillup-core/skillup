@@ -4,6 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Form Runner - Skill Form</title>
+    <script>
+    // Standalone Qt window always starts with white theme to avoid dark flash
+    (function() {
+        var p = new URLSearchParams(window.location.search);
+        if (window.parent === window && p.get('standalone') === '1') {
+            var l = document.createElement('link');
+            l.rel = 'stylesheet'; l.href = '/common/style/white.css';
+            l.setAttribute('data-theme-css', 'true');
+            document.head.appendChild(l);
+        }
+    })();
+    </script>
     <script src="/common/script/appinit.js" onerror="this.onerror=null;this.src='../../../../web/common/script/appinit.js';"></script>
 </head>
 <body>
@@ -458,6 +470,10 @@ function initStandaloneMode(state) {
 // APPINIT CALLBACKS
 // ================================================================
 window.getAppStateAction = () => 'runner_get_state';
+
+// skillform manages its own theme via renderForm (schema.docProps.theme)
+// Prevent common.js initStandaloneSettings from overriding it with desktop theme
+window.skillformNoStandaloneTheme = true;
 
 window.onAppStateLoaded = function(state) {
     initStandaloneMode(state);

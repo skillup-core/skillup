@@ -7,24 +7,25 @@
 ;;; Run from Virtuoso CIW:
 ;;;   load("/path/to/skillup-full/app/skillform/lib/skill/libform.il")
 ;;;   load("/path/to/skillup-full/app/skillform/example/caller/skill/caller.il")
+;;;   sfExampleRun("/path/to/form01.json")
 ;;;   sfExampleRun("/path/to/form01.json" "/path/to/skillup.py" "/path/to/python3")
 
 _sfExSaveFile = "/tmp/skillform_example.json"
 
-procedure(sfExampleRun(formPath skillupPy pythonBin)
+procedure(sfExampleRun(formPath @optional skillupPy pythonBin)
   skillformRun(formPath 'sfExampleHandler skillupPy pythonBin))
 
 procedure(sfExampleHandler(form ev)
   let((evType btnId vals newCount saved)
-    evType = cadr(assoc("type" ev))
+    evType = ev->type
     cond(
 
       (equal(evType "ready")
        printf("Form window opened.\n"))
 
       (equal(evType "button_click")
-       btnId = cadr(assoc("button_id" ev))
-       vals  = _sfJsonDecode(cadr(assoc("values" ev)))
+       btnId = ev->button_id
+       vals  = ev->values
        printf("\nButton pressed: %s\n" btnId)
        cond(
          (equal(btnId "btn_save")
@@ -44,7 +45,7 @@ procedure(sfExampleHandler(form ev)
 
          (equal(btnId "btn_count_plus")
           progn(
-            newCount = cadr(assoc("count" vals))
+            newCount = vals->count
             newCount = newCount + 1
             printf("  -> count+1=%L\n" newCount)
             skillformSetValues(form list(list("count" newCount)))))

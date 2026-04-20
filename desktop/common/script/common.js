@@ -379,6 +379,7 @@
      */
     async function initStandaloneSettings() {
         if (!window.isInQtWindow) return;
+        if (window.skillformNoStandaloneTheme) return;
 
         try {
             const config = await window.callPython('get_config', {});
