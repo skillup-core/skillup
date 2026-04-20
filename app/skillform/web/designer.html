@@ -5,10 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Form Designer - Skill Form</title>
     <script src="/common/script/appinit.js" onerror="this.onerror=null;this.src='../../../../web/common/script/appinit.js';"></script>
+    <link rel="stylesheet" href="/common/bootstrap/5.3.3/bootstrap.min.css">
+    <script src="/common/bootstrap/5.3.3/bootstrap.bundle.min.js"></script>
     <style>html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }</style>
 </head>
 <body>
 <link rel="stylesheet" href="skillform.css" onerror="this.onerror=null;this.href='/app/skillform/skillform.css';">
+
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:99999" id="sfd-toast-container"></div>
 
 <div class="sfd-root" id="sfd-root-el">
 
@@ -16,13 +20,24 @@
     <div class="sfd-topbar">
         <span class="sfd-title" id="tb-title">Form Designer</span>
         <div class="sfd-topbar-mid">
-            <input type="text" id="tb-filepath" placeholder="form.json path…" class="sfd-filepath-input"/>
-            <button class="sfd-btn" onclick="doOpen()">Open</button>
-            <button class="sfd-btn sfd-btn-primary" onclick="doSave()">Save</button>
-            <button class="sfd-btn" onclick="doNew()">New</button>
-            <button class="sfd-btn sfd-btn-run" onclick="doRun()">▶ Run</button>
+            <div class="sfd-toolbar-file">
+                <button class="sfd-icon-btn" onclick="doNew()" aria-label="New" data-i18n-key="New">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="1" width="8" height="14" rx="1"/><polyline points="9,1 9,5 13,5"/><line x1="9" y1="1" x2="13" y2="5"/></svg>
+                </button>
+                <button class="sfd-icon-btn" onclick="doOpen()" aria-label="Open" data-i18n-key="Open">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 4.5h14v9a1 1 0 01-1 1H2a1 1 0 01-1-1V4.5z"/><path d="M1 4.5l2.5-3h4l1.5 1.5H14a1 1 0 011 1V6"/></svg>
+                </button>
+                <button class="sfd-icon-btn sfd-icon-btn-save" onclick="doSave()" aria-label="Save" data-i18n-key="Save" id="btn-save" aria-disabled="true">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="14" height="14" rx="1.5"/><rect x="4" y="1" width="8" height="5" rx="0.5" fill="currentColor" stroke="none" opacity="0.4"/><rect x="4" y="9" width="8" height="5" rx="0.5"/></svg>
+                </button>
+                <div class="sfd-filepath-label-wrap">
+                    <span class="sfd-filepath-label" id="tb-filepath-label" onclick="doOpen()"></span>
+                </div>
+            </div>
         </div>
-        <div class="sfd-status-inline" id="sfd-status"></div>
+        <button class="sfd-icon-btn sfd-icon-btn-run" onclick="doRun()" aria-label="Run" data-i18n-key="Run">
+            <svg viewBox="0 0 16 16" fill="currentColor"><polygon points="4,2 14,8 4,14"/></svg>
+        </button>
     </div>
 
     <!-- ── Main area ─────────────────────────────────────────────── -->
@@ -41,9 +56,9 @@
 
         <!-- Right: properties panel -->
         <div class="sfd-props" id="sfd-props">
-            <div class="sfd-props-title">Properties</div>
+            <div class="sfd-props-title" id="sfd-props-title">Properties</div>
             <div id="sfd-props-body">
-                <div class="sfd-props-empty">Select a component</div>
+                <div class="sfd-props-empty" id="sfd-props-empty">Select a component</div>
             </div>
         </div>
 
@@ -236,22 +251,22 @@ function createFieldEl(f) {
             el.style.alignItems = isEdge ? 'flex-start' : 'center';
             el.innerHTML = `
                 <div style="width:2px;flex:1;background:var(--border-color,#ced4da)"></div>
-                <div class="sfd-field-resize" data-id="${f.id}" title="resize"></div>
-                <button class="sfd-field-del" data-id="${f.id}" title="delete">✕</button>
+                <div class="sfd-field-resize" data-id="${f.id}"></div>
+                <button class="sfd-field-del" data-id="${f.id}">✕</button>
             `;
         } else if (lt === 'box') {
             el.style.border = '2px solid var(--border-color,#ced4da)';
             el.style.borderRadius = '0';
             el.innerHTML = `
-                <div class="sfd-field-resize" data-id="${f.id}" title="resize"></div>
-                <button class="sfd-field-del sfd-field-del-overlay" data-id="${f.id}" title="delete">✕</button>
+                <div class="sfd-field-resize" data-id="${f.id}"></div>
+                <button class="sfd-field-del sfd-field-del-overlay" data-id="${f.id}">✕</button>
             `;
         } else {
             el.style.alignItems = isEdge ? 'flex-start' : 'center';
             el.innerHTML = `
                 <div style="flex:1;height:2px;background:var(--border-color,#ced4da)"></div>
-                <div class="sfd-field-resize" data-id="${f.id}" title="resize"></div>
-                <button class="sfd-field-del" data-id="${f.id}" title="delete">✕</button>
+                <div class="sfd-field-resize" data-id="${f.id}"></div>
+                <button class="sfd-field-del" data-id="${f.id}">✕</button>
             `;
         }
     } else {
@@ -261,8 +276,8 @@ function createFieldEl(f) {
                 <div class="sfd-field-type">${meta.label}</div>
                 <div class="sfd-field-label">${f.label || ''}</div>
             </div>
-            <div class="sfd-field-resize" data-id="${f.id}" title="resize"></div>
-            <button class="sfd-field-del" data-id="${f.id}" title="delete">✕</button>
+            <div class="sfd-field-resize" data-id="${f.id}"></div>
+            <button class="sfd-field-del" data-id="${f.id}">✕</button>
         `;
     }
 
@@ -617,44 +632,44 @@ function renderDocProps() {
     const isFixed = fs.mode === 'set';
     const body = document.getElementById('sfd-props-body');
     body.innerHTML = `
-        <div class="sfd-prop-section">Document</div>
+        <div class="sfd-prop-section">${t('props.section.document')}</div>
         <div class="sfd-prop-row">
-            <label>Title Name</label>
+            <label>${t('props.title_name')}</label>
             <input type="text" value="${escHtml(docProps.formName)}"
                    oninput="docProps.formName=this.value;"
                    onchange="docProps.formName=this.value;"/>
         </div>
         <div class="sfd-prop-row">
-            <label>Font Size (px)</label>
+            <label>${t('props.font_size')}</label>
             <input type="number" value="${docProps.fontSize}" min="8" max="32" step="1"
                    oninput="updateDocFontSize(parseInt(this.value)||14)"
                    onchange="updateDocFontSize(parseInt(this.value)||14)"/>
         </div>
         <div class="sfd-prop-row">
-            <label>Theme</label>
+            <label>${t('props.theme')}</label>
             <select onchange="docProps.theme=this.value">
-                <option value="light" ${(docProps.theme||'light')==='light' ? 'selected' : ''}>Light</option>
-                <option value="dark"  ${(docProps.theme||'light')==='dark'  ? 'selected' : ''}>Dark</option>
-                <option value="auto"  ${(docProps.theme||'light')==='auto'  ? 'selected' : ''}>Auto</option>
+                <option value="light" ${(docProps.theme||'light')==='light' ? 'selected' : ''}>${t('props.theme.light')}</option>
+                <option value="dark"  ${(docProps.theme||'light')==='dark'  ? 'selected' : ''}>${t('props.theme.dark')}</option>
+                <option value="auto"  ${(docProps.theme||'light')==='auto'  ? 'selected' : ''}>${t('props.theme.auto')}</option>
             </select>
         </div>
-        <div class="sfd-prop-section">Form Initial Size</div>
+        <div class="sfd-prop-section">${t('props.section.formsize')}</div>
         <div class="sfd-prop-row">
-            <label>Mode</label>
+            <label>${t('props.size_mode')}</label>
             <select onchange="updateFormSizeMode(this.value)">
-                <option value="auto"  ${!isFixed ? 'selected' : ''}>Auto Fit</option>
-                <option value="set" ${isFixed  ? 'selected' : ''}>Set</option>
+                <option value="auto"  ${!isFixed ? 'selected' : ''}>${t('props.size_mode.auto')}</option>
+                <option value="set" ${isFixed  ? 'selected' : ''}>${t('props.size_mode.set')}</option>
             </select>
         </div>
         <div id="sfd-formsize-fixed" style="display:${isFixed ? '' : 'none'}">
             <div class="sfd-prop-row">
-                <label>Cols</label>
+                <label>${t('props.cols')}</label>
                 <input type="number" value="${fs.cols || ''}" min="1" step="1"
                        oninput="updateFormSizeCols(parseInt(this.value)||0)"
                        onchange="updateFormSizeCols(parseInt(this.value)||0)"/>
             </div>
             <div class="sfd-prop-row">
-                <label>Rows</label>
+                <label>${t('props.rows')}</label>
                 <input type="number" value="${fs.rows || ''}" min="1" step="1"
                        oninput="updateFormSizeRows(parseInt(this.value)||0)"
                        onchange="updateFormSizeRows(parseInt(this.value)||0)"/>
@@ -709,77 +724,75 @@ function renderProps() {
         return;
     }
     const f = fields.find(f => f.id === selectedId);
-    if (!f) { body.innerHTML = ''; return; }
+    if (!f) { body.innerHTML = `<div class="sfd-props-empty">${t('props.empty')}</div>`; return; }
 
     let html = '';
 
-    // Common fields
-    html += propText('label', 'Label', f.label || '');
-    html += propText('id', 'Field ID', f.id);
+    html += propText('label', t('props.label'), f.label || '');
+    html += propText('id', t('props.field_id'), f.id);
     if (f.type !== 'separator' && f.type !== 'button') {
-        html += `<div class="sfd-prop-row"><label>Font</label>
+        html += `<div class="sfd-prop-row"><label>${t('props.font')}</label>
             <select onchange="updateField('${f.id}','font',this.value)">
                 <option value="mono" ${(f.font||'mono')==='mono'?'selected':''}>Mono</option>
                 <option value="sans" ${f.font==='sans'?'selected':''}>Sans</option>
             </select></div>`;
     }
     if (f.type === 'button') {
-        html += `<div class="sfd-prop-row"><label>Variant</label>
+        html += `<div class="sfd-prop-row"><label>${t('props.variant')}</label>
             <select onchange="updateField('${f.id}','variant',this.value)">
-                <option value="primary"   ${(f.variant||'primary')==='primary'?'selected':''}>Primary</option>
-                <option value="secondary" ${f.variant==='secondary'?'selected':''}>Secondary</option>
-                <option value="danger"    ${f.variant==='danger'?'selected':''}>Danger</option>
+                <option value="primary"   ${(f.variant||'primary')==='primary'?'selected':''}>${t('props.variant.primary')}</option>
+                <option value="secondary" ${f.variant==='secondary'?'selected':''}>${t('props.variant.secondary')}</option>
+                <option value="danger"    ${f.variant==='danger'?'selected':''}>${t('props.variant.danger')}</option>
             </select></div>`;
     }
     if (f.type !== 'label' && f.type !== 'separator' && f.type !== 'button') {
-        html += propCheck('required', 'Required', f.required);
-        html += propCheck('readonly', 'Read-only', f.readonly);
+        html += propCheck('required', t('props.required'), f.required);
+        html += propCheck('readonly', t('props.readonly'), f.readonly);
     }
     if (f.type === 'text' || f.type === 'textarea' || f.type === 'file') {
-        html += propText('placeholder', 'Placeholder', f.placeholder || '');
+        html += propText('placeholder', t('props.placeholder'), f.placeholder || '');
     }
     if (f.type !== 'label' && f.type !== 'separator' && f.type !== 'button') {
-        html += propText('default', 'Default', f.default !== undefined ? String(f.default) : '');
+        html += propText('default', t('props.default'), f.default !== undefined ? String(f.default) : '');
     }
 
-    // Type-specific
     if (f.type === 'number' || f.type === 'slider') {
-        html += propText('min', 'Min', f.min !== undefined ? String(f.min) : '');
-        html += propText('max', 'Max', f.max !== undefined ? String(f.max) : '');
+        html += propText('min', t('props.min'), f.min !== undefined ? String(f.min) : '');
+        html += propText('max', t('props.max'), f.max !== undefined ? String(f.max) : '');
         if (f.type === 'slider') {
-            html += propText('step', 'Step', f.step !== undefined ? String(f.step) : '1');
+            html += propText('step', t('props.step'), f.step !== undefined ? String(f.step) : '1');
         }
     }
     if (f.type === 'dropdown' || f.type === 'radio') {
-        html += propOptions('options', 'Options (one per line)', f.options || []);
+        html += propOptions('options', t('props.options'), f.options || []);
     }
     if (f.type === 'radio') {
-        html += propCheck('inline', 'Inline (horizontal)', f.inline || false);
+        html += propCheck('inline', t('props.inline'), f.inline || false);
     }
     if (f.type === 'file') {
-        html += propCheck('dirOnly', 'Directory only', f.dirOnly || false);
-        html += propText('filter', 'Extensions (e.g. *.py *.txt)', f.filter || '');
+        html += propCheck('dirOnly', t('props.dir_only'), f.dirOnly || false);
+        html += propText('filter', t('props.filter'), f.filter || '');
     }
     if (f.type === 'separator') {
         const lt = f.lineType || 'horizontal';
-        html += `<div class="sfd-prop-row"><label>Type</label>
+        html += `<div class="sfd-prop-row"><label>${t('props.sep_type')}</label>
             <select onchange="updateField('${f.id}','lineType',this.value)">
-                <option value="horizontal" ${lt==='horizontal'?'selected':''}>Horizontal</option>
-                <option value="vertical"   ${lt==='vertical'?'selected':''}>Vertical</option>
-                <option value="box"        ${lt==='box'?'selected':''}>Box</option>
+                <option value="horizontal" ${lt==='horizontal'?'selected':''}>${t('props.sep_type.horizontal')}</option>
+                <option value="vertical"   ${lt==='vertical'?'selected':''}>${t('props.sep_type.vertical')}</option>
+                <option value="box"        ${lt==='box'?'selected':''}>${t('props.sep_type.box')}</option>
             </select></div>`;
-        html += `<div class="sfd-prop-row"><label>Align</label>
+        html += `<div class="sfd-prop-row"><label>${t('props.sep_align')}</label>
             <select onchange="updateField('${f.id}','align',this.value)">
-                <option value="center" ${(f.align||'center')==='center'?'selected':''}>Center</option>
-                <option value="edge"   ${f.align==='edge'?'selected':''}>Edge</option>
+                <option value="center" ${(f.align||'center')==='center'?'selected':''}>${t('props.sep_align.center')}</option>
+                <option value="edge"   ${f.align==='edge'?'selected':''}>${t('props.sep_align.edge')}</option>
             </select></div>`;
     }
     if (f.type === 'textarea') {
-        html += propText('rows', 'Rows', f.rows !== undefined ? String(f.rows) : '3');
+        html += propText('rows', t('props.textarea_rows'), f.rows !== undefined ? String(f.rows) : '3');
     }
     if (f.type === 'label') {
         html += `<div class="sfd-prop-row">
-            <label>Size</label>
+            <label>${t('props.label_size')}</label>
             <select onchange="updateField('${f.id}','fontSize',this.value)">
                 ${['small','normal','large','h3','h2','h1'].map(s =>
                     `<option value="${s}" ${f.fontSize===s?'selected':''}>${s}</option>`).join('')}
@@ -787,12 +800,11 @@ function renderProps() {
         </div>`;
     }
 
-    // Grid position (read-only display)
-    html += `<div class="sfd-prop-section">Grid</div>`;
-    html += `<div class="sfd-prop-row"><label>Col</label><input type="number" value="${f.col}" min="0" onchange="updateFieldInt('${f.id}','col',this.value)"/></div>`;
-    html += `<div class="sfd-prop-row"><label>Row</label><input type="number" value="${f.row}" min="0" onchange="updateFieldInt('${f.id}','row',this.value)"/></div>`;
-    html += `<div class="sfd-prop-row"><label>W (cols)</label><input type="number" value="${f.w}" min="1" onchange="updateFieldInt('${f.id}','w',this.value)"/></div>`;
-    html += `<div class="sfd-prop-row"><label>H (rows)</label><input type="number" value="${f.h}" min="1" onchange="updateFieldInt('${f.id}','h',this.value)"/></div>`;
+    html += `<div class="sfd-prop-section">${t('props.section.grid')}</div>`;
+    html += `<div class="sfd-prop-row"><label>${t('props.grid_col')}</label><input type="number" value="${f.col}" min="0" onchange="updateFieldInt('${f.id}','col',this.value)"/></div>`;
+    html += `<div class="sfd-prop-row"><label>${t('props.grid_row')}</label><input type="number" value="${f.row}" min="0" onchange="updateFieldInt('${f.id}','row',this.value)"/></div>`;
+    html += `<div class="sfd-prop-row"><label>${t('props.grid_w')}</label><input type="number" value="${f.w}" min="1" onchange="updateFieldInt('${f.id}','w',this.value)"/></div>`;
+    html += `<div class="sfd-prop-row"><label>${t('props.grid_h')}</label><input type="number" value="${f.h}" min="1" onchange="updateFieldInt('${f.id}','h',this.value)"/></div>`;
 
     body.innerHTML = html;
 }
@@ -871,29 +883,87 @@ function jsonToForm(data) {
     renderProps();
 }
 
+function setCurrentFile(path) {
+    currentFile = path;
+    const label = document.getElementById('tb-filepath-label');
+    if (label) {
+        label.textContent = path ? path.split('/').pop() : '';
+        label.dataset.path = path || '';
+    }
+    const saveBtn = document.getElementById('btn-save');
+    if (saveBtn) saveBtn.setAttribute('aria-disabled', path ? 'false' : 'true');
+}
+
+function showSaveConfirm(lang) {
+    return new Promise(resolve => {
+        const isKo = (lang || 'en') === 'ko';
+        const msg  = isKo ? '저장하시겠습니까?' : 'Save file?';
+        const yes  = isKo ? '저장' : 'Save';
+        const no   = isKo ? '취소' : 'Cancel';
+
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.45);z-index:99999;display:flex;align-items:center;justify-content:center';
+
+        const box = document.createElement('div');
+        box.style.cssText = 'background:var(--bg-secondary,#2a2f38);border:1px solid var(--border-color,#373c47);border-radius:8px;padding:24px 28px;min-width:220px;text-align:center;color:var(--text-primary,#e4e6eb);font-size:0.9rem;box-shadow:0 8px 32px rgba(0,0,0,0.5)';
+
+        const text = document.createElement('div');
+        text.textContent = msg;
+        text.style.marginBottom = '18px';
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;justify-content:center;';
+
+        const btnYes = document.createElement('button');
+        btnYes.textContent = yes;
+        btnYes.style.cssText = 'padding:5px 20px;border-radius:4px;border:none;background:var(--color-primary,#0d6efd);color:#fff;cursor:pointer;font-size:0.85rem;font-family:inherit';
+
+        const btnNo = document.createElement('button');
+        btnNo.textContent = no;
+        btnNo.style.cssText = 'padding:5px 20px;border-radius:4px;border:1px solid var(--border-color,#555);background:transparent;color:var(--text-primary,#e4e6eb);cursor:pointer;font-size:0.85rem;font-family:inherit;margin-left:10px';
+
+        btnRow.appendChild(btnYes);
+        btnRow.appendChild(btnNo);
+        box.appendChild(text);
+        box.appendChild(btnRow);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+
+        function done(result) {
+            overlay.remove();
+            resolve(result);
+        }
+        btnYes.addEventListener('click', () => done(true));
+        btnNo.addEventListener('click',  () => done(false));
+        overlay.addEventListener('click', e => { if (e.target === overlay) done(false); });
+    });
+}
+
 async function doSave() {
-    const path = document.getElementById('tb-filepath').value.trim();
-    if (!path) { setStatus('No file path', 'err'); return; }
+    const saveBtn = document.getElementById('btn-save');
+    if (saveBtn && saveBtn.getAttribute('aria-disabled') === 'true') return;
+    const confirmed = await showSaveConfirm(window._currentLang);
+    if (!confirmed) return;
     const schema = formToJson();
-    const r = await callPython('designer_save', { path, schema });
+    const r = await callPython('designer_save', { path: currentFile, schema });
     if (r && r.success) {
-        currentFile = path;
-        setStatus('Saved: ' + path, 'ok');
+        setStatus('status.saved', 'ok');
     } else {
-        setStatus((r && r.error) || 'Save failed', 'err');
+        setStatus('status.save_failed', 'err');
     }
 }
 
 async function doOpen() {
-    const path = document.getElementById('tb-filepath').value.trim();
-    if (!path) { setStatus('No file path', 'err'); return; }
-    const r = await callPython('designer_load', { path });
-    if (r && r.success) {
-        currentFile = path;
-        jsonToForm(r.schema || {});
-        setStatus(r.is_new ? 'New form' : 'Opened: ' + path, '');
+    const r = await _showWebFileDialog('file', { language: 'en', filter: '*.json' });
+    if (!r || !r.success || !r.path) return;
+    const path = r.path;
+    const res = await callPython('designer_load', { path });
+    if (res && res.success) {
+        setCurrentFile(path);
+        jsonToForm(res.schema || {});
+        setStatus(res.is_new ? 'status.new_form' : 'status.opened', 'ok');
     } else {
-        setStatus((r && r.error) || 'Open failed', 'err');
+        setStatus('status.open_failed', 'err');
     }
 }
 
@@ -902,9 +972,10 @@ function doNew() {
     selectedId = null;
     _idSeq = 0;
     docProps = { formName: 'My Form', fontSize: 16, formSize: { mode: 'auto', cols: 0, rows: 0 } };
+    setCurrentFile('');
     renderCanvas();
     renderProps();
-    setStatus('New form', '');
+    setStatus('status.new_form', 'ok');
 }
 
 // ================================================================
@@ -913,23 +984,44 @@ function doNew() {
 
 async function doRun() {
     if (fields.length === 0) {
-        setStatus('No components to run', 'err');
+        setStatus('status.no_components', 'err');
         return;
     }
 
     const schema = formToJson();
     const r = await callPython('designer_run_standalone', { schema });
     if (r && r.success) {
-        setStatus('Runner opened', 'ok');
+        setStatus('status.runner_opened', 'ok');
     } else {
-        setStatus((r && r.error) || 'Failed to open runner', 'err');
+        setStatus('status.run_failed', 'err');
     }
 }
 
-function setStatus(msg, type) {
-    const el = document.getElementById('sfd-status');
-    el.textContent = msg;
-    el.className = 'sfd-status-inline' + (type ? ' sfd-status-' + type : '');
+function setStatus(msgKey, type) {
+    const msg = t(msgKey) || msgKey;
+    const isErr = type === 'err';
+    const container = document.getElementById('sfd-toast-container');
+    const toastEl = document.createElement('div');
+    const bg = window.getComputedStyle(document.body).backgroundColor;
+    const m  = bg.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    const isDark = m ? (parseInt(m[1]) + parseInt(m[2]) + parseInt(m[3])) / 3 < 128 : true;
+    const bgColor   = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)';
+    const textColor = isDark ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.65)';
+    const errColor  = isErr  ? 'var(--color-danger,#dc3545)' : textColor;
+    toastEl.className = 'toast align-items-center border';
+    toastEl.style.cssText = `background:${bgColor};border-color:var(--border-color,#ced4da)!important;color:${errColor};width:220px;max-width:220px;margin-top:6px`;
+    toastEl.setAttribute('role', 'alert');
+    const accent = isErr ? 'var(--color-danger,#dc3545)' : 'var(--color-success,#198754)';
+    toastEl.innerHTML = `
+        <div class="d-flex align-items-center">
+            <div style="width:3px;align-self:stretch;background:${accent};border-radius:2px 0 0 2px;flex-shrink:0"></div>
+            <div class="toast-body" style="font-size:0.82rem;padding:8px 10px">${msg}</div>
+            <button type="button" class="btn-close me-2 m-auto" style="font-size:0.7rem" data-bs-dismiss="toast"></button>
+        </div>`;
+    container.appendChild(toastEl);
+    const bsToast = new bootstrap.Toast(toastEl, { delay: 5000 });
+    bsToast.show();
+    toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
 }
 
 // ================================================================
@@ -1003,7 +1095,7 @@ window.state_update = function(updates) {};
 
 window.onAppStateLoaded = function(state) {
     if (state && state.file) {
-        document.getElementById('tb-filepath').value = state.file;
+        setCurrentFile(state.file);
     }
     if (state && state.schema) {
         jsonToForm(state.schema);
@@ -1011,7 +1103,166 @@ window.onAppStateLoaded = function(state) {
 };
 
 function onViewActivated() { renderCanvas(); }
-function onLanguageChange(lang) {}
+
+const I18N = {
+    en: {
+        // toolbar
+        'New': 'New', 'Open': 'Open', 'Save': 'Save', 'Run': 'Run',
+        // status messages
+        'status.saved': 'Saved', 'status.save_failed': 'Save failed',
+        'status.opened': 'Opened', 'status.new_form': 'New form',
+        'status.open_failed': 'Open failed',
+        'status.no_components': 'No components to run',
+        'status.runner_opened': 'Runner opened', 'status.run_failed': 'Failed to open runner',
+        'status.toast_title': 'Form Designer',
+        // properties panel
+        'props.title': 'Properties',
+        'props.empty': 'Select a component',
+        'props.section.document': 'Document',
+        'props.section.formsize': 'Form Initial Size',
+        'props.section.grid': 'Grid',
+        'props.title_name': 'Title Name',
+        'props.font_size': 'Font Size (px)',
+        'props.theme': 'Theme',
+        'props.theme.light': 'Light', 'props.theme.dark': 'Dark', 'props.theme.auto': 'Auto',
+        'props.size_mode': 'Mode',
+        'props.size_mode.auto': 'Auto Fit', 'props.size_mode.set': 'Set',
+        'props.cols': 'Cols', 'props.rows': 'Rows',
+        'props.label': 'Label', 'props.field_id': 'Field ID',
+        'props.font': 'Font',
+        'props.variant': 'Variant',
+        'props.variant.primary': 'Primary', 'props.variant.secondary': 'Secondary', 'props.variant.danger': 'Danger',
+        'props.required': 'Required', 'props.readonly': 'Read-only',
+        'props.placeholder': 'Placeholder', 'props.default': 'Default',
+        'props.min': 'Min', 'props.max': 'Max', 'props.step': 'Step',
+        'props.options': 'Options (one per line)',
+        'props.inline': 'Inline (horizontal)',
+        'props.dir_only': 'Directory only',
+        'props.filter': 'Extensions (e.g. *.py *.txt)',
+        'props.sep_type': 'Type',
+        'props.sep_type.horizontal': 'Horizontal', 'props.sep_type.vertical': 'Vertical', 'props.sep_type.box': 'Box',
+        'props.sep_align': 'Align',
+        'props.sep_align.center': 'Center', 'props.sep_align.edge': 'Edge',
+        'props.textarea_rows': 'Rows',
+        'props.label_size': 'Size',
+        'props.grid_col': 'Col', 'props.grid_row': 'Row',
+        'props.grid_w': 'W (cols)', 'props.grid_h': 'H (rows)',
+    },
+    ko: {
+        // toolbar
+        'New': '새 폼', 'Open': '열기', 'Save': '저장', 'Run': '실행',
+        // properties panel
+        'props.title': '속성',
+        'props.empty': '컴포넌트를 선택하세요',
+        'props.section.document': '문서',
+        'props.section.formsize': '폼 초기 크기',
+        'props.section.grid': '그리드',
+        'props.title_name': '제목',
+        'props.font_size': '글자 크기 (px)',
+        'props.theme': '테마',
+        'props.theme.light': '라이트', 'props.theme.dark': '다크', 'props.theme.auto': '자동',
+        'props.size_mode': '모드',
+        'props.size_mode.auto': '자동 맞춤', 'props.size_mode.set': '직접 설정',
+        'props.cols': '열', 'props.rows': '행',
+        'props.label': '레이블', 'props.field_id': '필드 ID',
+        'props.font': '글꼴',
+        'props.variant': '스타일',
+        'props.variant.primary': '기본', 'props.variant.secondary': '보조', 'props.variant.danger': '위험',
+        'props.required': '필수', 'props.readonly': '읽기 전용',
+        'props.placeholder': '힌트 텍스트', 'props.default': '기본값',
+        'props.min': '최솟값', 'props.max': '최댓값', 'props.step': '간격',
+        'props.options': '선택지 (한 줄에 하나)',
+        'props.inline': '가로 배열',
+        'props.dir_only': '디렉토리만',
+        'props.filter': '확장자 (예: *.py *.txt)',
+        'props.sep_type': '종류',
+        'props.sep_type.horizontal': '가로선', 'props.sep_type.vertical': '세로선', 'props.sep_type.box': '박스',
+        'props.sep_align': '정렬',
+        'props.sep_align.center': '가운데', 'props.sep_align.edge': '끝',
+        'props.textarea_rows': '행 수',
+        'props.label_size': '크기',
+        'props.grid_col': '열', 'props.grid_row': '행',
+        'props.grid_w': '너비 (열)', 'props.grid_h': '높이 (행)',
+        // status messages
+        'status.saved': '저장됨', 'status.save_failed': '저장 실패',
+        'status.opened': '열림', 'status.new_form': '새 폼',
+        'status.open_failed': '열기 실패',
+        'status.no_components': '컴포넌트가 없습니다',
+        'status.runner_opened': '실행 창 열림', 'status.run_failed': '실행 실패',
+        'status.toast_title': '폼 디자이너',
+    },
+};
+const TOOLBAR_I18N = I18N;  // backward compat
+
+function t(key) {
+    const lang = window._currentLang || 'en';
+    return (I18N[lang] && I18N[lang][key]) || (I18N['en'][key]) || key;
+}
+
+function onLanguageChange(lang) {
+    window._currentLang = lang;
+    // toolbar tooltips
+    document.querySelectorAll('.sfd-icon-btn[data-i18n-key]').forEach(btn => {
+        const key = btn.getAttribute('data-i18n-key');
+        const label = t(key);
+        if (label) btn.setAttribute('aria-label', label);
+    });
+    // properties panel static text
+    const titleEl = document.getElementById('sfd-props-title');
+    if (titleEl) titleEl.textContent = t('props.title');
+    // re-render props with new language
+    renderProps();
+}
+
+// ================================================================
+// TOOLTIPS (JS-driven — avoids opacity/z-index issues with CSS ::after)
+// ================================================================
+function initIconTooltips() {
+    const tip = document.createElement('div');
+    tip.className = 'sfd-js-tooltip';
+    document.body.appendChild(tip);
+
+    document.querySelectorAll('.sfd-icon-btn[data-i18n-key]').forEach(btn => {
+        btn.addEventListener('mouseenter', function(e) {
+            const label = btn.getAttribute('aria-label');
+            if (!label) return;
+            tip.textContent = label;
+            tip.style.display = 'block';
+            positionTip(e);
+        });
+        btn.addEventListener('mousemove', positionTip);
+        btn.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+    });
+
+    function positionTip(e) {
+        tip.style.left = e.clientX + 12 + 'px';
+        tip.style.top  = e.clientY + 16 + 'px';
+    }
+}
+
+function initFilePathTooltip() {
+    const tip = document.createElement('div');
+    tip.className = 'sfd-js-tooltip';
+    document.body.appendChild(tip);
+
+    const label = document.getElementById('tb-filepath-label');
+    label.addEventListener('mouseenter', function(e) {
+        const path = label.dataset.path;
+        if (!path) return;
+        tip.textContent = path;
+        tip.style.display = 'block';
+        positionTip(e);
+    });
+    label.addEventListener('mousemove', positionTip);
+    label.addEventListener('mouseleave', function() {
+        tip.style.display = 'none';
+    });
+
+    function positionTip(e) {
+        tip.style.left = e.clientX + 12 + 'px';
+        tip.style.top  = e.clientY + 16 + 'px';
+    }
+}
 
 // ================================================================
 // INIT
@@ -1020,6 +1271,8 @@ initPalette();
 initCanvas();
 renderCanvas();
 renderProps();
+initIconTooltips();
+initFilePathTooltip();
 
 // Make title editable
 document.getElementById('tb-title').setAttribute('contenteditable', 'true');

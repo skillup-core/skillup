@@ -103,13 +103,23 @@ class SkillFormApp(BaseApp):
                 print(f'[warn ] --skillform-run: failed to load {auto_run_path}: {e}',
                       file=sys.stderr)
 
+        # Load last designer file on startup
+        last_file = config.get('designer.last_file', '')
+        designer_schema = None
+        if last_file:
+            try:
+                with open(last_file, 'r', encoding='utf-8') as f:
+                    designer_schema = json.load(f)
+            except Exception:
+                last_file = ''
+
         self.state.update({
             'runner_schema': auto_run_schema,
             'runner_schema_path': auto_run_path if auto_run_schema else config.get('runner.last_schema', ''),
             'runner_result': None,
             'runner_waiting': auto_run_schema is not None,
-            'designer_schema': None,
-            'designer_file': config.get('designer.last_file', ''),
+            'designer_schema': designer_schema,
+            'designer_file': last_file,
             'auto_run': auto_run_schema is not None,
         }, notify=False)
 

@@ -1,33 +1,20 @@
 """
-Example: Python caller for skillform GUI.
+Example: Python caller for skillform GUI (executor variant).
 
 Usage:
-    python3 caller.py [<skillup.py path> <python3 path>]
+    python3 caller_with_executor.py <skillup.py path>
 
-If arguments are omitted, skillup.py is auto-detected by walking up from this
-file, and the invoking Python interpreter is used as python3.
+python_bin is determined automatically via skillup-tool/skillup-python-selector.sh.
 """
 
 import sys
 import os
 
-def _find_skillup_py(start):
-    path = os.path.dirname(os.path.abspath(start))
-    while True:
-        candidate = os.path.join(path, 'skillup.py')
-        if os.path.exists(candidate):
-            return candidate
-        parent = os.path.dirname(path)
-        if parent == path:
-            raise FileNotFoundError('skillup.py not found walking up from ' + start)
-        path = parent
+if len(sys.argv) < 2:
+    print(f"Usage: {sys.argv[0]} <skillup.py>", file=sys.stderr)
+    sys.exit(1)
 
-if len(sys.argv) >= 3:
-    SKILLUP_PY = sys.argv[1]
-    PYTHON_BIN = sys.argv[2]
-else:
-    SKILLUP_PY = _find_skillup_py(__file__)
-    PYTHON_BIN = sys.executable
+SKILLUP_PY = sys.argv[1]
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(SKILLUP_PY)),
                                 'app', 'skillform', 'lib', 'python'))
@@ -76,4 +63,4 @@ def on_event(form, ev):
         print('Form window closed by user.')
 
 
-SkillForm(FORM, skillup_py=SKILLUP_PY, python_bin=PYTHON_BIN).run(on_event)
+SkillForm.with_executor(FORM, SKILLUP_PY).run(on_event)

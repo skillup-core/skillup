@@ -390,9 +390,9 @@
                 window.SkillupTheme.setTheme(config.theme);
             }
 
-            // Apply language - use postMessage to self, same as iframe path
-            if (config.language) {
-                window.postMessage({ action: 'setLanguage', language: config.language }, '*');
+            // Apply language
+            if (config.language && typeof onLanguageChange === 'function') {
+                onLanguageChange(config.language);
             }
         } catch (e) {
             console.warn('[Skillup] Failed to load standalone settings:', e);
@@ -452,7 +452,9 @@
 
             // Handle language changes from desktop
             if (data.action === 'setLanguage') {
-                // Language change is handled by individual apps
+                if (data.language && typeof onLanguageChange === 'function') {
+                    onLanguageChange(data.language);
+                }
                 return;
             }
 

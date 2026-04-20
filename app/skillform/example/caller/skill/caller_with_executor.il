@@ -1,17 +1,18 @@
-;;; caller.il - Example: SKILL caller for skillform GUI
+;;; caller_with_executor.il - Example: SKILL caller for skillform GUI (executor variant)
 ;;;
 ;;; Prerequisites:
 ;;;   - libform.il must be loaded first
+;;;   - skillup-tool/skillup-python-selector.sh must exist alongside skillup-full/
 ;;;
 ;;; Run from Virtuoso CIW:
 ;;;   load("/path/to/skillup-full/app/skillform/lib/skill/libform.il")
-;;;   load("/path/to/skillup-full/app/skillform/example/caller/skill/caller.il")
-;;;   sfExampleRun("/path/to/form01.json" "/path/to/skillup.py" "/path/to/python3")
+;;;   load("/path/to/skillup-full/app/skillform/example/caller/skill/caller_with_executor.il")
+;;;   sfExampleRunWithExecutor("/path/to/form01.json" "/path/to/skillup.py")
 
 _sfExSaveFile = "/tmp/skillform_example.json"
 
-procedure(sfExampleRun(formPath skillupPy pythonBin)
-  skillformRun(formPath skillupPy pythonBin 'sfExampleHandler))
+procedure(sfExampleRunWithExecutor(formPath skillupPy)
+  skillformRunWithExecutor(formPath skillupPy 'sfExampleHandler))
 
 procedure(sfExampleHandler(form ev)
   let((evType btnId vals newCount saved)

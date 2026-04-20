@@ -25,10 +25,6 @@ Examples:
     # Run skillverifier with options
     python3 skillup.py --app:skillverifier --define=defs.txt test.il
 
-Available Apps:
-    - skillverifier: SKILL code static analyzer
-    - sample: Sample application demonstrating the framework
-
 Environment Variables:
     SKILLUP_CONFIG_HOME         Custom configuration directory path
                                 Default: $XDG_CONFIG_HOME/skillup or ~/.config/skillup

@@ -116,6 +116,38 @@ python3 skillup.py --desktop --app:skillbot
 python3 skillup.py --desktop --app:skillverifier
 ```
 
+### skillup-tool (optional)
+
+For site-specific Python interpreter configuration, create a `skillup-tool/` directory as a sibling of `skillup/`:
+
+```
+skillup-tool/
+    skillup-python-selector.sh   # prints the Python interpreter path to stdout
+    skillup-executor.sh          # runs skillup.py with the selected interpreter
+skillup/
+    skillup.py
+    ...
+```
+
+**`skillup-python-selector.sh`** — outputs the full path of the Python interpreter to use. Implement this per-site to handle environments where the Python path varies by machine or user:
+
+```bash
+#!/bin/bash
+echo "/path/to/site-specific/python3"
+```
+
+**`skillup-executor.sh`** — reads the interpreter path from `skillup-python-selector.sh` and launches `skillup.py` with any arguments passed to it:
+
+```bash
+skillup-executor.sh --desktop         # equivalent to: python3 skillup.py --desktop
+skillup-executor.sh --app:skillform   # equivalent to: python3 skillup.py --app:skillform
+```
+
+When `skillup-tool/` is in place, skillform callers can use the `*_with_executor()` API to resolve the Python interpreter automatically at runtime, without hardcoding a path:
+
+- **Python**: `SkillForm.with_executor(form_path, skillup_py)` instead of `SkillForm(form_path, skillup_py, python_bin)`
+- **SKILL**: `skillformRunWithExecutor(formPath skillupPy handler)` instead of `skillformRun(formPath skillupPy pythonBin handler)`
+
 ---
 
 ## Roadmap

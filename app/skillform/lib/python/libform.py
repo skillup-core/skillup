@@ -20,7 +20,6 @@ import json
 import socket
 import subprocess
 import sys
-from pathlib import Path
 
 # ANSI color codes
 _GREEN  = '\033[32m'
@@ -39,17 +38,6 @@ def _log(level, msg):
     print(f'{level_str}{_BLUE}[skillform]{_RESET} {msg}', file=sys.stderr)
 
 
-def _find_skillup_py(start=None):
-    """Walk up from start (default: this file) to find skillup.py"""
-    path = Path(start or __file__).resolve()
-    for parent in path.parents:
-        candidate = parent / 'skillup.py'
-        if candidate.exists():
-            return str(candidate)
-    raise FileNotFoundError(
-        'skillup.py not found. Set skillup_py= explicitly or run from inside the repo.')
-
-
 class SkillForm:
     """
     Launch a skillform GUI window and receive button events.
@@ -58,13 +46,16 @@ class SkillForm:
     ----------
     form_path : str
         Path to the JSON form schema file.
-    skillup_py : str, optional
-        Path to skillup.py. Auto-detected from this file's location if omitted.
+    skillup_py : str
+        Path to skillup.py.
+    python_bin : str
+        Path to the Python interpreter that runs skillup.py.
     """
 
-    def __init__(self, form_path, skillup_py=None):
+    def __init__(self, form_path, skillup_py, python_bin):
         self.form_path = os.path.abspath(form_path)
-        self.skillup_py = skillup_py or _find_skillup_py()
+        self.skillup_py = skillup_py
+        self.python_bin = python_bin
         self._srv = None
         self._conn = None
         self._proc = None
@@ -90,7 +81,7 @@ class SkillForm:
 
         _log('info', f'launching skillform on port {port}: {os.path.basename(self.form_path)}')
         self._proc = subprocess.Popen(
-            [sys.executable, self.skillup_py,
+            [self.python_bin, self.skillup_py,
              '--desktop', '--app:skillform',
              f'--skillform-run={self.form_path}',
              f'--skillform-caller-port={port}'],
@@ -160,6 +151,24 @@ class SkillForm:
                 _log('info', 'close sent')
             except Exception:
                 _log('warn', 'close send failed (connection already closed?)')
+
+    @classmethod
+    def with_executor(cls, form_path, skillup_py):
+        """
+        Create a SkillForm using skillup-python-selector.sh to determine python_bin.
+        skillup-tool/ must exist as a sibling of the skillup-full/ directory.
+        """
+        skillup_py = os.path.abspath(skillup_py)
+        repo_root  = os.path.dirname(skillup_py)
+        selector   = os.path.join(repo_root, '..', 'skillup-tool', 'skillup-python-selector.sh')
+        selector   = os.path.normpath(selector)
+        if not os.path.isfile(selector):
+            raise FileNotFoundError(f'skillup-python-selector.sh not found: {selector}')
+        result = subprocess.run(['bash', selector], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        python_bin = result.stdout.decode().strip()
+        if not python_bin:
+            raise RuntimeError(f'skillup-python-selector.sh returned empty path')
+        return cls(form_path, skillup_py, python_bin)
 
     def _cleanup(self):
         for obj in (self._conn, self._srv):

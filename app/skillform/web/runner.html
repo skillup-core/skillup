@@ -394,6 +394,8 @@ function buildFieldWidget(f, rowH) {
             input.textContent = f.label || f.id;
             const variantMap = { primary: 'sfr-btn-primary', secondary: 'sfr-btn-secondary', danger: 'sfr-btn-danger' };
             input.className = 'sfr-btn ' + (variantMap[f.variant] || 'sfr-btn-primary');
+            input.style.height = 'auto';
+            wrap.style.justifyContent = 'flex-end';
             input.addEventListener('click', () => {
                 callPython('runner_button_click', { button_id: f.id, values: Object.assign({}, formValues) });
             });

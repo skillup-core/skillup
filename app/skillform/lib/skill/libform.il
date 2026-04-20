@@ -282,12 +282,35 @@ procedure(skillformLoadValues(path)
       when(nequal(line "") result = _sfJsonDecode(line)))
     result))
 
-procedure(skillformRun(formPath handler @optional skillupPy pythonBin)
+procedure(skillformRunWithExecutor(formPath skillupPy handler)
+  let((selectorSh tmpFile pyBin port ch line parts repoRoot)
+    parts      = parseString(skillupPy "/")
+    repoRoot   = strcat("/" buildString(reverse(cdr(reverse(parts))) "/"))
+    selectorSh = strcat(repoRoot "/../skillup-tool/skillup-python-selector.sh")
+    unless(isFile(selectorSh)
+      error("skillformRunWithExecutor: skillup-python-selector.sh not found: %s" selectorSh))
+    tmpFile = "/tmp/_sf_pybin.txt"
+    system(strcat("bash " selectorSh " | tr -d '\\r\\n' > " tmpFile " 2>/dev/null"))
+    port = infile(tmpFile)
+    unless(port
+      error("skillformRunWithExecutor: could not read %s" tmpFile))
+    line = ""
+    ch = getc(port)
+    while(ch && !equal(ch "\n")
+      line = strcat(line ch)
+      ch = getc(port))
+    close(port)
+    pyBin = line
+    unless(nequal(pyBin "")
+      error("skillformRunWithExecutor: skillup-python-selector.sh returned empty path"))
+    skillformRun(formPath skillupPy pyBin handler)))
+
+procedure(skillformRun(formPath skillupPy pythonBin handler)
   let((pyBin pyPath pid formHandle logFile cmd parts repoRoot bridgePy)
-    pyBin  = or(pythonBin getShellEnvVar("SKILLUP_PYTHON") "python3")
-    pyPath = or(skillupPy getShellEnvVar("SKILLUP_PY"))
+    pyBin  = pythonBin
+    pyPath = skillupPy
     unless(pyPath
-      error("skillformRun: skillup.py path unknown. Pass as 3rd arg or set SKILLUP_PY."))
+      error("skillformRun: skillup.py path required as 2nd argument."))
     unless(isFile(pyPath)
       error("skillformRun: skillup.py not found: %s" pyPath))
     unless(isFile(formPath)
@@ -308,4 +331,4 @@ procedure(skillformRun(formPath handler @optional skillupPy pythonBin)
     _sfCurForm    = formHandle
     formHandle))
 
-printf("libform.il loaded v16.\n")
+printf("libform.il loaded v18.\n")
