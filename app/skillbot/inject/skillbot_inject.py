@@ -322,16 +322,20 @@ def _set_clipboard(text):
 
     Spawns a daemon thread that serves SelectionRequest events for up to 5 s,
     which is enough time for a single Ctrl+V paste to complete.
-    Returns True if ownership was acquired, False otherwise.
+    Returns (ok, paste_done_event) where paste_done_event is set by the serve
+    thread the moment CIW's UTF8_STRING request has been answered — i.e. the
+    paste data has been delivered.  Caller can wait on this event instead of
+    sleeping before sending Return.
+    Returns (False, None) on failure.
     """
     try:
         from Xlib import X, display as _display, Xatom
     except ImportError:
-        return False
+        return False, None
     try:
         cd = _display.Display(os.environ.get('DISPLAY', ':0'))
     except Exception:
-        return False
+        return False, None
 
     CLIPBOARD   = cd.intern_atom('CLIPBOARD')
     UTF8_STRING = cd.intern_atom('UTF8_STRING')
@@ -346,12 +350,14 @@ def _set_clipboard(text):
         cd.flush()
     except Exception:
         cd.close()
-        return False
+        return False, None
 
     if cd.get_selection_owner(CLIPBOARD) != owner:
         owner.destroy()
         cd.close()
-        return False
+        return False, None
+
+    paste_done = threading.Event()
 
     def _serve():
         from Xlib.protocol import event as _ev
@@ -365,16 +371,28 @@ def _set_clipboard(text):
                         prop = e.property if e.property != X.NONE else e.target
                         if e.target in (UTF8_STRING, Xatom.STRING):
                             e.requestor.change_property(prop, UTF8_STRING, 8, text_bytes)
+                            reply = _ev.SelectionNotify(
+                                time=e.time, requestor=e.requestor,
+                                selection=e.selection, target=e.target, property=prop)
+                            e.requestor.send_event(reply)
+                            cd.flush()
+                            # Data delivered to CIW — signal main thread
+                            paste_done.set()
                         elif e.target == TARGETS:
                             e.requestor.change_property(
                                 prop, Xatom.ATOM, 32, [TARGETS, UTF8_STRING])
+                            reply = _ev.SelectionNotify(
+                                time=e.time, requestor=e.requestor,
+                                selection=e.selection, target=e.target, property=prop)
+                            e.requestor.send_event(reply)
+                            cd.flush()
                         else:
                             prop = X.NONE
-                        reply = _ev.SelectionNotify(
-                            time=e.time, requestor=e.requestor,
-                            selection=e.selection, target=e.target, property=prop)
-                        e.requestor.send_event(reply)
-                        cd.flush()
+                            reply = _ev.SelectionNotify(
+                                time=e.time, requestor=e.requestor,
+                                selection=e.selection, target=e.target, property=prop)
+                            e.requestor.send_event(reply)
+                            cd.flush()
                     elif e.type == X.SelectionClear:
                         return
                 _t.sleep(0.02)
@@ -388,7 +406,7 @@ def _set_clipboard(text):
                 pass
 
     threading.Thread(target=_serve, daemon=True).start()
-    return True
+    return True, paste_done
 
 
 def _is_wayland():
@@ -571,7 +589,8 @@ def _inject_text_to_ciw(text, log_file="", window_id=None):
     # Set clipboard via python-xlib SelectionOwner (no external tools needed).
     # '\n' is included so ctrl+v delivers text + newline atomically; the
     # separate Return key is kept as a fallback in case the terminal strips \n.
-    if not _set_clipboard(text + '\n'):
+    ok, paste_done = _set_clipboard(text + '\n')
+    if not ok:
         _log("FAIL: could not set clipboard", "error")
         return False
 
@@ -614,7 +633,11 @@ def _inject_text_to_ciw(text, log_file="", window_id=None):
                 capture_output=True, timeout=5)
 
     _xdt('key', '--clearmodifiers', 'ctrl+u', 'ctrl+v')
-    _time.sleep(0.05)
+    # Wait for CIW to request clipboard data (SelectionRequest → UTF8_STRING)
+    # instead of sleeping.  Falls back to a fixed delay if no request arrives.
+    if not paste_done.wait(timeout=2.0):
+        _log("paste_done timeout — falling back to sleep(0.2)", "warn")
+        _time.sleep(0.2)
     _xdt('key', '--clearmodifiers', 'Return')
     _time.sleep(0.05)
 
@@ -643,6 +666,23 @@ class SharedState:
         self.debug_break_line = 0
         self.debug_break_file_id = 0
         self.debug_output = []
+        # Generic done-events keyed by tag (e.g. "setup", "bp")
+        self._done_lock = threading.Lock()
+        self._done_events = {}
+
+    def add_done_event(self, tag):
+        """Register a one-shot Event for the given tag. Returns the Event."""
+        ev = threading.Event()
+        with self._done_lock:
+            self._done_events[tag] = ev
+        return ev
+
+    def signal_done(self, tag):
+        """Called by REST handler when /done/<tag> arrives from SKILL."""
+        with self._done_lock:
+            ev = self._done_events.pop(tag, None)
+        if ev:
+            ev.set()
 
     # Debug state management
     def debug_start(self):
@@ -708,6 +748,12 @@ class ApiHandler(BaseHTTPRequestHandler):
                 file_id, line_num = 0, 0
             state.debug_on_break(line_num, file_id)
             _log(f"debug_break file_id={file_id} line={line_num}")
+            self._json({"ok": True})
+
+        # /done/<tag>  — generic SKILL-side completion callback
+        elif self.path.startswith("/done/"):
+            tag = self.path[len("/done/"):]
+            state.signal_done(tag)
             self._json({"ok": True})
 
         # /debug_end  — SKILL signals procedure returned (optionally ?result=...)
@@ -795,15 +841,17 @@ class ApiHandler(BaseHTTPRequestHandler):
 
         # Inject setup code (breakpoint list + port for curl callbacks)
         if setup_code:
-            full_setup = f"begin(\n{setup_code}\n__sbPort = {_ipc_assigned_port}\n)"
+            setup_done = state.add_done_event("setup")
+            full_setup = (f"begin(\n{setup_code}\n__sbPort = {_ipc_assigned_port}\n"
+                          f"_sbCurl(\"/done/setup\")\n)")
             skill_call = _write_and_load(full_setup, "setup")
             if not _inject_text_to_ciw(skill_call, _ipc_log_file):
                 state.debug_stop()
                 self._json({"success": False,
                             "error": "Setup inject failed — CIW not responding"})
                 return
-            import time as _t
-            _t.sleep(0.5)
+            if not setup_done.wait(timeout=10):
+                _log("setup_done timeout — proceeding anyway", "warn")
 
         if idle:
             # Idle mode: inject procedure definitions only, return immediately.
@@ -895,13 +943,15 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
 
         if cmd in ("continue", "next"):
-            # Optional bp update first (fire-and-forget, best-effort)
+            # Optional bp update first — wait for SKILL confirmation before continue()
             bp_code = req.get("bp_code", "")
             if bp_code:
-                import time as _t
-                skill_call = _write_and_load(bp_code, "bp")
+                bp_done = state.add_done_event("bp")
+                bp_code_with_cb = bp_code + f'\n_sbCurl("/done/bp")'
+                skill_call = _write_and_load(bp_code_with_cb, "bp")
                 _inject_text_to_ciw(skill_call, _ipc_log_file)
-                _t.sleep(0.1)
+                if not bp_done.wait(timeout=5):
+                    _log("bp_done timeout — proceeding anyway", "warn")
 
             state.debug_break_event.clear()
 
