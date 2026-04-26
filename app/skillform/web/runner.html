@@ -46,6 +46,7 @@
 let currentSchema   = null;
 let formValues      = {};
 let currentRecordId = null;
+let _currentLang    = new URLSearchParams(window.location.search).get('lang') || 'en';
 
 // ================================================================
 // RENDER FORM from skillform JSON schema
@@ -454,12 +455,17 @@ let _listSchema = null;
 
 async function _loadBoardData(fieldDef, containerEl) {
     _boardFields = _boardFields.filter(b => b.id !== fieldDef.id);
-    _boardFields.push({ id: fieldDef.id, fieldDef, containerEl });
-    const res = await callPython('board_list', {
-        detail_form_path: fieldDef.detailFormPath || '',
-        board_id: fieldDef.id
-    }).catch(() => null);
-    _renderBoardTable(fieldDef, containerEl, res ? res.records : []);
+    const detailPath = fieldDef.detailFormPath || '';
+    const [res, fieldsRes] = await Promise.all([
+        callPython('board_list', { detail_form_path: detailPath, board_id: fieldDef.id }).catch(() => null),
+        detailPath ? callPython('board_read_detail_fields', { path: detailPath }).catch(() => null) : Promise.resolve(null),
+    ]);
+    const fieldLabels = {};
+    if (fieldsRes && fieldsRes.fields) {
+        fieldsRes.fields.forEach(f => { fieldLabels[f.id] = f.label; });
+    }
+    _boardFields.push({ id: fieldDef.id, fieldDef, containerEl, fieldLabels });
+    _renderBoardTable(fieldDef, containerEl, res ? res.records : [], fieldLabels);
 }
 
 function _normalizeListColumns(raw) {
@@ -481,13 +487,13 @@ function _resolveWidths(cols) {
     });
 }
 
-function _renderBoardTable(fieldDef, containerEl, records) {
+function _renderBoardTable(fieldDef, containerEl, records, fieldLabels) {
     const cols = _normalizeListColumns(fieldDef.listColumns);
     const widths = _resolveWidths(cols);
     let html = '<table class="sfr-board-table"><thead><tr>';
     cols.forEach((c, i) => {
         const w = widths[i] ? ` style="width:${widths[i]}"` : '';
-        html += `<th${w}>${_colLabel(c.id)}</th>`;
+        html += `<th${w}>${_colLabel(c.id, fieldLabels)}</th>`;
     });
     html += '</tr></thead><tbody>';
     if (!records.length) {
@@ -522,9 +528,15 @@ function _renderBoardTable(fieldDef, containerEl, records) {
     }
 }
 
-function _colLabel(col) {
-    const map = { '@created_at': '날짜', '@updated_at': '수정일', title: '제목', body: '내용' };
-    return map[col] || col;
+const _SYS_COL_LABELS = {
+    ko: { '@record_id': '레코드ID', '@row_id': '번호', '@created_at': '생성일시', '@updated_at': '수정일시' },
+    en: { '@record_id': 'Record ID', '@row_id': 'No', '@created_at': 'Created At', '@updated_at': 'Updated At' },
+};
+
+function _colLabel(col, fieldLabels) {
+    const sysLabels = _SYS_COL_LABELS[_currentLang] || _SYS_COL_LABELS.en;
+    if (col.startsWith('@')) return sysLabels[col] !== undefined ? sysLabels[col] : col;
+    return (fieldLabels && fieldLabels[col] !== undefined) ? fieldLabels[col] : col;
 }
 
 function _escHtml(s) {
@@ -652,7 +664,10 @@ async function onViewActivated() {
         setStatus('', '');
     }
 }
-function onLanguageChange(lang) {}
+function onLanguageChange(lang) {
+    _currentLang = lang || 'en';
+    _refreshAllBoards();
+}
 
 
 // ================================================================

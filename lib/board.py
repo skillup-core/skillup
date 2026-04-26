@@ -83,7 +83,16 @@ def _connect(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     _init_schema(conn)
+    _migrate_schema(conn)
     return conn
+
+
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    try:
+        conn.execute('ALTER TABLE posts ADD COLUMN row_id INTEGER')
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
 
 
 def _init_schema(conn: sqlite3.Connection) -> None:
@@ -93,7 +102,8 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             form_id    TEXT NOT NULL,
             data       TEXT NOT NULL,
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            row_id     INTEGER
         );
 
         CREATE VIRTUAL TABLE IF NOT EXISTS posts_fts USING fts5(
@@ -133,9 +143,14 @@ def post_record(db_path: str, form_id: str, data: Dict[str, Any]) -> str:
     record_id = str(uuid.uuid4())
     now = _now_iso()
     with _connect(db_path) as conn:
+        row = conn.execute(
+            'SELECT COALESCE(MAX(row_id), 0) + 1 FROM posts WHERE form_id=?',
+            (form_id,)
+        ).fetchone()
+        row_id = row[0]
         conn.execute(
-            'INSERT INTO posts (record_id, form_id, data, created_at, updated_at) VALUES (?,?,?,?,?)',
-            (record_id, form_id, json.dumps(data, ensure_ascii=False), now, now)
+            'INSERT INTO posts (record_id, form_id, data, created_at, updated_at, row_id) VALUES (?,?,?,?,?,?)',
+            (record_id, form_id, json.dumps(data, ensure_ascii=False), now, now, row_id)
         )
     return record_id
 
@@ -162,7 +177,7 @@ def list_records(db_path: str, form_id: str) -> List[Dict[str, Any]]:
     """Return all records for form_id ordered by created_at desc."""
     with _connect(db_path) as conn:
         rows = conn.execute(
-            'SELECT record_id, data, created_at, updated_at FROM posts WHERE form_id=? ORDER BY created_at DESC',
+            'SELECT record_id, data, created_at, updated_at, row_id FROM posts WHERE form_id=? ORDER BY created_at DESC',
             (form_id,)
         ).fetchall()
     result = []
@@ -171,6 +186,7 @@ def list_records(db_path: str, form_id: str) -> List[Dict[str, Any]]:
         entry['@record_id'] = row['record_id']
         entry['@created_at'] = row['created_at']
         entry['@updated_at'] = row['updated_at']
+        entry['@row_id'] = row['row_id']
         result.append(entry)
     return result
 
@@ -179,7 +195,7 @@ def get_record(db_path: str, record_id: str) -> Optional[Dict[str, Any]]:
     """Return a single record by record_id, or None."""
     with _connect(db_path) as conn:
         row = conn.execute(
-            'SELECT record_id, data, created_at, updated_at FROM posts WHERE record_id=?',
+            'SELECT record_id, data, created_at, updated_at, row_id FROM posts WHERE record_id=?',
             (record_id,)
         ).fetchone()
     if row is None:
@@ -188,6 +204,7 @@ def get_record(db_path: str, record_id: str) -> Optional[Dict[str, Any]]:
     entry['@record_id'] = row['record_id']
     entry['@created_at'] = row['created_at']
     entry['@updated_at'] = row['updated_at']
+    entry['@row_id'] = row['row_id']
     return entry
 
 
@@ -195,7 +212,7 @@ def search_records(db_path: str, form_id: str, query: str) -> List[Dict[str, Any
     """FTS5 full-text search within a form's records."""
     with _connect(db_path) as conn:
         rows = conn.execute(
-            """SELECT p.record_id, p.data, p.created_at, p.updated_at
+            """SELECT p.record_id, p.data, p.created_at, p.updated_at, p.row_id
                FROM posts_fts f
                JOIN posts p ON p.rowid = f.rowid
                WHERE f.form_id = ? AND posts_fts MATCH ?
@@ -208,6 +225,7 @@ def search_records(db_path: str, form_id: str, query: str) -> List[Dict[str, Any
         entry['@record_id'] = row['record_id']
         entry['@created_at'] = row['created_at']
         entry['@updated_at'] = row['updated_at']
+        entry['@row_id'] = row['row_id']
         result.append(entry)
     return result
 

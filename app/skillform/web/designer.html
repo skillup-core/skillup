@@ -936,6 +936,7 @@ function openListColumnsDialog(fieldId) {
 
     const detailPath = (field.detailFormPath || '').trim();
     const systemFields = [
+        { id: '@row_id',     label: t('props.board_sys_row_id')     },
         { id: '@created_at', label: t('props.board_sys_created_at') },
         { id: '@updated_at', label: t('props.board_sys_updated_at') },
         { id: '@record_id',  label: t('props.board_sys_record_id')  },
@@ -1903,6 +1904,7 @@ const I18N = {
         'props.board_all_added': 'All fields added',
         'props.board_total_pct': 'Total',
         'props.board_preview': 'Preview',
+        'props.board_sys_row_id': 'Row No',
         'props.board_sys_created_at': 'Created At',
         'props.board_sys_updated_at': 'Updated At',
         'props.board_sys_record_id': 'Record ID',
@@ -1961,6 +1963,7 @@ const I18N = {
         'props.board_all_added': '모든 필드가 추가됨',
         'props.board_total_pct': '합계',
         'props.board_preview': '미리보기',
+        'props.board_sys_row_id': '번호',
         'props.board_sys_created_at': '생성일시',
         'props.board_sys_updated_at': '수정일시',
         'props.board_sys_record_id': '레코드ID',
