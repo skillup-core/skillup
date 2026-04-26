@@ -725,11 +725,13 @@ class DesktopManager:
             'general.theme': 'default',
             'general.account_type': 'sqlite',
             'general.account_db': '',
+            'general.board_dir': '',
             'layout.app_order': '',
             'hotkey.key': 'CTRL, ALT, s',
             'hotkey.last_cmd': '',
             'notice.wayland_ime_dismissed': 'false'
         }, app_id='desktop')
+        self._desktop_config = config
 
         self.language = config['general.language']
         self.theme = config['general.theme']
@@ -1683,6 +1685,14 @@ class DesktopManager:
         self.engine.register_handler('save_account', handle_save_account)
         self.engine.register_handler('clear_account_photo', handle_clear_account_photo)
         self.engine.register_handler('desktop_ready', handle_desktop_ready)
+
+        # Suggest board: expose list.json path so JS can open it in skillform runner
+        try:
+            from desktop.board.suggest.board import LIST_FORM_PATH as _suggest_list_form_path
+            self.engine.register_handler('suggest_board_info',
+                lambda data: {'list_form_path': _suggest_list_form_path})
+        except Exception as _e:
+            log("warn", message=f"Suggest board unavailable: {_e}", tag="desktop")
 
     def _register_app_handlers_to_engine(self, app_instance):
         """

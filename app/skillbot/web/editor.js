@@ -1066,7 +1066,7 @@ function openNewTab() { EXP.openNewTab(); }
 
 // ── Preferences ───────────────────────────────────────────────────────────────
 const PREFS_DEFAULT = { 'editor.font_size': 16 };
-const PREFS_FONT_SIZES = [10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24];
+const PREFS_FONT_SIZES = [10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 22, 24];
 
 function openPreferences() {
     const modal = window.parent && window.parent.desktopModal;

@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from lib.appmgr import AppContext, register_app_class
 from lib.baseapp import BaseApp, BaseAppState
+from lib import board as board_lib
 
 if TYPE_CHECKING:
     from lib.webui import WebUIEngine
@@ -75,7 +76,9 @@ class SkillFormApp(BaseApp):
         config = self.load_config({
             'runner.last_schema': '',
             'designer.last_file': '',
+            'general.board_dir': '',
         })
+        self._board_config = config
 
         # Check if --skillform-run=<path> and/or --skillform-caller-port=<N> were passed via environment
         auto_run_path = None
@@ -113,9 +116,27 @@ class SkillFormApp(BaseApp):
             except Exception:
                 last_file = ''
 
+        # Load last runner schema on startup (only if not overridden by auto_run)
+        last_runner_path = '' if auto_run_schema else config.get('runner.last_schema', '')
+        last_runner_schema = None
+        if last_runner_path and not auto_run_schema:
+            try:
+                resolved = board_lib.resolve_form_path(last_runner_path)
+                if os.path.exists(resolved):
+                    with open(resolved, 'r', encoding='utf-8') as f:
+                        candidate = json.load(f)
+                    # Skip board list forms (they contain board-type fields, not for standalone runner)
+                    fields = candidate.get('fields', [])
+                    if not any(fd.get('type') == 'board' for fd in fields):
+                        last_runner_schema = candidate
+                    else:
+                        last_runner_path = ''
+            except Exception:
+                last_runner_path = ''
+
         self.state.update({
-            'runner_schema': auto_run_schema,
-            'runner_schema_path': auto_run_path if auto_run_schema else config.get('runner.last_schema', ''),
+            'runner_schema': auto_run_schema or last_runner_schema,
+            'runner_schema_path': auto_run_path if auto_run_schema else last_runner_path,
             'runner_result': None,
             'runner_waiting': auto_run_schema is not None,
             'designer_schema': designer_schema,
@@ -136,9 +157,14 @@ class SkillFormApp(BaseApp):
             'designer_get_state': self._handle_designer_get_state,
             'designer_run': self._handle_designer_run,
             'designer_run_standalone': self._handle_designer_run_standalone,
+            'designer_prepare_code': self._handle_designer_prepare_code,
             'runner_poll': self._handle_runner_poll,
             # Standalone mode
             'standalone_close': self._handle_standalone_close,
+            # Board handlers
+            'board_list': self._handle_board_list,
+            'board_get': self._handle_board_get,
+            'board_read_detail_fields': self._handle_board_read_detail_fields,
         })
 
         # Connect to caller process if port was provided
@@ -171,6 +197,7 @@ class SkillFormApp(BaseApp):
             return {'success': False, 'error': 'No path provided'}
 
         path = os.path.expanduser(path)
+        path = board_lib.resolve_form_path(path)
         if not os.path.exists(path):
             return {'success': False, 'error': f'File not found: {path}'}
 
@@ -187,18 +214,51 @@ class SkillFormApp(BaseApp):
             'runner_waiting': True,
         }, notify=False)
 
-        # Save last used path
-        from lib.config import save_config
-        save_config(self.context.config_path, {'runner.last_schema': path})
+        # Save last used path, but skip board list forms
+        is_board_list = any(fd.get('type') == 'board' for fd in schema.get('fields', []))
+        if not is_board_list:
+            from lib.config import save_config
+            save_config(self.context.config_path, {'runner.last_schema': path})
 
         return {'success': True, 'schema': schema}
 
     def _handle_runner_button_click(self, data: dict, language: str) -> dict:
-        """Button clicked in runner - forward event to caller process via TCP"""
+        """Button clicked in runner - forward event to caller, and handle board commands."""
         button_id = data.get('button_id', '')
         values = data.get('values', {})
-        self._send_to_caller({'type': 'button_click', 'button_id': button_id, 'values': values})
-        return {'success': True}
+        board_command = data.get('board_command', '')
+        record_id = data.get('record_id', '')
+
+        result = {'success': True}
+
+        if board_command in ('POST', 'MODIFY', 'DELETE'):
+            try:
+                current_schema = self.state.get('runner_schema')
+                form_id = ((current_schema or {}).get('docProps') or {}).get('formId', '')
+                detail_path = self.state.get('runner_schema_path') or ''
+                board_dir = board_lib.get_board_dir(self._board_config)
+                is_sys = board_lib.is_under_system_dir(detail_path)
+                db_path = board_lib.get_db_path(board_dir, is_sys)
+
+                if board_command == 'POST':
+                    new_id = board_lib.post_record(db_path, form_id, values)
+                    result['board_ok'] = True
+                    result['record_id'] = new_id
+                elif board_command == 'MODIFY' and record_id:
+                    board_lib.modify_record(db_path, record_id, values)
+                    result['board_ok'] = True
+                    result['record_id'] = record_id
+                elif board_command == 'DELETE' and record_id:
+                    board_lib.delete_record(db_path, record_id)
+                    result['board_ok'] = True
+            except Exception as e:
+                print(f'[error] board command {board_command} failed: {e}', file=sys.stderr)
+                result['board_ok'] = False
+                result['error'] = str(e)
+
+        self._send_to_caller({'type': 'button_click', 'button_id': button_id, 'values': values,
+                              'board_command': board_command})
+        return result
 
     def _send_to_caller(self, event: dict):
         """Send a JSON event to the parent caller process"""
@@ -422,6 +482,99 @@ class SkillFormApp(BaseApp):
 
         threading.Thread(target=_cleanup_temp, daemon=True).start()
         return {'success': True}
+
+    def _handle_designer_prepare_code(self, data: dict, language: str) -> dict:
+        import json as _json
+        script_dir  = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        skillup_py  = os.path.join(script_dir, 'skillup.py')
+        libform_il  = os.path.join(script_dir, 'app', 'skillform', 'lib', 'skill', 'libform.il')
+        executor_sh = os.path.normpath(os.path.join(script_dir, '..', 'skillup-tool', 'skillup-executor.sh'))
+
+        has_executor = os.path.isfile(executor_sh)
+        caller_il_name = 'caller_with_executor.il' if has_executor else 'caller.il'
+        caller_il = os.path.join(script_dir, 'app', 'skillform', 'example', 'caller', 'skill', caller_il_name)
+
+        schema = data.get('schema')
+        form_path = '/tmp/skillform_sample.json'
+        if schema:
+            try:
+                with open(form_path, 'w', encoding='utf-8') as f:
+                    _json.dump(schema, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                return {'success': False, 'error': str(e)}
+
+        return {
+            'success': True,
+            'skillup_py': skillup_py,
+            'libform_il': libform_il,
+            'caller_il': caller_il,
+            'form_path': form_path,
+            'has_executor': has_executor,
+        }
+
+    # -------------------------------------------------------------------------
+    # Board handlers
+    # -------------------------------------------------------------------------
+
+    def _board_db_path(self, detail_form_path: str) -> str:
+        board_dir = board_lib.get_board_dir(self._board_config)
+        resolved = board_lib.resolve_form_path(detail_form_path) if detail_form_path else ''
+        is_sys = board_lib.is_under_system_dir(resolved) if resolved else False
+        return board_lib.get_db_path(board_dir, is_sys)
+
+    def _handle_board_list(self, data: dict, language: str) -> dict:
+        detail_form_path = board_lib.resolve_form_path(data.get('detail_form_path', ''))
+        form_id = board_lib.read_form_id(detail_form_path) if detail_form_path else None
+        if not form_id:
+            current_schema = self.state.get('runner_schema')
+            form_id = ((current_schema or {}).get('docProps') or {}).get('formId', '')
+        if not form_id:
+            return {'records': []}
+        try:
+            db_path = self._board_db_path(detail_form_path)
+            records = board_lib.list_records(db_path, form_id)
+            return {'records': records}
+        except Exception as e:
+            print(f'[error] board_list: {e}', file=sys.stderr)
+            return {'records': [], 'error': str(e)}
+
+    def _handle_board_read_detail_fields(self, data: dict, language: str) -> dict:
+        """Read field ids from a detail form JSON without touching runner state."""
+        SYSTEM_FIELDS = [
+            {'id': '@created_at', 'label': '@created_at'},
+            {'id': '@updated_at', 'label': '@updated_at'},
+            {'id': '@record_id',  'label': '@record_id'},
+        ]
+        path = data.get('path', '').strip()
+        if not path:
+            return {'fields': [], 'system_fields': SYSTEM_FIELDS}
+        resolved = board_lib.resolve_form_path(os.path.expanduser(path))
+        if not os.path.exists(resolved):
+            return {'fields': [], 'system_fields': SYSTEM_FIELDS, 'error': 'File not found'}
+        try:
+            with open(resolved, 'r', encoding='utf-8') as f:
+                schema = json.load(f)
+            fields = [
+                {'id': fd['id'], 'label': fd.get('label', fd['id'])}
+                for fd in schema.get('fields', [])
+                if fd.get('type') not in ('button', 'separator', 'board') and fd.get('id')
+            ]
+            return {'fields': fields, 'system_fields': SYSTEM_FIELDS}
+        except Exception as e:
+            return {'fields': [], 'system_fields': SYSTEM_FIELDS, 'error': str(e)}
+
+    def _handle_board_get(self, data: dict, language: str) -> dict:
+        record_id = data.get('record_id', '')
+        detail_form_path = board_lib.resolve_form_path(data.get('detail_form_path', ''))
+        if not record_id:
+            return {'record': None}
+        try:
+            db_path = self._board_db_path(detail_form_path)
+            record = board_lib.get_record(db_path, record_id)
+            return {'record': record}
+        except Exception as e:
+            print(f'[error] board_get: {e}', file=sys.stderr)
+            return {'record': None, 'error': str(e)}
 
     def _handle_standalone_close(self, data: dict, language: str) -> dict:
         """Close the standalone window by terminating the subprocess"""

@@ -35,9 +35,14 @@
                 </div>
             </div>
         </div>
-        <button class="sfd-icon-btn sfd-icon-btn-run" onclick="doRun()" aria-label="Run" data-i18n-key="Run">
-            <svg viewBox="0 0 16 16" fill="currentColor"><polygon points="4,2 14,8 4,14"/></svg>
-        </button>
+        <div class="sfd-topbar-actions">
+            <button class="sfd-icon-btn sfd-icon-btn-run" onclick="doRun()" aria-label="Run" data-i18n-key="Run" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                <svg viewBox="0 0 16 16" fill="currentColor"><polygon points="4,2 14,8 4,14"/></svg>
+            </button>
+            <button class="sfd-icon-btn sfd-icon-btn-code" onclick="doShowCode()" aria-label="Code" data-i18n-key="Code" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="5,4 1,8 5,12"/><polyline points="11,4 15,8 11,12"/><line x1="9" y1="2" x2="7" y2="14"/></svg>
+            </button>
+        </div>
     </div>
 
     <!-- ── Main area ─────────────────────────────────────────────── -->
@@ -53,6 +58,9 @@
         <div id="sfd-canvas" class="sfd-canvas">
             <div id="sfd-canvas-inner" class="sfd-canvas-inner"></div>
         </div>
+
+        <!-- Resizer between canvas and properties panel -->
+        <div class="sfd-props-resizer" id="sfd-props-resizer"></div>
 
         <!-- Right: properties panel -->
         <div class="sfd-props" id="sfd-props">
@@ -84,6 +92,7 @@ const COMPONENT_TYPES = [
     { type:'label',     label:'Label',      icon:'Aa', defaultW:6, defaultH:1 },
     { type:'separator', label:'Separator',  icon:'—',  defaultW:12,defaultH:1 },
     { type:'button',    label:'Button',     icon:'▶',  defaultW:3, defaultH:1 },
+    { type:'board',     label:'Board',      icon:'☰',  defaultW:12,defaultH:6 },
 ];
 
 // ================================================================
@@ -112,6 +121,13 @@ let docProps = {
 
 let _idSeq = 0;
 function newId() { return 'f' + (++_idSeq); }
+function generateUUID() {
+    if (crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+}
 
 // drag state
 let drag = null;
@@ -344,6 +360,9 @@ function addField(type, col, row) {
         align:       (type === 'separator') ? 'center' : undefined,
         lineType:    (type === 'separator') ? 'horizontal' : undefined,
         variant:     (type === 'button') ? 'primary' : undefined,
+        boardCommand:(type === 'button') ? 'NONE' : undefined,
+        detailFormPath: (type === 'board') ? '' : undefined,
+        listColumns: (type === 'board') ? [] : undefined,
         dirOnly:     (type === 'file') ? false : undefined,
         filter:      (type === 'file') ? '' : undefined,
         min:         (type === 'number' || type === 'slider') ? '' : undefined,
@@ -640,6 +659,10 @@ function renderDocProps() {
                    onchange="docProps.formName=this.value;"/>
         </div>
         <div class="sfd-prop-row">
+            <label>Form ID</label>
+            <input type="text" value="${escHtml(docProps.formId||'')}" readonly style="opacity:0.6;cursor:default;font-size:0.78em;"/>
+        </div>
+        <div class="sfd-prop-row">
             <label>${t('props.font_size')}</label>
             <input type="number" value="${docProps.fontSize}" min="8" max="32" step="1"
                    oninput="updateDocFontSize(parseInt(this.value)||14)"
@@ -744,6 +767,14 @@ function renderProps() {
                 <option value="secondary" ${f.variant==='secondary'?'selected':''}>${t('props.variant.secondary')}</option>
                 <option value="danger"    ${f.variant==='danger'?'selected':''}>${t('props.variant.danger')}</option>
             </select></div>`;
+        html += `<div class="sfd-prop-section">${t('props.section.board')}</div>`;
+        html += `<div class="sfd-prop-row"><label>${t('props.board_command')}</label>
+            <select onchange="updateField('${f.id}','boardCommand',this.value)">
+                <option value="NONE"   ${(f.boardCommand||'NONE')==='NONE'?'selected':''}>NONE</option>
+                <option value="POST"   ${f.boardCommand==='POST'?'selected':''}>POST</option>
+                <option value="MODIFY" ${f.boardCommand==='MODIFY'?'selected':''}>MODIFY</option>
+                <option value="DELETE" ${f.boardCommand==='DELETE'?'selected':''}>DELETE</option>
+            </select></div>`;
     }
     if (f.type !== 'label' && f.type !== 'separator' && f.type !== 'button') {
         html += propCheck('required', t('props.required'), f.required);
@@ -799,6 +830,24 @@ function renderProps() {
             </select>
         </div>`;
     }
+    if (f.type === 'board') {
+        html += `<div class="sfd-prop-section">${t('props.section.board')}</div>`;
+        html += `<div class="sfd-prop-row">
+            <label>${t('props.board_detail_form')}</label>
+            <div style="display:flex;width:100%">
+                <input type="text" id="inp-detail-form-path" value="${escHtml(f.detailFormPath || '')}"
+                       style="flex:1;min-width:0"
+                       onchange="updateField('${f.id}','detailFormPath',this.value)"
+                       oninput="updateField('${f.id}','detailFormPath',this.value)"/>
+                <button id="btn-detail-form-browse" class="sfd-browse-btn">...</button>
+            </div>
+        </div>`;
+        const colSummary = _listColumnsSummary(f.listColumns || []);
+        html += `<div class="sfd-prop-row">
+            <label>${t('props.board_list_columns')}</label>
+            <button class="sfd-col-edit-btn" id="btn-list-columns-edit">${escHtml(colSummary) || t('props.board_columns_edit')}</button>
+        </div>`;
+    }
 
     html += `<div class="sfd-prop-section">${t('props.section.grid')}</div>`;
     html += `<div class="sfd-prop-row"><label>${t('props.grid_col')}</label><input type="number" value="${f.col}" min="0" onchange="updateFieldInt('${f.id}','col',this.value)"/></div>`;
@@ -807,6 +856,13 @@ function renderProps() {
     html += `<div class="sfd-prop-row"><label>${t('props.grid_h')}</label><input type="number" value="${f.h}" min="1" onchange="updateFieldInt('${f.id}','h',this.value)"/></div>`;
 
     body.innerHTML = html;
+
+    if (f.type === 'board') {
+        const editBtn = body.querySelector('#btn-list-columns-edit');
+        if (editBtn) editBtn.addEventListener('click', function() { openListColumnsDialog(f.id); });
+        const browseBtn = body.querySelector('#btn-detail-form-browse');
+        if (browseBtn) browseBtn.addEventListener('click', function() { browseDetailFormPath(f.id); });
+    }
 }
 
 function propText(key, labelText, value) {
@@ -844,6 +900,275 @@ function updateFieldOptions(id, key, value) {
     updateField(id, key, arr);
 }
 
+function updateFieldListColumns(id, value) {
+    const arr = value.split(',').map(s => s.trim()).filter(Boolean);
+    updateField(id, 'listColumns', arr);
+}
+
+function _normalizeListColumns(raw) {
+    if (!raw || !raw.length) return [];
+    return raw.map(c => {
+        if (typeof c === 'string') return { id: c, width: '' };
+        const w = (c.width || '');
+        return { id: c.id || '', width: w === 'rest' ? 'rest' : w.replace(/%$/, '') };
+    });
+}
+
+function _listColumnsSummary(raw) {
+    const cols = _normalizeListColumns(raw);
+    if (!cols.length) return '';
+    const restIdx = cols.findIndex(c => c.width === 'rest');
+    const fixedSum = cols.filter((_, i) => i !== restIdx).reduce((a, c) => a + (parseFloat(c.width) || 0), 0);
+    const restPct = Math.max(0, 100 - fixedSum);
+    return cols.map((c, i) => {
+        if (i === restIdx) return `${c.id}(${restPct}%)`;
+        const n = parseFloat(c.width);
+        return isNaN(n) ? c.id : `${c.id}(${n}%)`;
+    }).join(', ');
+}
+
+// ================================================================
+// LIST COLUMNS DIALOG
+// ================================================================
+function openListColumnsDialog(fieldId) {
+    const field = fields.find(f => f.id === fieldId);
+    if (!field) return;
+
+    const detailPath = (field.detailFormPath || '').trim();
+    const systemFields = [
+        { id: '@created_at', label: t('props.board_sys_created_at') },
+        { id: '@updated_at', label: t('props.board_sys_updated_at') },
+        { id: '@record_id',  label: t('props.board_sys_record_id')  },
+    ];
+    const currentCols = _normalizeListColumns(field.listColumns || []);
+
+    // Show dialog immediately; load detail fields asynchronously if path is set
+    const dlg = _showListColumnsDialog(fieldId, [], systemFields, currentCols);
+
+    if (detailPath && dlg) {
+        callPython('board_read_detail_fields', { path: detailPath }).then(function(res) {
+            const af = (res && res.fields) ? res.fields : [];
+            dlg.refreshFields(af);
+        }).catch(function() {});
+    }
+}
+
+async function browseDetailFormPath(fieldId) {
+    const field = fields.find(f => f.id === fieldId);
+    if (!field) return;
+    const r = await _showWebFileDialog('file', { language: 'en', filter: '*.json' });
+    if (!r || !r.success || !r.path) return;
+    updateField(fieldId, 'detailFormPath', r.path);
+    renderProps();
+}
+
+function _showListColumnsDialog(fieldId, availableFields, systemFields, currentCols) {
+    try {
+    let allFields = [...availableFields, ...systemFields];
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:9000;';
+
+    function buildRows(cols) {
+        return cols.map((c, i) => {
+            const isRest = c.width === 'rest';
+            const widthVal = isRest ? '' : (c.width || '');
+            const fieldLabel = allFields.find(f => f.id === c.id);
+            const label = fieldLabel ? `${fieldLabel.label} (${c.id})` : c.id;
+            return `<tr data-idx="${i}">
+                <td style="padding:4px 6px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis;color:${_fg}">${escHtml(label)}</td>
+                <td style="padding:4px 6px">
+                    <input type="number" class="dlg-width-input" data-idx="${i}" value="${escHtml(widthVal)}"
+                           placeholder="%" min="0" max="100" style="width:54px;padding:2px 4px;font-size:12px;border:1px solid ${_border};border-radius:3px;background:${_inputBg};color:${_fg}"
+                           ${isRest ? 'disabled' : ''}>
+                </td>
+                <td style="padding:4px 6px">
+                    <label style="display:flex;align-items:center;cursor:pointer;font-size:12px;color:${_fg}">
+                        <input type="radio" name="dlg-rest-radio" class="dlg-rest-chk" data-idx="${i}" style="margin-right:4px" ${isRest ? 'checked' : ''}>
+                    </label>
+                </td>
+                <td style="padding:4px 2px">
+                    <button class="dlg-move-up" data-idx="${i}" style="padding:1px 5px;font-size:11px;cursor:pointer;background:none;border:1px solid ${_border};border-radius:3px;color:${_fg}" ${i===0?'disabled':''}>↑</button>
+                    <button class="dlg-move-dn" data-idx="${i}" style="padding:1px 5px;font-size:11px;cursor:pointer;background:none;border:1px solid ${_border};border-radius:3px;color:${_fg}" ${i===cols.length-1?'disabled':''}>↓</button>
+                </td>
+                <td style="padding:4px 2px">
+                    <button class="dlg-del-row" data-idx="${i}" style="padding:1px 6px;font-size:11px;cursor:pointer;background:none;border:1px solid #ef4444;border-radius:3px;color:#ef4444">✕</button>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    function buildAddOptions(cols) {
+        const usedIds = new Set(cols.map(c => c.id));
+        const opts = allFields.filter(f => !usedIds.has(f.id))
+            .map(f => `<option value="${escHtml(f.id)}">${escHtml(f.label)} (${escHtml(f.id)})</option>`)
+            .join('');
+        return opts ? `<option value="">-- ${t('props.board_add_column')} --</option>${opts}`
+                    : `<option value="" disabled>${t('props.board_all_added')}</option>`;
+    }
+
+    function render(cols) {
+        tbody.innerHTML = buildRows(cols);
+        addSel.innerHTML = buildAddOptions(cols);
+        bindRowEvents(cols);
+    }
+
+    function readCurrentCols() {
+        const rows = Array.from(tbody.querySelectorAll('tr[data-idx]'));
+        return rows.map(tr => {
+            const idx = parseInt(tr.dataset.idx);
+            const restRadio = tr.querySelector('.dlg-rest-chk');
+            const widthInp = tr.querySelector('.dlg-width-input');
+            return {
+                id: cols[idx] ? cols[idx].id : '',
+                width: restRadio && restRadio.checked ? 'rest' : (widthInp ? widthInp.value.trim() : '')
+            };
+        }).filter(c => c.id);
+    }
+
+    function bindRowEvents(currentColsRef) {
+        tbody.querySelectorAll('.dlg-rest-chk').forEach(radio => {
+            radio.addEventListener('change', () => {
+                // When a radio is selected, enable/disable all width inputs accordingly
+                tbody.querySelectorAll('.dlg-rest-chk').forEach(r => {
+                    const ridx = parseInt(r.dataset.idx);
+                    const inp = tbody.querySelector(`.dlg-width-input[data-idx="${ridx}"]`);
+                    if (inp) inp.disabled = r.checked;
+                });
+                updatePreview();
+            });
+        });
+        tbody.querySelectorAll('.dlg-width-input').forEach(inp => {
+            inp.addEventListener('input', updatePreview);
+        });
+        tbody.querySelectorAll('.dlg-del-row').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.dataset.idx);
+                cols = readCurrentCols();
+                cols.splice(idx, 1);
+                render(cols);
+                updatePreview();
+            });
+        });
+        tbody.querySelectorAll('.dlg-move-up').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.dataset.idx);
+                if (idx === 0) return;
+                cols = readCurrentCols();
+                [cols[idx-1], cols[idx]] = [cols[idx], cols[idx-1]];
+                render(cols);
+                updatePreview();
+            });
+        });
+        tbody.querySelectorAll('.dlg-move-dn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.dataset.idx);
+                cols = readCurrentCols();
+                if (idx >= cols.length - 1) return;
+                [cols[idx], cols[idx+1]] = [cols[idx+1], cols[idx]];
+                render(cols);
+                updatePreview();
+            });
+        });
+    }
+
+    function updatePreview() {
+        const c = readCurrentCols();
+        const restIdx = c.findIndex(x => x.width === 'rest');
+        const fixed = c.filter((_, i) => i !== restIdx).map(x => parseFloat(x.width) || 0);
+        const used = fixed.reduce((a, b) => a + b, 0);
+        const restPct = Math.max(0, 100 - used);
+        const parts = c.map((x, i) => {
+            if (i === restIdx) return `${x.id}(${restPct}%)`;
+            const n = parseFloat(x.width);
+            return isNaN(n) ? x.id : `${x.id}(${n}%)`;
+        });
+        previewEl.textContent = parts.join(', ') || '-';
+        const warn = !isNaN(used) && restIdx === -1 && Math.abs(used - 100) > 0.5 && used > 0;
+        warnEl.style.display = warn ? '' : 'none';
+        if (warn) warnEl.textContent = `${t('props.board_total_pct')}: ${used.toFixed(1)}%`;
+    }
+
+    let cols = currentCols.map(c => ({ ...c }));
+
+    // Read actual theme colors from a known styled element
+    const _ref = document.getElementById('sfd-root-el') || document.body;
+    const _cs = window.getComputedStyle(_ref);
+    const _bg      = _cs.getPropertyValue('--bg-secondary').trim() || _cs.backgroundColor || '#20242b';
+    const _fg      = _cs.getPropertyValue('--text-primary').trim() || _cs.color || '#e4e6eb';
+    const _border  = _cs.getPropertyValue('--border-color').trim() || '#373c47';
+    const _inputBg = _cs.getPropertyValue('--bg-primary').trim() || '#1a1d23';
+    const _btnPrimary = _cs.getPropertyValue('--accent-primary').trim() || '#3b82f6';
+    const _secondary  = _cs.getPropertyValue('--text-secondary').trim() || '#b0b3b8';
+
+    const panel = document.createElement('div');
+    panel.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:${_bg};color:${_fg};border:1px solid ${_border};border-radius:6px;padding:18px;width:460px;max-height:80vh;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,0.4);z-index:9001;`;
+
+    panel.innerHTML = `
+        <div style="font-weight:600;margin-bottom:12px;font-size:14px;color:${_fg}">${t('props.board_list_columns_dlg')}</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;color:${_fg};border-top:1px solid ${_border}">
+            <thead><tr style="border-bottom:1px solid ${_border}">
+                <th style="padding:4px 6px;text-align:left;font-weight:500">${t('props.board_col_field')}</th>
+                <th style="padding:4px 6px;text-align:left;font-weight:500">${t('props.board_col_width')}</th>
+                <th style="padding:4px 6px;text-align:left;font-weight:500">${t('props.board_col_rest')}</th>
+                <th></th><th></th>
+            </tr></thead>
+            <tbody id="dlg-col-tbody"></tbody>
+        </table>
+        <div style="margin-top:8px;display:flex;align-items:center">
+            <select id="dlg-add-sel" style="flex:1;padding:4px 6px;font-size:12px;border:1px solid ${_border};border-radius:3px;background:${_inputBg};color:${_fg}"></select>
+            <button id="dlg-add-btn" style="margin-left:6px;padding:4px 10px;font-size:12px;cursor:pointer;background:${_btnPrimary};color:#fff;border:none;border-radius:3px">${t('props.board_add_column')}</button>
+        </div>
+        <div id="dlg-warn" style="display:none;color:#ef4444;font-size:12px;margin-top:6px"></div>
+        <div style="margin-top:6px;font-size:11px;color:${_secondary}">${t('props.board_preview')}: <span id="dlg-preview"></span></div>
+        <div style="display:flex;justify-content:flex-end;margin-top:14px">
+            <button id="dlg-cancel" style="padding:5px 14px;font-size:13px;cursor:pointer;background:none;border:1px solid ${_border};border-radius:4px;color:${_fg}">${t('dlg.cancel')}</button>
+            <button id="dlg-ok" style="margin-left:8px;padding:5px 14px;font-size:13px;cursor:pointer;background:${_btnPrimary};color:#fff;border:none;border-radius:4px">${t('dlg.ok')}</button>
+        </div>
+    `;
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    const tbody = panel.querySelector('#dlg-col-tbody');
+    const addSel = panel.querySelector('#dlg-add-sel');
+    const previewEl = panel.querySelector('#dlg-preview');
+    const warnEl = panel.querySelector('#dlg-warn');
+
+    render(cols);
+    updatePreview();
+
+    panel.querySelector('#dlg-add-btn').addEventListener('click', () => {
+        const id = addSel.value;
+        if (!id) return;
+        cols = readCurrentCols();
+        cols.push({ id, width: '' });
+        render(cols);
+        updatePreview();
+    });
+
+    function doClose() { overlay.remove(); }
+
+    panel.querySelector('#dlg-cancel').addEventListener('click', doClose);
+    overlay.addEventListener('click', e => { if (e.target === overlay) doClose(); });
+
+    panel.querySelector('#dlg-ok').addEventListener('click', () => {
+        const result = readCurrentCols();
+        updateField(fieldId, 'listColumns', result);
+        renderProps();
+        doClose();
+    });
+
+    return {
+        refreshFields: function(newAvail) {
+            if (!document.body.contains(overlay)) return;
+            allFields = [...newAvail, ...systemFields];
+            cols = readCurrentCols();
+            render(cols);
+            updatePreview();
+        }
+    };
+    } catch(e) { console.log('[board] dialog error', String(e)); }
+}
+
 function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -854,6 +1179,7 @@ function escHtml(s) {
 // ================================================================
 function formToJson() {
     return {
+        schemaVersion: 1,
         title: docProps.formName,
         docProps: Object.assign({}, docProps),
         grid: { rowHeight: gridRowH, cellW: GRID_CELL_W },
@@ -868,6 +1194,11 @@ function jsonToForm(data) {
         docProps = Object.assign({ formName: 'My Form', fontSize: 16, formSize: { mode: 'auto', cols: 0, rows: 0 }, theme: 'light' }, data.docProps);
     } else if (data.title) {
         docProps.formName = data.title;
+    }
+    if (!docProps.formId) {
+        docProps.formId = generateUUID();
+        const saveBtn = document.getElementById('btn-save');
+        if (saveBtn) saveBtn.setAttribute('aria-disabled', 'false');
     }
     if (data.grid) {
         gridRowH  = data.grid.rowHeight || GRID_ROW_H;
@@ -971,7 +1302,7 @@ function doNew() {
     fields = [];
     selectedId = null;
     _idSeq = 0;
-    docProps = { formName: 'My Form', fontSize: 16, formSize: { mode: 'auto', cols: 0, rows: 0 } };
+    docProps = { formName: 'My Form', formId: generateUUID(), fontSize: 16, formSize: { mode: 'auto', cols: 0, rows: 0 } };
     setCurrentFile('');
     renderCanvas();
     renderProps();
@@ -995,6 +1326,414 @@ async function doRun() {
     } else {
         setStatus('status.run_failed', 'err');
     }
+}
+
+// ================================================================
+// CODE GENERATION
+// ================================================================
+
+function _pyDefault(f) {
+    switch (f.type) {
+        case 'number': case 'slider':
+            return (f.default !== undefined && f.default !== '') ? String(f.default) : '0';
+        case 'checkbox': case 'toggle':
+            return f.default ? 'True' : 'False';
+        case 'dropdown': case 'radio':
+            if (f.default !== undefined && f.default !== '') return JSON.stringify(f.default);
+            return (f.options && f.options.length) ? JSON.stringify(f.options[0]) : "''";
+        default:
+            return (f.default !== undefined && f.default !== '') ? JSON.stringify(f.default) : "''";
+    }
+}
+
+function generatePythonCode(flds, dProps, lang, hasExecutor, skillupPy, formPath) {
+    const isKo = lang === 'ko';
+    const formName = (dProps && dProps.formName) || 'My Form';
+
+    const inputFields  = flds.filter(f => !['button','label','separator'].includes(f.type));
+    const buttonFields = flds.filter(f => f.type === 'button');
+
+    const cSkillupPy = isKo ? '# skillup.py 경로'        : '# path to skillup.py';
+    const cPythonBin = isKo ? '# Python 인터프리터'       : '# Python interpreter';
+    const cFormPath  = isKo ? '# 디자인이 방금 임시 저장됨' : '# design just auto-saved';
+    const cReady     = isKo ? '# 폼 창이 열림'            : '# form window opened';
+    const cValues    = isKo ? '# 필드 값 읽기'            : '# read field values';
+    const cClosed    = isKo ? '# 폼 창이 닫힘'            : '# form window closed';
+    const cHandle    = id  => isKo ? `# '${id}' 처리`    : `# handle '${id}'`;
+
+    const L = [];
+    L.push('"""');
+    L.push(`${formName} - skillform caller`);
+    L.push('"""');
+    L.push('');
+    L.push('import sys');
+    L.push('import os');
+    L.push('');
+    L.push('');
+    L.push(`SKILLUP_PY = ${JSON.stringify(skillupPy)}  ${cSkillupPy}`);
+    if (!hasExecutor) {
+        L.push(`PYTHON_BIN = sys.executable  ${cPythonBin}`);
+    }
+    L.push(`FORM       = ${JSON.stringify(formPath)}  ${cFormPath}`);
+    L.push('');
+    L.push("sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(SKILLUP_PY)),");
+    L.push("                                'app', 'skillform', 'lib', 'python'))");
+    L.push('from libform import SkillForm');
+    L.push('');
+    L.push('');
+    L.push('def on_event(form, ev):');
+    L.push("    t = ev.get('type')");
+    L.push('');
+    L.push("    if t == 'ready':");
+    L.push(`        pass  ${cReady}`);
+    if (isKo) {
+        L.push("        # form.set_values({'id': 'some_value'})  # 초기값 쓰기");
+        L.push("        # v = form.load_values('/tmp/saved.json')  # 저장된 값 읽기");
+        L.push("        # form.set_values(v)  # 저장된 값으로 초기화 가능");
+    } else {
+        L.push("        # form.set_values({'id': 'some_value'})  # set initial values");
+        L.push("        # v = form.load_values('/tmp/saved.json')  # read saved values");
+        L.push("        # form.set_values(v)  # restore saved values");
+    }
+    L.push('');
+    L.push("    elif t == 'button_click':");
+    L.push("        btn = ev['button_id']");
+    L.push("        v   = ev.get('values', {})");
+
+    if (inputFields.length > 0) {
+        L.push('');
+        L.push(`        ${cValues}`);
+        const maxLen = inputFields.reduce((m, f) => Math.max(m, f.id.length), 0);
+        for (const f of inputFields) {
+            L.push(`        ${f.id.padEnd(maxLen)} = v.get(${JSON.stringify(f.id)}, ${_pyDefault(f)})`);
+        }
+    }
+
+    if (buttonFields.length > 0) {
+        L.push('');
+        buttonFields.forEach((f, i) => {
+            const kw = i === 0 ? 'if' : 'elif';
+            L.push(`        ${kw} btn == ${JSON.stringify(f.id)}:`);
+            if (isKo) {
+                L.push(`            # form.save_values(v, '/tmp/saved.json')  # 파일로 저장`);
+            } else {
+                L.push(`            # form.save_values(v, '/tmp/saved.json')  # save to file`);
+            }
+            for (const inp of inputFields) {
+                L.push(`            print(f'- ${inp.id}:', ${inp.id})`);
+            }
+            if (isKo) {
+                L.push(`            # form.close()  # 창을 닫음  ${cHandle(f.id)}`);
+            } else {
+                L.push(`            # form.close()  # close the window  ${cHandle(f.id)}`);
+            }
+        });
+    }
+
+    L.push('');
+    L.push("    elif t == 'window_closed':");
+    L.push(`        pass  ${cClosed}`);
+    L.push('');
+    L.push('');
+    if (hasExecutor) {
+        L.push('SkillForm.with_executor(FORM, SKILLUP_PY).run(on_event)');
+    } else {
+        L.push('SkillForm(FORM, skillup_py=SKILLUP_PY, python_bin=PYTHON_BIN).run(on_event)');
+    }
+
+    return L.join('\n');
+}
+
+function generateSkillCode(flds, dProps, lang, hasExecutor, skillupPy, formPath, libformIl, callerIl) {
+    const isKo = lang === 'ko';
+    const formName = (dProps && dProps.formName) || 'My Form';
+    const snakeName = formName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') || 'my_form';
+
+    // camelCase prefix for procedure names: "My Form" -> "myForm"
+    const words = formName.trim().split(/\s+/);
+    const camel = words.map((w, i) => {
+        const clean = w.replace(/[^a-zA-Z0-9]/g, '');
+        return i === 0 ? clean.toLowerCase() : (clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase());
+    }).join('') || 'myForm';
+
+    const inputFields  = flds.filter(f => !['button','label','separator'].includes(f.type));
+    const buttonFields = flds.filter(f => f.type === 'button');
+
+    const cReady     = isKo ? '; 폼 창이 열림'           : '; form window opened';
+    const cValues    = isKo ? '; 필드 값 읽기'           : '; read field values';
+    const cClosed    = isKo ? '; 폼 창이 닫힘'           : '; form window closed';
+    const cHandle    = id  => isKo ? `; '${id}' 처리`   : `; handle '${id}'`;
+
+    const allVars = ['evType', 'btnId', 'vals', ...inputFields.map(f => f.id)];
+
+    const L = [];
+    L.push(`;;; ${snakeName}.il - ${formName} skillform caller`);
+    L.push(';;;');
+    const libformPath  = libformIl || '/path/to/skillup-full/app/skillform/lib/skill/libform.il';
+    const callerPath   = callerIl  || (hasExecutor
+        ? '/path/to/skillup-full/app/skillform/example/caller/skill/caller_with_executor.il'
+        : '/path/to/skillup-full/app/skillform/example/caller/skill/caller.il');
+    L.push(';;; Run from Virtuoso CIW:');
+    L.push(`load(${JSON.stringify(libformPath)})`);
+    L.push(`load(${JSON.stringify(callerPath)})`);
+    L.push('');
+    if (hasExecutor) {
+        L.push(`procedure(${camel}Run()`);
+        L.push(`  skillformRunWithExecutor(${JSON.stringify(formPath)} ${JSON.stringify(skillupPy)} '${camel}Handler))`);
+    } else {
+        L.push(`procedure(${camel}Run(pythonBin)`);
+        L.push(`  skillformRun(${JSON.stringify(formPath)} ${JSON.stringify(skillupPy)} pythonBin '${camel}Handler))`);
+    }
+    L.push('');
+    L.push(`procedure(${camel}Handler(form ev)`);
+    L.push(`  let((${allVars.join(' ')})`);
+    L.push('    evType = ev->type');
+    L.push('    cond(');
+    L.push('');
+    // ready branch
+    L.push('      (equal(evType "ready")');
+    if (isKo) {
+        L.push('       ; skillformSetValues(form skillformLoadValues("/tmp/saved.json")) ; 저장된 값 읽기 가능');
+        L.push('       ; skillformSetValues(form list(list("id" "some_value"))) ; 초기값 쓰기');
+    } else {
+        L.push('       ; skillformSetValues(form skillformLoadValues("/tmp/saved.json")) ; restore saved values');
+        L.push('       ; skillformSetValues(form list(list("id" "some_value"))) ; set initial values');
+    }
+    L.push(`       nil) ${cReady}`);
+    L.push('');
+    // button_click branch
+    L.push('      (equal(evType "button_click")');
+    L.push('       btnId = ev->button_id');
+    L.push('       vals  = ev->values');
+    if (inputFields.length > 0) {
+        L.push(`       ${cValues}`);
+        for (const f of inputFields) L.push(`       ${f.id} = vals->${f.id}`);
+    }
+    if (buttonFields.length > 0) {
+        L.push('       cond(');
+        buttonFields.forEach(f => {
+            L.push('');
+            L.push(`         (equal(btnId ${JSON.stringify(f.id)})`);
+            if (isKo) {
+                L.push(`          ; skillformSaveValues(vals "/tmp/saved.json") ; 파일로 저장`);
+            } else {
+                L.push(`          ; skillformSaveValues(vals "/tmp/saved.json") ; save to file`);
+            }
+            for (const inp of inputFields) {
+                L.push(`          printf("- ${inp.id}: %L\\n" ${inp.id})`);
+            }
+            if (isKo) {
+                L.push(`          ; skillformClose(form) ; 창을 닫음`);
+            } else {
+                L.push(`          ; skillformClose(form) ; close the window`);
+            }
+            L.push(`          nil) ${cHandle(f.id)}`);
+        });
+        L.push('       ))');  // )) = inner cond + button_click branch
+    } else {
+        L.push('       nil)');  // ) = button_click branch
+    }
+    L.push('');
+    // window_closed branch + close outer cond + let + procedure
+    L.push('      (equal(evType "window_closed")');
+    L.push(`       nil)))) ${cClosed}`);
+    L.push('');
+    L.push(`${camel}Run()`);
+
+    return L.join('\n');
+}
+
+async function doShowCode() {
+    if (fields.length === 0) {
+        setStatus('status.no_components', 'err');
+        return;
+    }
+
+    const lang = window._currentLang || 'en';
+    let hasExecutor = false;
+    let skillupPy   = '/path/to/skillup.py';
+    let formPath    = '/tmp/skillform_sample.json';
+    let libformIl   = '';
+    let callerIl    = '';
+    try {
+        const r = await callPython('designer_prepare_code', { schema: formToJson() });
+        if (r && r.success) {
+            hasExecutor = r.has_executor || false;
+            skillupPy   = r.skillup_py  || skillupPy;
+            formPath    = r.form_path   || formPath;
+            libformIl   = r.libform_il  || '';
+            callerIl    = r.caller_il   || '';
+        }
+    } catch(e) {}
+
+    const pyCode = generatePythonCode(fields, docProps, lang, hasExecutor, skillupPy, formPath);
+    const skCode = generateSkillCode(fields, docProps, lang, hasExecutor, skillupPy, formPath, libformIl, callerIl);
+    let currentTab = 'python';
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.45);z-index:99999;display:flex;align-items:center;justify-content:center';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--bg-secondary,#2a2f38);border:1px solid var(--border-color,#373c47);border-radius:8px;width:660px;max-width:92vw;max-height:86vh;display:flex;flex-direction:column;color:var(--text-primary,#e4e6eb);box-shadow:0 8px 32px rgba(0,0,0,0.5)';
+
+    // inject CodeMirror assets once
+    if (!document.getElementById('_cm_css')) {
+        const cmCss = document.createElement('link');
+        cmCss.id = '_cm_css';
+        cmCss.rel = 'stylesheet';
+        cmCss.href = '/common/codemirror/5.65.16/codemirror.min.css';
+        document.head.appendChild(cmCss);
+        const cmTheme = document.createElement('link');
+        cmTheme.rel = 'stylesheet';
+        cmTheme.href = '/common/codemirror/5.65.16/theme/dracula.min.css';
+        document.head.appendChild(cmTheme);
+    }
+
+    function loadScript(src) {
+        return new Promise(resolve => {
+            if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+            const s = document.createElement('script');
+            s.src = src;
+            s.onload = resolve;
+            s.onerror = resolve;
+            document.head.appendChild(s);
+        });
+    }
+
+    // focus-ring suppression style (injected once)
+    if (!document.getElementById('_code_dlg_style')) {
+        const st = document.createElement('style');
+        st.id = '_code_dlg_style';
+        st.textContent = '.sfd-code-btn:focus{outline:none!important;box-shadow:none!important}.CodeMirror{font-size:0.76rem;background:#282a36!important;color:#f8f8f2!important}.CodeMirror-gutters{background:#282a36!important;border-right-color:#44475a!important}.CodeMirror-linenumber{color:#6272a4!important}.CodeMirror-scrollbar-filler,.CodeMirror-gutter-filler{background:#282a36!important}';
+        document.head.appendChild(st);
+    }
+
+    // header
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border-color,#373c47);flex-shrink:0';
+    const title = document.createElement('span');
+    title.textContent = t('code.title');
+    title.style.cssText = 'font-weight:700;font-size:0.9rem';
+    const closeX = document.createElement('button');
+    closeX.textContent = '✕';
+    closeX.className = 'sfd-code-btn';
+    closeX.style.cssText = 'border:none;background:none;color:var(--text-secondary,#6c757d);cursor:pointer;font-size:1rem;padding:0 4px;line-height:1';
+    header.appendChild(title);
+    header.appendChild(closeX);
+
+    // tab bar
+    const tabBar = document.createElement('div');
+    tabBar.style.cssText = 'display:flex;border-bottom:1px solid var(--border-color,#373c47);padding:0 16px;flex-shrink:0';
+
+    function makeTabBtn(labelKey, tabId) {
+        const btn = document.createElement('button');
+        btn.textContent = t(labelKey);
+        btn.dataset.tab = tabId;
+        btn.className = 'sfd-code-btn';
+        btn.style.cssText = 'padding:7px 14px;border:none;background:none;cursor:pointer;font-size:0.83rem;font-family:inherit;color:var(--text-secondary,#6c757d);border-bottom:2px solid transparent;margin-bottom:-1px';
+        return btn;
+    }
+    const tabPy = makeTabBtn('code.tab.python', 'python');
+    const tabSk = makeTabBtn('code.tab.skill', 'skill');
+    tabBar.appendChild(tabPy);
+    tabBar.appendChild(tabSk);
+
+    // code area (CodeMirror mount point)
+    const codeWrap = document.createElement('div');
+    codeWrap.style.cssText = 'flex:1;min-height:0;overflow:hidden;padding:0;position:relative';
+
+    // footer
+    const footer = document.createElement('div');
+    footer.style.cssText = 'display:flex;justify-content:flex-end;padding:10px 16px;border-top:1px solid var(--border-color,#373c47);flex-shrink:0';
+    const copyBtn = document.createElement('button');
+    copyBtn.textContent = t('code.copy');
+    copyBtn.className = 'sfd-code-btn';
+    copyBtn.style.cssText = 'padding:5px 14px;border-radius:4px;border:1px solid var(--border-color,#555);background:transparent;color:var(--text-primary,#e4e6eb);cursor:pointer;font-size:0.83rem;font-family:inherit;margin-left:8px';
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = t('code.close');
+    closeBtn.className = 'sfd-code-btn';
+    closeBtn.style.cssText = 'padding:5px 14px;border-radius:4px;border:none;background:var(--color-primary,#0d6efd);color:#fff;cursor:pointer;font-size:0.83rem;font-family:inherit;margin-left:8px';
+    footer.appendChild(copyBtn);
+    footer.appendChild(closeBtn);
+
+    box.appendChild(header);
+    box.appendChild(tabBar);
+    box.appendChild(codeWrap);
+    box.appendChild(footer);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    // load CodeMirror then init editor
+    let cm = null;
+    Promise.all([
+        loadScript('/common/codemirror/5.65.16/codemirror.min.js')
+    ]).then(() => Promise.all([
+        loadScript('/common/codemirror/5.65.16/mode/python/python.min.js'),
+        loadScript('/common/codemirror/5.65.16/mode/scheme/scheme.min.js')
+    ])).then(() => {
+        if (!overlay.isConnected) return;
+        cm = window.CodeMirror(codeWrap, {
+            value: pyCode,
+            mode: 'python',
+            theme: 'dracula',
+            readOnly: true,
+            lineNumbers: true,
+            lineWrapping: false
+        });
+        function syncCmSize() {
+            const h = codeWrap.clientHeight;
+            if (h > 0) cm.setSize('100%', h);
+        }
+        syncCmSize();
+        if (window.ResizeObserver) {
+            new ResizeObserver(syncCmSize).observe(codeWrap);
+        }
+        selectTab('python');
+    });
+
+    function selectTab(tab) {
+        currentTab = tab;
+        const activeColor = 'var(--color-primary,#0d6efd)';
+        const inactiveColor = 'var(--text-secondary,#6c757d)';
+        tabPy.style.color = tab === 'python' ? activeColor : inactiveColor;
+        tabPy.style.borderBottomColor = tab === 'python' ? activeColor : 'transparent';
+        tabSk.style.color = tab === 'skill' ? activeColor : inactiveColor;
+        tabSk.style.borderBottomColor = tab === 'skill' ? activeColor : 'transparent';
+        if (cm) {
+            cm.setValue(tab === 'python' ? pyCode : skCode);
+            cm.setOption('mode', tab === 'python' ? 'python' : 'scheme');
+        }
+    }
+
+    tabPy.addEventListener('click', () => selectTab('python'));
+    tabSk.addEventListener('click', () => selectTab('skill'));
+
+    copyBtn.addEventListener('click', () => {
+        const text = cm ? cm.getValue() : (currentTab === 'python' ? pyCode : skCode);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).catch(() => {});
+        } else {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.cssText = 'position:fixed;opacity:0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); } catch(e) {}
+            ta.remove();
+        }
+        copyBtn.textContent = t('code.copied');
+        setTimeout(() => { copyBtn.textContent = t('code.copy'); }, 1500);
+    });
+
+    function doClose() { overlay.remove(); }
+    closeBtn.addEventListener('click', doClose);
+    closeX.addEventListener('click', doClose);
+    overlay.addEventListener('click', e => { if (e.target === overlay) doClose(); });
+}
+
+function _copyFallback(el) {
+    el.select();
+    try { document.execCommand('copy'); } catch(e) {}
 }
 
 function setStatus(msgKey, type) {
@@ -1107,7 +1846,11 @@ function onViewActivated() { renderCanvas(); }
 const I18N = {
     en: {
         // toolbar
-        'New': 'New', 'Open': 'Open', 'Save': 'Save', 'Run': 'Run',
+        'New': 'New', 'Open': 'Open', 'Save': 'Save', 'Run': 'Run', 'Code': 'Code',
+        // code dialog
+        'code.title': 'Code Sample', 'code.tab.python': 'Python', 'code.tab.skill': 'Skill',
+        'code.close': 'Close', 'code.copy': 'Copy', 'code.copied': 'Copied!',
+        'code.no_form': 'No components to generate code for',
         // status messages
         'status.saved': 'Saved', 'status.save_failed': 'Save failed',
         'status.opened': 'Opened', 'status.new_form': 'New form',
@@ -1147,10 +1890,32 @@ const I18N = {
         'props.label_size': 'Size',
         'props.grid_col': 'Col', 'props.grid_row': 'Row',
         'props.grid_w': 'W (cols)', 'props.grid_h': 'H (rows)',
+        'props.section.board': 'Board',
+        'props.board_command': 'Board Command',
+        'props.board_detail_form': 'Detail Form Path',
+        'props.board_list_columns': 'List Columns',
+        'props.board_columns_edit': 'Edit columns...',
+        'props.board_list_columns_dlg': 'List Columns',
+        'props.board_col_field': 'Field',
+        'props.board_col_width': 'Width (%)',
+        'props.board_col_rest': 'Rest',
+        'props.board_add_column': 'Add',
+        'props.board_all_added': 'All fields added',
+        'props.board_total_pct': 'Total',
+        'props.board_preview': 'Preview',
+        'props.board_sys_created_at': 'Created At',
+        'props.board_sys_updated_at': 'Updated At',
+        'props.board_sys_record_id': 'Record ID',
+        'dlg.ok': 'OK',
+        'dlg.cancel': 'Cancel',
     },
     ko: {
         // toolbar
-        'New': '새 폼', 'Open': '열기', 'Save': '저장', 'Run': '실행',
+        'New': '새 폼', 'Open': '열기', 'Save': '저장', 'Run': '실행', 'Code': '코드',
+        // code dialog
+        'code.title': '코드 샘플', 'code.tab.python': 'Python', 'code.tab.skill': 'Skill',
+        'code.close': '닫기', 'code.copy': '복사', 'code.copied': '복사됨!',
+        'code.no_form': '코드를 생성할 컴포넌트가 없습니다',
         // properties panel
         'props.title': '속성',
         'props.empty': '컴포넌트를 선택하세요',
@@ -1183,6 +1948,24 @@ const I18N = {
         'props.label_size': '크기',
         'props.grid_col': '열', 'props.grid_row': '행',
         'props.grid_w': '너비 (열)', 'props.grid_h': '높이 (행)',
+        'props.section.board': '게시판',
+        'props.board_command': '게시판 명령',
+        'props.board_detail_form': '상세 폼 경로',
+        'props.board_list_columns': '목록 열',
+        'props.board_columns_edit': '열 편집...',
+        'props.board_list_columns_dlg': '목록 열 설정',
+        'props.board_col_field': '필드',
+        'props.board_col_width': '폭 (%)',
+        'props.board_col_rest': '나머지',
+        'props.board_add_column': '추가',
+        'props.board_all_added': '모든 필드가 추가됨',
+        'props.board_total_pct': '합계',
+        'props.board_preview': '미리보기',
+        'props.board_sys_created_at': '생성일시',
+        'props.board_sys_updated_at': '수정일시',
+        'props.board_sys_record_id': '레코드ID',
+        'dlg.ok': '확인',
+        'dlg.cancel': '취소',
         // status messages
         'status.saved': '저장됨', 'status.save_failed': '저장 실패',
         'status.opened': '열림', 'status.new_form': '새 폼',
@@ -1207,6 +1990,7 @@ function onLanguageChange(lang) {
         const label = t(key);
         if (label) btn.setAttribute('aria-label', label);
     });
+    updateBsTooltips();
     // properties panel static text
     const titleEl = document.getElementById('sfd-props-title');
     if (titleEl) titleEl.textContent = t('props.title');
@@ -1222,7 +2006,7 @@ function initIconTooltips() {
     tip.className = 'sfd-js-tooltip';
     document.body.appendChild(tip);
 
-    document.querySelectorAll('.sfd-icon-btn[data-i18n-key]').forEach(btn => {
+    document.querySelectorAll('.sfd-icon-btn[data-i18n-key]:not([data-bs-toggle="tooltip"])').forEach(btn => {
         btn.addEventListener('mouseenter', function(e) {
             const label = btn.getAttribute('aria-label');
             if (!label) return;
@@ -1238,6 +2022,20 @@ function initIconTooltips() {
         tip.style.left = e.clientX + 12 + 'px';
         tip.style.top  = e.clientY + 16 + 'px';
     }
+}
+
+function initBsTooltips() {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+        new bootstrap.Tooltip(el, { title: () => el.getAttribute('aria-label') });
+    });
+}
+
+function updateBsTooltips() {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+        const instance = bootstrap.Tooltip.getInstance(el);
+        if (instance) instance.dispose();
+        new bootstrap.Tooltip(el, { title: () => el.getAttribute('aria-label') });
+    });
 }
 
 function initFilePathTooltip() {
@@ -1265,13 +2063,44 @@ function initFilePathTooltip() {
 }
 
 // ================================================================
+// PROPS PANEL RESIZE
+// ================================================================
+function initPropsResizer() {
+    const resizer = document.getElementById('sfd-props-resizer');
+    const props   = document.getElementById('sfd-props');
+
+    resizer.addEventListener('mousedown', function(e) {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        const startX = e.clientX;
+        const startW = props.offsetWidth;
+        document.body.classList.add('sfd-resizing-props');
+
+        function onMove(e) {
+            if (e.buttons === 0) { onUp(); return; }
+            const newW = Math.max(150, Math.min(600, startW - (e.clientX - startX)));
+            props.style.width = newW + 'px';
+        }
+        function onUp() {
+            document.body.classList.remove('sfd-resizing-props');
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    });
+}
+
+// ================================================================
 // INIT
 // ================================================================
 initPalette();
 initCanvas();
 renderCanvas();
 renderProps();
+initPropsResizer();
 initIconTooltips();
+initBsTooltips();
 initFilePathTooltip();
 
 // Make title editable

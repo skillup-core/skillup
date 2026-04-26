@@ -1561,6 +1561,12 @@
                                 <span id="app-version" style="color: var(--text-secondary); font-size: 13px;">-</span>
                             </div>
                         </div>
+                        <div class="settings-row">
+                            <span class="settings-label"></span>
+                            <div class="settings-value">
+                                <button class="btn btn-sm btn-outline-secondary" onclick="openSuggestBoard()" data-i18n="settings.suggest">건의하기</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -1612,6 +1618,7 @@
                 'settings.about': 'About',
                 'settings.build': 'Build',
                 'settings.version': 'Version',
+                'settings.suggest': 'Feedback',
                 'dialog.ok': 'OK',
                 'dialog.yes': 'Yes',
                 'dialog.no': 'No',
@@ -1653,6 +1660,7 @@
                 'settings.about': '정보',
                 'settings.build': '빌드',
                 'settings.version': '버전',
+                'settings.suggest': '건의하기',
                 'dialog.ok': '확인',
                 'dialog.yes': '예',
                 'dialog.no': '아니오',
@@ -2440,6 +2448,30 @@
                 delete lastAppMenu[appId];
                 updateTaskbar();
             }
+        }
+
+        async function openSuggestBoard() {
+            const lang = currentLanguage || 'en';
+            const title = (i18n[lang] || i18n['en'])['settings.suggest'] || '건의하기';
+            const info = await apiCall('suggest_board_info', {});
+            if (!info || !info.list_form_path) {
+                return;
+            }
+            const skillformApp = apps ? apps.find(a => a.id_name === 'skillform') : null;
+            if (!skillformApp) {
+                return;
+            }
+            const schemaPath = encodeURIComponent(info.list_form_path);
+            const url = `/app/${skillformApp.id}/runner.html?schema_path=${schemaPath}&lang=${lang}`;
+            const iframe = document.createElement('iframe');
+            iframe.src = url;
+            iframe.style.cssText = 'width:660px;height:520px;border:none;display:block;';
+            iframe.setAttribute('allowtransparency', 'true');
+            window.desktopModal.open({
+                title,
+                element: iframe,
+                buttons: []
+            });
         }
 
         async function openInNewWindow() {
@@ -3763,9 +3795,13 @@
                 const titleEl = document.getElementById('desktop-modal-title');
                 const boxEl = document.getElementById('desktop-modal-box');
                 titleEl.textContent = config.title || '';
-                document.getElementById('desktop-modal-body').innerHTML = config.html || '';
-
                 const bodyEl = document.getElementById('desktop-modal-body');
+                if (config.element) {
+                    bodyEl.innerHTML = '';
+                    bodyEl.appendChild(config.element);
+                } else {
+                    bodyEl.innerHTML = config.html || '';
+                }
                 const footer = document.getElementById('desktop-modal-footer');
                 footer.innerHTML = '';
                 const buttons = config.buttons != null ? config.buttons : [{ label: 'OK', primary: true }];

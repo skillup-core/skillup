@@ -181,7 +181,6 @@
      */
     async function initializeAppGuid() {
         window.skillupAppId = getAppIdFromPath();
-
         if (!window.skillupAppId) {
             console.warn('[Skillup AppInit] Could not extract app ID from path');
             return;

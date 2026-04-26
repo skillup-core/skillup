@@ -23,6 +23,11 @@
 
 <div class="sfr-root">
 
+    <!-- Board back toolbar (shown when viewing detail from a board) -->
+    <div class="sfr-board-toolbar" id="sfr-board-toolbar" style="display:none">
+        <button class="sfr-board-back-btn" id="sfr-board-back-btn" onclick="boardNavBack()">&#8592; 목록</button>
+    </div>
+
     <!-- Form area (grid-rendered) -->
     <div class="sfr-form" id="sfr-form"></div>
 
@@ -38,8 +43,9 @@
 // ================================================================
 // STATE
 // ================================================================
-let currentSchema = null;
-let formValues    = {};
+let currentSchema   = null;
+let formValues      = {};
+let currentRecordId = null;
 
 // ================================================================
 // RENDER FORM from skillform JSON schema
@@ -47,6 +53,7 @@ let formValues    = {};
 function renderForm(schema) {
     currentSchema = schema;
     formValues    = {};
+    _boardFields  = [];
 
     // Set window title from docProps
     const formName = (schema.docProps && schema.docProps.formName) || schema.title || '';
@@ -397,9 +404,32 @@ function buildFieldWidget(f, rowH) {
             input.style.height = 'auto';
             wrap.style.justifyContent = 'flex-end';
             input.addEventListener('click', () => {
-                callPython('runner_button_click', { button_id: f.id, values: Object.assign({}, formValues) });
+                const payload = { button_id: f.id, values: Object.assign({}, formValues) };
+                if (f.boardCommand && f.boardCommand !== 'NONE') {
+                    payload.board_command = f.boardCommand;
+                    if (currentRecordId) payload.record_id = currentRecordId;
+                }
+                callPython('runner_button_click', payload).then(res => {
+                    if (!res) return;
+                    if (res.board_ok) {
+                        if (f.boardCommand === 'POST') currentRecordId = res.record_id || null;
+                        if (f.boardCommand === 'DELETE') currentRecordId = null;
+                        boardNavBack();
+                    }
+                });
             });
             break;
+        }
+
+        case 'board': {
+            const boardEl = document.createElement('div');
+            boardEl.id = 'sfr-board-' + f.id;
+            boardEl.className = 'sfr-board';
+            boardEl.style.cssText = 'width:100%;height:100%;overflow:auto;';
+            boardEl.innerHTML = '<div style="padding:8px;opacity:0.5">Loading...</div>';
+            wrap.appendChild(boardEl);
+            _loadBoardData(f, boardEl);
+            return wrap;
         }
 
         default:
@@ -415,6 +445,127 @@ function buildFieldWidget(f, rowH) {
 }
 
 function setStatus(msg, type) {}
+
+// ================================================================
+// BOARD COMPONENT
+// ================================================================
+let _boardFields = [];
+let _listSchema = null;
+
+async function _loadBoardData(fieldDef, containerEl) {
+    _boardFields = _boardFields.filter(b => b.id !== fieldDef.id);
+    _boardFields.push({ id: fieldDef.id, fieldDef, containerEl });
+    const res = await callPython('board_list', {
+        detail_form_path: fieldDef.detailFormPath || '',
+        board_id: fieldDef.id
+    }).catch(() => null);
+    _renderBoardTable(fieldDef, containerEl, res ? res.records : []);
+}
+
+function _normalizeListColumns(raw) {
+    // Accept both string[] and {id, width?}[] formats
+    if (!raw || !raw.length) return [{ id: '@created_at', width: '' }];
+    return raw.map(c => (typeof c === 'string') ? { id: c, width: '' } : c);
+}
+
+function _resolveWidths(cols) {
+    // Compute actual CSS width values; 'rest' gets the remainder
+    const restIdx = cols.findIndex(c => c.width === 'rest' || c.width === 'auto');
+    const fixed = cols.filter((_, i) => i !== restIdx)
+                      .map(c => parseFloat(c.width) || 0);
+    const usedPct = fixed.reduce((a, b) => a + b, 0);
+    return cols.map((c, i) => {
+        if (i === restIdx) return `${Math.max(0, 100 - usedPct)}%`;
+        const n = parseFloat(c.width);
+        return isNaN(n) ? '' : `${n}%`;
+    });
+}
+
+function _renderBoardTable(fieldDef, containerEl, records) {
+    const cols = _normalizeListColumns(fieldDef.listColumns);
+    const widths = _resolveWidths(cols);
+    let html = '<table class="sfr-board-table"><thead><tr>';
+    cols.forEach((c, i) => {
+        const w = widths[i] ? ` style="width:${widths[i]}"` : '';
+        html += `<th${w}>${_colLabel(c.id)}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    if (!records.length) {
+        html += `<tr><td colspan="${cols.length}" style="padding:12px;opacity:0.5;text-align:center">-</td></tr>`;
+    }
+    records.forEach(rec => {
+        const rid = rec['@record_id'] || '';
+        const sel = (rid && rid === currentRecordId) ? ' class="sfr-board-row-selected"' : '';
+        html += `<tr data-rid="${rid}" style="cursor:pointer"${sel}>`;
+        cols.forEach(c => {
+            let v = rec[c.id] !== undefined ? rec[c.id] : '';
+            if (c.id === '@created_at' || c.id === '@updated_at') v = String(v).replace('T', ' ').replace('Z', '');
+            html += `<td>${_escHtml(String(v))}</td>`;
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    containerEl.innerHTML = html;
+    containerEl.querySelectorAll('tr[data-rid]').forEach(tr => {
+        tr.addEventListener('click', () => {
+            const rid = tr.dataset.rid;
+            if (!rid) return;
+            _boardNavToDetail(rid, fieldDef);
+        });
+    });
+    if (fieldDef.detailFormPath) {
+        const newBtn = document.createElement('button');
+        newBtn.className = 'sfr-board-new-btn';
+        newBtn.textContent = '+ 새 글';
+        newBtn.addEventListener('click', () => _boardNavToDetail(null, fieldDef));
+        containerEl.appendChild(newBtn);
+    }
+}
+
+function _colLabel(col) {
+    const map = { '@created_at': '날짜', '@updated_at': '수정일', title: '제목', body: '내용' };
+    return map[col] || col;
+}
+
+function _escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function _boardNavToDetail(rid, fieldDef) {
+    const detailPath = fieldDef.detailFormPath || '';
+    if (!detailPath) return;
+
+    const tasks = [callPython('runner_load_schema', { path: detailPath }).catch(() => null)];
+    if (rid) tasks.push(callPython('board_get', { record_id: rid, detail_form_path: detailPath }).catch(() => null));
+
+    const results = await Promise.all(tasks);
+    const schemaRes = results[0];
+    const recordRes = rid ? results[1] : null;
+
+    if (!schemaRes || !schemaRes.success || !schemaRes.schema) return;
+
+    // Save list context before switching
+    _listSchema = currentSchema;
+    currentRecordId = rid || null;
+
+    renderForm(schemaRes.schema);
+    if (recordRes && recordRes.record) applySetValues(recordRes.record);
+
+    document.getElementById('sfr-board-toolbar').style.display = '';
+}
+
+function boardNavBack() {
+    if (!_listSchema) return;
+    const schema = _listSchema;
+    _listSchema = null;
+    currentRecordId = null;
+    renderForm(schema);
+    document.getElementById('sfr-board-toolbar').style.display = 'none';
+}
+
+function _refreshAllBoards() {
+    _boardFields.forEach(b => _loadBoardData(b.fieldDef, b.containerEl));
+}
 
 // ================================================================
 // SET VALUES (from caller via TCP → Python state_update → JS)
@@ -479,6 +630,15 @@ window.skillformNoStandaloneTheme = true;
 
 window.onAppStateLoaded = function(state) {
     initStandaloneMode(state);
+    const urlSchemaPath = new URLSearchParams(window.location.search).get('schema_path');
+    if (urlSchemaPath) {
+        callPython('runner_load_schema', { path: urlSchemaPath }).then(function(res) {
+            if (res && res.success && res.schema) {
+                renderForm(res.schema);
+            }
+        });
+        return;
+    }
     if (state && state.schema) {
         renderForm(state.schema);
     }

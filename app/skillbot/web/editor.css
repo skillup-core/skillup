@@ -357,7 +357,7 @@
 
         /* ── SKILL syntax colors: dark (dracula) ── */
         /* Use span selector to override dracula.min.css specificity */
-        .cm-s-dracula span.cm-keyword    { color: #c586c0; font-weight: bold; }  /* purple     - control flow (VSCode Dark+) */
+        .cm-s-dracula span.cm-keyword    { color: #c586c0; }                      /* purple     - control flow (VSCode Dark+) */
         .cm-s-dracula span.cm-builtin    { color: #569cd6; }                     /* blue       - Core SKILL builtins (VSCode Dark+ storage.type) */
         .cm-s-dracula span.cm-def        { color: #dcdcaa; }                     /* yellow     - user function calls (VSCode Dark+) */
         .cm-s-dracula span.cm-variable   { color: #9cdcfe; }                     /* light-blue - variables (VSCode Dark+) */
@@ -392,7 +392,7 @@
         }
 
         /* ── SKILL syntax colors: light (eclipse) ── */
-        .cm-s-eclipse span.cm-keyword    { color: #af00db; font-weight: bold; }  /* purple     - control flow (VSCode Light+) */
+        .cm-s-eclipse span.cm-keyword    { color: #af00db; }                      /* purple     - control flow (VSCode Light+) */
         .cm-s-eclipse span.cm-builtin    { color: #0000ff; }                     /* blue       - Core SKILL builtins (VSCode Light+ storage.type) */
         .cm-s-eclipse span.cm-def        { color: #795e26; }                     /* brown      - user function calls (VSCode Light+) */
         .cm-s-eclipse span.cm-variable   { color: #001080; }                     /* navy       - variables (VSCode Light+) */

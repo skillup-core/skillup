@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "title": "건의하기",
+  "docProps": {
+    "formName": "건의하기",
+    "formId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "fontSize": 14,
+    "formSize": { "mode": "auto", "cols": 0, "rows": 0 },
+    "theme": "auto"
+  },
+  "grid": { "rowHeight": 56, "cellW": 56 },
+  "fields": [
+    {
+      "id": "title",
+      "type": "text",
+      "label": "제목",
+      "col": 0, "row": 0, "w": 12, "h": 1,
+      "required": true,
+      "placeholder": "제목을 입력하세요",
+      "default": "",
+      "font": "sans",
+      "readonly": false
+    },
+    {
+      "id": "body",
+      "type": "textarea",
+      "label": "내용",
+      "col": 0, "row": 1, "w": 12, "h": 4,
+      "placeholder": "건의 내용을 입력하세요",
+      "default": "",
+      "font": "sans",
+      "readonly": false
+    },
+    {
+      "id": "btn_post",
+      "type": "button",
+      "label": "등록",
+      "col": 0, "row": 5, "w": 3, "h": 1,
+      "variant": "primary",
+      "boardCommand": "POST"
+    },
+    {
+      "id": "btn_modify",
+      "type": "button",
+      "label": "수정",
+      "col": 3, "row": 5, "w": 3, "h": 1,
+      "variant": "secondary",
+      "boardCommand": "MODIFY"
+    },
+    {
+      "id": "btn_delete",
+      "type": "button",
+      "label": "삭제",
+      "col": 6, "row": 5, "w": 3, "h": 1,
+      "variant": "danger",
+      "boardCommand": "DELETE"
+    }
+  ]
+}

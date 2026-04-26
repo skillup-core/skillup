@@ -100,12 +100,21 @@
 .sfd-icon-btn-save { color: var(--text-secondary, #6c757d); }
 .sfd-icon-btn-save[aria-disabled="true"] { opacity: 0.35; cursor: default; }
 .sfd-icon-btn-save[aria-disabled="true"]:hover { background: transparent; border-color: transparent; }
+.sfd-topbar-actions {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+}
 .sfd-icon-btn-run {
     color: var(--color-success, #198754);
     margin-left: 4px;
-    margin-right: 170px;
 }
 .sfd-icon-btn-run:hover { background: rgba(25,135,84,0.12); border-color: var(--color-success, #198754); }
+.sfd-icon-btn-code {
+    color: var(--text-secondary, #6c757d);
+    margin-left: 4px;
+}
+.sfd-icon-btn-code:hover { background: var(--bg-hover, rgba(128,128,128,0.15)); border-color: var(--border-color, #ced4da); }
 
 /* icon button tooltips are rendered via JS (initIconTooltips) */
 
@@ -296,6 +305,25 @@ body[style*="grabbing"] * { cursor: grabbing !important; }
     transition: left 0.05s, top 0.05s, width 0.05s, height 0.05s;
 }
 
+/* ---- Props resizer handle ---- */
+.sfd-props-resizer {
+    width: 3px;
+    flex-shrink: 0;
+    cursor: col-resize;
+    background: var(--border-color, #dee2e6);
+    transition: background 0.15s;
+}
+.sfd-props-resizer:hover,
+body.sfd-resizing-props .sfd-props-resizer {
+    background: var(--color-primary, #0d6efd);
+    opacity: 0.7;
+}
+body.sfd-resizing-props {
+    cursor: col-resize !important;
+    user-select: none;
+}
+body.sfd-resizing-props * { cursor: col-resize !important; }
+
 /* ---- Properties panel (right) ---- */
 .sfd-props {
     width: 200px;
@@ -343,6 +371,35 @@ body[style*="grabbing"] * { cursor: grabbing !important; }
     color: var(--text-primary, #212529);
 }
 .sfd-prop-row input[type="checkbox"] { width: auto; }
+.sfd-browse-btn {
+    flex-shrink: 0;
+    padding: 2px 6px;
+    font-size: 0.82rem;
+    border: 1px solid var(--border-color, #ced4da);
+    border-radius: 3px;
+    background: var(--bg-primary, #fff);
+    color: var(--text-secondary, #6c757d);
+    cursor: pointer;
+    margin-left: 4px;
+}
+.sfd-browse-btn:hover {
+    background: var(--bg-hover, rgba(128,128,128,0.12));
+    color: var(--text-primary, #212529);
+}
+.sfd-col-edit-btn {
+    flex: 1;
+    text-align: left;
+    padding: 2px 6px;
+    font-size: 0.82rem;
+    border: 1px solid var(--border-color, #ced4da);
+    border-radius: 3px;
+    background: var(--bg-primary, #fff);
+    color: var(--text-primary, #212529);
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 .sfd-prop-row textarea {
     width: 100%;
     font-size: 0.8rem;
@@ -568,6 +625,39 @@ body[style*="grabbing"] * { cursor: grabbing !important; }
     color: #fff;
     border-color: var(--color-danger, #dc3545);
 }
+
+/* ================================================================
+   BOARD COMPONENT
+   ================================================================ */
+.sfr-board { overflow: auto; }
+.sfr-board-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+}
+.sfr-board-table th,
+.sfr-board-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border-color, #ced4da);
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+}
+.sfr-board-table th {
+    background: var(--bg-secondary, rgba(0,0,0,0.06));
+    font-weight: 600;
+}
+.sfr-board-table tr[data-rid]:hover { background: var(--bg-secondary, rgba(0,0,0,0.04)); }
+.sfr-board-row-selected { background: var(--color-primary-subtle, rgba(13,110,253,0.12)) !important; }
+
+/* Board navigation toolbar */
+.sfr-board-toolbar { display: flex; align-items: center; padding: 4px 8px; border-bottom: 1px solid var(--border-color, #ced4da); flex-shrink: 0; }
+.sfr-board-back-btn { background: none; border: none; color: var(--color-primary, #0d6efd); cursor: pointer; font-size: 0.9em; padding: 2px 6px; border-radius: 3px; }
+.sfr-board-back-btn:hover { background: var(--bg-secondary, rgba(0,0,0,0.06)); }
+.sfr-board-new-btn { margin-top: 6px; background: none; border: 1px solid var(--border-color, #ced4da); border-radius: 4px; color: var(--text-primary, #222); cursor: pointer; font-size: 0.85em; padding: 3px 10px; }
+.sfr-board-new-btn:hover { background: var(--bg-secondary, rgba(0,0,0,0.06)); }
 
 /* ================================================================
    LIGHT THEME OVERRIDES

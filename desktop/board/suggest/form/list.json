@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "title": "건의함 목록",
+  "docProps": {
+    "formName": "건의함 목록",
+    "formId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+    "fontSize": 14,
+    "formSize": { "mode": "auto", "cols": 0, "rows": 0 },
+    "theme": "auto"
+  },
+  "grid": { "rowHeight": 56, "cellW": 56 },
+  "fields": [
+    {
+      "id": "board1",
+      "type": "board",
+      "label": "건의 목록",
+      "col": 0, "row": 0, "w": 12, "h": 8,
+      "detailFormPath": "desktop/board/suggest/form/detail.json",
+      "listColumns": [{"id": "title", "width": "rest"}, {"id": "@created_at", "width": "30%"}]
+    }
+  ]
+}
