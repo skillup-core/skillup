@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Form Runner - Skill Form</title>
+    <script>
+    // Standalone Qt window always starts with white theme to avoid dark flash
+    (function() {
+        var p = new URLSearchParams(window.location.search);
+        if (window.parent === window && p.get('standalone') === '1') {
+            var l = document.createElement('link');
+            l.rel = 'stylesheet'; l.href = '/common/style/white.css';
+            l.setAttribute('data-theme-css', 'true');
+            document.head.appendChild(l);
+        }
+    })();
+    </script>
+    <script src="/common/script/appinit.js" onerror="this.onerror=null;this.src='../../../../web/common/script/appinit.js';"></script>
+</head>
+<body>
+<link rel="stylesheet" href="skillform.css" onerror="this.onerror=null;this.href='/app/skillform/skillform.css';">
+
+<div class="sfr-root">
+
+    <!-- Form area (grid-rendered) -->
+    <div class="sfr-form" id="sfr-form"></div>
+
+    <!-- Result area -->
+    <div class="sfr-result" id="sfr-result" style="display:none">
+        <div class="sfd-props-title">Result</div>
+        <pre id="sfr-result-json"></pre>
+    </div>
+
+</div>
+
+<script>
+// ================================================================
+// STATE
+// ================================================================
+let currentSchema   = null;
+let formValues      = {};
+let currentRecordId = null;
+let _currentLang    = new URLSearchParams(window.location.search).get('lang') || 'en';
+
+// Return the localized value of obj[key], falling back to obj[key] when no locale variant exists.
+function _loc(obj, key) {
+    const locKey = key + '.' + _currentLang;
+    return (obj[locKey] !== undefined) ? obj[locKey] : obj[key];
+}
+
+// ================================================================
+// RENDER FORM from skillform JSON schema
+// ================================================================
+function renderForm(schema) {
+    currentSchema = schema;
+    formValues    = {};
+    _boardFields.forEach(b => { if (b._resizeObserver) b._resizeObserver.disconnect(); });
+    _boardFields  = [];
+    _infoFields   = [];
+
+    // Set window title from docProps
+    const formName = _loc(schema.docProps || {}, 'formName') || _loc(schema, 'title') || '';
+    if (formName) document.title = formName;
+
+    const formEl = document.getElementById('sfr-form');
+    formEl.style.display = 'block';
+
+    // Apply document font size; scale grid proportionally to base size of 14px
+    const fontSize = (schema.docProps && schema.docProps.fontSize) || 14;
+    const scale = fontSize / 14;
+    const rootEl = document.querySelector('.sfr-root');
+    rootEl.style.fontSize = fontSize + 'px';
+    rootEl.style.setProperty('--runner-font-size', fontSize + 'px');
+
+    // Apply theme override from docProps (default: light)
+    const theme = (schema.docProps && schema.docProps.theme) || 'light';
+    if (theme !== 'auto') {
+        const isLight = theme !== 'dark';
+        rootEl.classList.toggle('sfr-light', isLight);
+        if (window.SkillupTheme) {
+            window.SkillupTheme.setTheme(isLight ? 'white' : 'default');
+        } else {
+            // appinit.js not yet loaded: inject theme link directly
+            const existingThemeLink = document.querySelector('link[data-skillform-theme]');
+            if (existingThemeLink) existingThemeLink.remove();
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.setAttribute('data-skillform-theme', '1');
+            link.href = isLight ? '/common/style/white.css' : '/common/style/default.css';
+            document.head.appendChild(link);
+        }
+    }
+
+    const MARGIN   = 16; // inner margin around the form grid (px)
+
+    const baseRowH = (schema.grid && schema.grid.rowHeight) || 56;
+    const baseCellW = (schema.grid && schema.grid.cellW)    || 56;
+    const gridRowH = Math.round(baseRowH * scale);
+    const cellW    = Math.round(baseCellW * scale);
+    const fields   = schema.fields || [];
+
+    // Compute canvas size based on formSize setting
+    const docProps = schema.docProps || {};
+    const formSize = docProps.formSize || { mode: 'auto', cols: 0, rows: 0 };
+
+    let maxRow = 0, maxCol = 0;
+    fields.forEach(f => {
+        maxRow = Math.max(maxRow, f.row + f.h);
+        maxCol = Math.max(maxCol, f.col + f.w);
+    });
+
+    // Apply formSize override if in 'set' mode
+    if (formSize.mode === 'set') {
+        if (formSize.cols > 0) maxCol = formSize.cols;
+        if (formSize.rows > 0) maxRow = formSize.rows;
+    }
+
+    // Clear previous form content
+    formEl.innerHTML = '';
+    formEl.style.position = 'relative';
+    const contentH = maxRow * gridRowH + MARGIN * 2;
+    const contentW = maxCol * cellW    + MARGIN * 2;
+    formEl.style.height = 'auto';
+    formEl.style.width  = 'auto';
+    formEl.style.minHeight = contentH + 'px';
+    formEl.style.minWidth  = contentW + 'px';
+
+    // Enforce minimum window size
+    const MIN_W = 300, MIN_H = 150;
+
+    // Render separators first so they appear below other components
+    const sorted = [...fields].sort((a, b) => (a.type === 'separator' ? -1 : 0) - (b.type === 'separator' ? -1 : 0));
+    sorted.forEach(f => {
+        const el = document.createElement('div');
+        el.className = 'sfr-field';
+
+        // Separator box: position/size adjusted by center vs edge
+        if (f.type === 'separator' && (f.lineType || 'horizontal') === 'box') {
+            const isEdge = f.align === 'edge';
+            const ox = isEdge ? 0 : cellW / 2;
+            const oy = isEdge ? 0 : gridRowH / 2;
+            el.style.left   = (f.col * cellW   + ox + MARGIN) + 'px';
+            el.style.top    = (f.row * gridRowH + oy + MARGIN) + 'px';
+            el.style.width  = (f.w   * cellW   - ox * 2) + 'px';
+            el.style.height = (f.h   * gridRowH - oy * 2) + 'px';
+            el.style.padding = '0';
+        } else {
+            el.style.left   = (f.col * cellW   + MARGIN) + 'px';
+            el.style.width  = (f.w   * cellW) + 'px';
+            el.style.top    = (f.row * gridRowH + MARGIN) + 'px';
+            el.style.height = (f.h   * gridRowH) + 'px';
+        }
+
+        el.appendChild(buildFieldWidget(f, gridRowH));
+        formEl.appendChild(el);
+    });
+
+    document.getElementById('sfr-result').style.display = 'none';
+    _applyInfoRecord(null);
+
+    // Standalone mode: resize Qt window to fit form content
+    if (_isStandaloneMode) {
+        callPython('resize_window', { w: Math.max(contentW, MIN_W), h: Math.max(contentH, MIN_H) }).catch(() => {});
+    }
+}
+
+function buildFieldWidget(f, rowH) {
+    const wrap = document.createElement('div');
+    wrap.className = 'sfr-widget';
+
+    if (f.type !== 'separator') {
+        wrap.style.fontFamily = (f.font === 'sans')
+            ? 'var(--font-sans)' : 'var(--font-mono)';
+    }
+
+    if (f.type === 'separator') {
+        const lt = f.lineType || 'horizontal';
+        const isEdge = f.align === 'edge';
+        if (lt === 'vertical') {
+            wrap.style.flexDirection = 'row';
+            wrap.style.alignItems = isEdge ? 'flex-start' : 'center';
+        } else if (lt === 'box') {
+            // position/size already handled in sfr-field; widget fills it
+        } else {
+            wrap.style.justifyContent = isEdge ? 'flex-start' : 'center';
+        }
+    }
+
+    const label = f.type !== 'separator' && f.type !== 'label' && f.type !== 'button' && f.type !== 'board';
+    const labelText = f.type === 'info'
+        ? ((_SYS_COL_LABELS[_currentLang] || _SYS_COL_LABELS.en)[f.infoField] || f.infoField || '')
+        : _loc(f, 'label');
+    if (label && labelText) {
+        const lbl = document.createElement('label');
+        lbl.className = 'sfr-label';
+        lbl.textContent = labelText + (f.required ? ' *' : '');
+        lbl.htmlFor = 'sfr-' + f.id;
+        wrap.appendChild(lbl);
+    }
+
+    let input = null;
+
+    switch (f.type) {
+        case 'text':
+            input = document.createElement('input');
+            input.type = 'text';
+            input.id = 'sfr-' + f.id;
+            if (f.placeholder) input.placeholder = _loc(f, 'placeholder');
+            if (f.default)     input.value = f.default;
+            if (f.readonly)    input.readOnly = true;
+            input.addEventListener('input', () => { formValues[f.id] = input.value; });
+            formValues[f.id] = f.default || '';
+            break;
+
+        case 'number':
+            input = document.createElement('input');
+            input.type = 'number';
+            input.id = 'sfr-' + f.id;
+            if (f.min !== '' && f.min !== undefined) input.min = f.min;
+            if (f.max !== '' && f.max !== undefined) input.max = f.max;
+            if (f.default !== '') input.value = f.default;
+            if (f.readonly) input.readOnly = true;
+            input.addEventListener('input', () => { formValues[f.id] = parseFloat(input.value); });
+            formValues[f.id] = f.default !== undefined ? Number(f.default) : 0;
+            break;
+
+        case 'checkbox':
+            input = document.createElement('input');
+            input.type = 'checkbox';
+            input.id = 'sfr-' + f.id;
+            input.checked = (f.default === true || f.default === 'true');
+            input.disabled = f.readonly;
+            input.addEventListener('change', () => { formValues[f.id] = input.checked; });
+            formValues[f.id] = input.checked;
+            break;
+
+        case 'toggle':
+            input = document.createElement('label');
+            input.className = 'sfr-toggle';
+            const toggleCb = document.createElement('input');
+            toggleCb.type = 'checkbox';
+            toggleCb.id = 'sfr-' + f.id;
+            toggleCb.checked = (f.default === true || f.default === 'true');
+            toggleCb.disabled = f.readonly;
+            const slider = document.createElement('span');
+            slider.className = 'sfr-toggle-slider';
+            input.appendChild(toggleCb);
+            input.appendChild(slider);
+            toggleCb.addEventListener('change', () => { formValues[f.id] = toggleCb.checked; });
+            formValues[f.id] = toggleCb.checked;
+            break;
+
+        case 'dropdown': {
+            input = document.createElement('select');
+            input.id = 'sfr-' + f.id;
+            input.disabled = f.readonly;
+            const ddLocOpts = _loc(f, 'options');
+            const ddDefault = _loc(f, 'default');
+            (f.options || []).forEach((opt, i) => {
+                const o = document.createElement('option');
+                o.value = opt;
+                o.textContent = (Array.isArray(ddLocOpts) && ddLocOpts[i] !== undefined) ? ddLocOpts[i] : opt;
+                if (opt === ddDefault) o.selected = true;
+                input.appendChild(o);
+            });
+            input.addEventListener('change', () => { formValues[f.id] = input.value; });
+            formValues[f.id] = input.value;
+            break;
+        }
+
+        case 'radio': {
+            input = document.createElement('div');
+            input.className = 'sfr-radio-group' + (f.inline ? ' sfr-radio-group-inline' : '');
+            const radioLocOpts = _loc(f, 'options');
+            const radioDefault = _loc(f, 'default');
+            (f.options || []).forEach((opt, i) => {
+                const optLabel = (Array.isArray(radioLocOpts) && radioLocOpts[i] !== undefined) ? radioLocOpts[i] : opt;
+                const radioId = 'sfr-' + f.id + '-' + opt.replace(/\s/g,'_');
+                const row = document.createElement('label');
+                row.className = 'sfr-radio-row';
+                const rb = document.createElement('input');
+                rb.type = 'radio';
+                rb.name = 'sfr-' + f.id;
+                rb.id = radioId;
+                rb.value = opt;
+                if (opt === radioDefault) { rb.checked = true; formValues[f.id] = opt; }
+                rb.disabled = f.readonly;
+                rb.addEventListener('change', () => { if (rb.checked) formValues[f.id] = opt; });
+                row.appendChild(rb);
+                row.appendChild(document.createTextNode(' ' + optLabel));
+                input.appendChild(row);
+            });
+            if (!formValues[f.id] && f.options && f.options.length) {
+                formValues[f.id] = f.options[0];
+            }
+            break;
+        }
+
+        case 'textarea':
+            input = document.createElement('textarea');
+            input.id = 'sfr-' + f.id;
+            input.rows = f.rows || 3;
+            if (f.placeholder) input.placeholder = _loc(f, 'placeholder');
+            if (f.default)     input.value = f.default;
+            if (f.readonly)    input.readOnly = true;
+            input.style.resize = 'none';
+            input.style.height = '100%';
+            input.addEventListener('input', () => { formValues[f.id] = input.value; });
+            formValues[f.id] = f.default || '';
+            break;
+
+        case 'file':
+            input = document.createElement('div');
+            input.className = 'sfr-file-row';
+            const fileInput = document.createElement('input');
+            fileInput.type = 'text';
+            fileInput.id = 'sfr-' + f.id;
+            fileInput.placeholder = _loc(f, 'placeholder') || '';
+            fileInput.value = f.default || '';
+            fileInput.readOnly = f.readonly;
+            fileInput.addEventListener('input', () => { formValues[f.id] = fileInput.value; });
+            formValues[f.id] = f.default || '';
+            input.appendChild(fileInput);
+            if (!f.readonly) {
+                const browseBtn = document.createElement('button');
+                browseBtn.className = 'sfr-file-browse-btn';
+                browseBtn.textContent = '…';
+                browseBtn.type = 'button';
+                browseBtn.addEventListener('click', async () => {
+                    let result;
+                    if (f.dirOnly) {
+                        result = await callPython('select_directory', {});
+                    } else {
+                        result = await callPython('select_file', { filter: f.filter || '' });
+                    }
+                    if (result && result.success && result.path) {
+                        fileInput.value = result.path;
+                        formValues[f.id] = result.path;
+                    }
+                });
+                input.appendChild(browseBtn);
+            }
+            break;
+
+        case 'date':
+            input = document.createElement('input');
+            input.type = 'date';
+            input.id = 'sfr-' + f.id;
+            if (f.default) input.value = f.default;
+            if (f.readonly) input.readOnly = true;
+            input.addEventListener('change', () => { formValues[f.id] = input.value; });
+            formValues[f.id] = f.default || '';
+            break;
+
+        case 'color':
+            input = document.createElement('input');
+            input.type = 'color';
+            input.id = 'sfr-' + f.id;
+            input.value = f.default || '#000000';
+            input.disabled = f.readonly;
+            input.addEventListener('input', () => { formValues[f.id] = input.value; });
+            formValues[f.id] = input.value;
+            break;
+
+        case 'slider': {
+            input = document.createElement('div');
+            input.className = 'sfr-slider-row';
+            const sl = document.createElement('input');
+            sl.type = 'range';
+            sl.id = 'sfr-' + f.id;
+            if (f.min !== '' && f.min !== undefined) sl.min = f.min;
+            if (f.max !== '' && f.max !== undefined) sl.max = f.max;
+            if (f.step) sl.step = f.step;
+            sl.value = f.default || sl.min || 0;
+            sl.disabled = f.readonly;
+            const slVal = document.createElement('span');
+            slVal.className = 'sfr-slider-val';
+            slVal.textContent = sl.value;
+            sl.addEventListener('input', () => {
+                formValues[f.id] = parseFloat(sl.value);
+                slVal.textContent = sl.value;
+            });
+            formValues[f.id] = parseFloat(sl.value);
+            input.appendChild(sl);
+            input.appendChild(slVal);
+            break;
+        }
+
+        case 'label': {
+            const tagMap = { small:'small', normal:'p', large:'p', h3:'h3', h2:'h2', h1:'h1' };
+            const tag = tagMap[f.fontSize] || 'p';
+            input = document.createElement(tag);
+            input.textContent = _loc(f, 'label') || '';
+            input.className = 'sfr-label-widget';
+            break;
+        }
+
+        case 'separator': {
+            const lt = f.lineType || 'horizontal';
+            input = document.createElement('div');
+            if (lt === 'vertical') {
+                input.className = 'sfr-separator-v';
+            } else if (lt === 'box') {
+                input.className = 'sfr-separator-box';
+            } else {
+                input.className = 'sfr-separator';
+            }
+            break;
+        }
+
+        case 'button': {
+            input = document.createElement('button');
+            input.type = 'button';
+            input.id = 'sfr-' + f.id;
+            input.textContent = _loc(f, 'label') || f.id;
+            const variantMap = { primary: 'sfr-btn-primary', secondary: 'sfr-btn-secondary', danger: 'sfr-btn-danger' };
+            input.className = 'sfr-btn ' + (variantMap[f.variant] || 'sfr-btn-primary');
+            input.style.height = 'auto';
+            wrap.style.justifyContent = 'flex-end';
+            if (f.boardCommand && f.boardCommand !== 'NONE') {
+                input.dataset.boardCommand = f.boardCommand;
+            }
+            input.addEventListener('click', () => {
+                const payload = { button_id: f.id, values: Object.assign({}, formValues) };
+                if (f.boardCommand && f.boardCommand !== 'NONE') {
+                    payload.board_command = f.boardCommand;
+                    if (currentRecordId) payload.record_id = currentRecordId;
+                }
+                if (f.boardCommand === 'LIST') {
+                    boardNavBack();
+                    return;
+                }
+                callPython('runner_button_click', payload).then(res => {
+                    if (!res) return;
+                    if (res.board_ok) {
+                        if (f.boardCommand === 'POST') currentRecordId = res.record_id || null;
+                        if (f.boardCommand === 'DELETE') currentRecordId = null;
+                        boardNavBack();
+                    }
+                });
+            });
+            break;
+        }
+
+        case 'info': {
+            const fid = f.infoField || '@author';
+            if (fid === '@author') {
+                const authorWrap = document.createElement('div');
+                authorWrap.className = 'sfr-info-author';
+                authorWrap.dataset.infoField = fid;
+                const avatarWrap = document.createElement('span');
+                avatarWrap.className = 'sfr-author-avatar-wrap';
+                const img = document.createElement('img');
+                img.className = 'sfr-author-avatar';
+                img.src = '';
+                img.alt = '';
+                img.setAttribute('aria-hidden', 'true');
+                avatarWrap.appendChild(img);
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'sfr-info-author-name';
+                authorWrap.appendChild(avatarWrap);
+                authorWrap.appendChild(nameSpan);
+                wrap.appendChild(authorWrap);
+                _infoFields.push({ fieldDef: f, el: authorWrap });
+            } else {
+                const infoInput = document.createElement('input');
+                infoInput.type = 'text';
+                infoInput.readOnly = true;
+                infoInput.className = 'sfr-info-input';
+                infoInput.dataset.infoField = fid;
+                wrap.appendChild(infoInput);
+                _infoFields.push({ fieldDef: f, el: infoInput });
+            }
+            return wrap;
+        }
+
+        case 'board': {
+            const boardEl = document.createElement('div');
+            boardEl.id = 'sfr-board-' + f.id;
+            boardEl.className = 'sfr-board';
+            boardEl.style.cssText = 'width:100%;height:100%;overflow:hidden;display:flex;flex-direction:column;';
+            boardEl.innerHTML = '<div style="padding:8px;opacity:0.5">Loading...</div>';
+            wrap.appendChild(boardEl);
+            _loadBoardData(f, boardEl);
+            return wrap;
+        }
+
+        default:
+            input = document.createElement('input');
+            input.type = 'text';
+            if (f.default) input.value = f.default;
+            input.addEventListener('input', () => { formValues[f.id] = input.value; });
+            formValues[f.id] = f.default || '';
+    }
+
+    if (input) wrap.appendChild(input);
+    return wrap;
+}
+
+function setStatus(msg, type) {}
+
+// ================================================================
+// BOARD COMPONENT
+// ================================================================
+let _boardFields = [];
+const _avatarCache = {};  // user_id → data_uri | null | 'loading'
+let _infoFields = [];
+let _listSchema = null;
+let _savedBoardPages = {};  // fieldDef.id → page number saved before nav to detail
+
+function _loadAvatar(uid, imgEl) {
+    const DEFAULT = '/common/resource/img/default-avatar.svg';
+    function applyTo(el, uri) {
+        el.src = uri || DEFAULT;
+        el.style.display = '';
+    }
+    if (_avatarCache[uid] !== undefined) {
+        if (_avatarCache[uid] !== 'loading') {
+            applyTo(imgEl, _avatarCache[uid]);
+        } else {
+            imgEl.dataset.pendingUid = uid;
+        }
+        return;
+    }
+    _avatarCache[uid] = 'loading';
+    imgEl.dataset.pendingUid = uid;
+    callPython('get_account_photo', { user_id: uid, size: 'small' }).then(r => {
+        const uri = (r && r.data_uri) || null;
+        _avatarCache[uid] = uri;
+        document.querySelectorAll(`.sfr-author-avatar[data-pending-uid="${CSS.escape(uid)}"]`).forEach(el => {
+            delete el.dataset.pendingUid;
+            applyTo(el, uri);
+        });
+    }).catch(() => {
+        _avatarCache[uid] = null;
+        document.querySelectorAll(`.sfr-author-avatar[data-pending-uid="${CSS.escape(uid)}"]`).forEach(el => {
+            delete el.dataset.pendingUid;
+            applyTo(el, null);
+        });
+    });
+}
+
+// ---- column helpers ----
+
+function _normalizeListColumns(raw) {
+    if (!raw || !raw.length) return [{ id: '@created_at', width: '' }];
+    return raw.map(c => (typeof c === 'string') ? { id: c, width: '' } : c);
+}
+
+function _resolveWidths(cols) {
+    const restIdx = cols.findIndex(c => c.width === 'rest' || c.width === 'auto');
+    const fixed = cols.filter((_, i) => i !== restIdx).map(c => parseFloat(c.width) || 0);
+    const usedPct = fixed.reduce((a, b) => a + b, 0);
+    return cols.map((c, i) => {
+        if (i === restIdx) return `${Math.max(0, 100 - usedPct)}%`;
+        const n = parseFloat(c.width);
+        return isNaN(n) ? '' : `${n}%`;
+    });
+}
+
+const _SYS_COL_LABELS = {
+    ko: { '@record_id': '레코드ID', '@row_id': '번호', '@created_at': '생성일시', '@updated_at': '수정일시', '@author': '작성자' },
+    en: { '@record_id': 'Record ID', '@row_id': 'No', '@created_at': 'Created At', '@updated_at': 'Updated At', '@author': 'Author' },
+};
+
+function _colLabel(col, fieldLabels) {
+    const sysLabels = _SYS_COL_LABELS[_currentLang] || _SYS_COL_LABELS.en;
+    if (col.startsWith('@')) return sysLabels[col] !== undefined ? sysLabels[col] : col;
+    return (fieldLabels && fieldLabels[col] !== undefined) ? fieldLabels[col] : col;
+}
+
+function _escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ---- DOM measurement ----
+
+// Measure header height and one data row height by rendering a hidden probe table.
+// Uses actual DOM geometry so font, line-height, padding, border changes are all absorbed.
+async function _measureRowHeight(containerEl, cols, fieldLabels) {
+    if (document.fonts && document.fonts.ready) {
+        // Wait for web fonts so glyph metrics are final before measuring.
+        await document.fonts.ready;
+    }
+    const colHtml = cols.map((c, i) => {
+        const w = _resolveWidths(cols)[i];
+        return `<th${w ? ` style="width:${w}"` : ''}>${_colLabel(c.id, fieldLabels)}</th>`;
+    }).join('');
+    // Use mixed Latin+Hangul content to get the tallest possible glyph height.
+    const cellContent = 'Mg가';
+    const probe = document.createElement('div');
+    probe.style.cssText = 'visibility:hidden;position:absolute;left:-9999px;top:0;'
+        + 'width:' + containerEl.clientWidth + 'px;pointer-events:none;';
+    probe.innerHTML = '<table class="sfr-board-table" style="table-layout:fixed;width:100%">'
+        + '<thead><tr>' + colHtml + '</tr></thead>'
+        + '<tbody><tr>' + cols.map(() => `<td>${cellContent}</td>`).join('') + '</tr></tbody>'
+        + '</table>';
+    containerEl.appendChild(probe);
+    const headerH = probe.querySelector('thead').getBoundingClientRect().height;
+    const rowH    = probe.querySelector('tbody tr').getBoundingClientRect().height;
+    containerEl.removeChild(probe);
+    return { headerH: Math.ceil(headerH), rowH: Math.ceil(rowH) };
+}
+
+// Measure the fixed chrome at the bottom (new-btn + pagination bar).
+// Called after those elements exist in the DOM.
+function _measureChromeHeight(containerEl) {
+    let h = 0;
+    const newBtn = containerEl.querySelector('.sfr-board-new-btn');
+    if (newBtn) h += newBtn.getBoundingClientRect().height
+                  + parseFloat(getComputedStyle(newBtn).marginTop || 0);
+    const pager = containerEl.querySelector('.sfr-board-pager');
+    if (pager) h += pager.getBoundingClientRect().height
+                 + parseFloat(getComputedStyle(pager).marginTop || 0);
+    return Math.ceil(h);
+}
+
+// Compute how many data rows fit in containerEl given measured dimensions.
+// Subtracts a 1px safety margin to guard against sub-pixel rounding.
+function _computePageSize(containerH, headerH, rowH, chromeH) {
+    const avail = containerH - headerH - chromeH - 1;
+    return Math.max(1, Math.floor(avail / rowH));
+}
+
+// ---- load + render ----
+
+async function _loadBoardData(fieldDef, containerEl) {
+    const prev = _boardFields.find(b => b.id === fieldDef.id);
+    if (prev && prev._resizeObserver) prev._resizeObserver.disconnect();
+    _boardFields = _boardFields.filter(b => b.id !== fieldDef.id);
+    const langAtStart = _currentLang;
+    const detailPath = fieldDef.detailFormPath || '';
+
+    // Fetch field labels in parallel; defer record fetch until page size is known.
+    const fieldsRes = detailPath
+        ? await callPython('board_read_detail_fields', { path: detailPath }).catch(() => null)
+        : null;
+    const fieldLabels = {};
+    const optionMaps = {};  // fieldId → { canonicalValue: displayLabel }
+    if (fieldsRes && fieldsRes.fields) {
+        fieldsRes.fields.forEach(f => {
+            fieldLabels[f.id] = _loc(f, 'label');
+            const opts = f.options;
+            const locOpts = _loc(f, 'options');
+            if (Array.isArray(opts) && Array.isArray(locOpts)) {
+                const map = {};
+                opts.forEach((v, i) => { map[v] = locOpts[i] !== undefined ? locOpts[i] : v; });
+                optionMaps[f.id] = map;
+            }
+        });
+    }
+
+    const cols = _normalizeListColumns(fieldDef.listColumns);
+
+    // Measure row height before fetching records so we know the page size.
+    const { headerH, rowH } = await _measureRowHeight(containerEl, cols, fieldLabels);
+
+    // Estimate chrome height using placeholder elements (rendered off-screen).
+    // We need to know chrome height before we can compute page size, but chrome
+    // itself contains the pagination bar whose height depends on font metrics.
+    // Solution: measure a dummy chrome once, then use that height for all pages.
+    const chromeH = await _estimateChromeHeight(containerEl, fieldDef);
+
+    const pageSize = _computePageSize(containerEl.clientHeight, headerH, rowH, chromeH);
+
+    const restoredPage = _savedBoardPages[fieldDef.id] || 1;
+    const entry = { id: fieldDef.id, fieldDef, containerEl, fieldLabels, optionMaps, pageSize, currentPage: restoredPage, total: 0 };
+    _boardFields.push(entry);
+
+    await _fetchAndRender(entry, restoredPage);
+
+    // If language changed while we were loading (race with setLanguage postMessage), reload.
+    if (_currentLang !== langAtStart) {
+        _loadBoardData(fieldDef, containerEl);
+        return;
+    }
+
+    // Attach ResizeObserver to recompute page size when board container resizes.
+    if (typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver(() => _onBoardResize(entry));
+        ro.observe(containerEl);
+        entry._resizeObserver = ro;
+    }
+}
+
+async function _estimateChromeHeight(containerEl, fieldDef) {
+    // Measure chrome height using a worst-case skeleton (max pager buttons)
+    // so that the computed pageSize is never over-estimated regardless of
+    // how many pages end up being needed.
+    const probe = document.createElement('div');
+    probe.style.cssText = 'visibility:hidden;position:absolute;left:-9999px;top:0;'
+        + 'width:' + containerEl.clientWidth + 'px;pointer-events:none;';
+    // Worst-case: « ‹ … 1 2 3 … › » = 9 elements; use this width for measurement
+    // so flex-wrap wrapping on narrow containers is captured.
+    const pager = document.createElement('div');
+    pager.className = 'sfr-board-pager';
+    ['«', '‹', '…', '1', '2', '3', '…', '›', '»'].forEach(label => {
+        if (label === '…') {
+            const gap = document.createElement('span');
+            gap.className = 'sfr-board-pager-gap';
+            gap.textContent = label;
+            pager.appendChild(gap);
+        } else {
+            const b = document.createElement('button');
+            b.className = 'sfr-board-pager-btn';
+            b.textContent = label;
+            pager.appendChild(b);
+        }
+    });
+    probe.appendChild(pager);
+    if (fieldDef.detailFormPath) {
+        const btn = document.createElement('button');
+        btn.className = 'sfr-board-new-btn';
+        btn.textContent = '+ 새 글';
+        probe.appendChild(btn);
+    }
+    containerEl.appendChild(probe);
+    const h = _measureChromeHeight(probe);
+    containerEl.removeChild(probe);
+    return h;
+}
+
+async function _fetchAndRender(entry, page) {
+    const { fieldDef, containerEl, fieldLabels, pageSize } = entry;
+    const detailPath = fieldDef.detailFormPath || '';
+    const offset = (page - 1) * pageSize;
+    const res = await callPython('board_list', {
+        detail_form_path: detailPath,
+        board_id: fieldDef.id,
+        offset,
+        limit: pageSize,
+    }).catch(() => null);
+    entry.total = (res && res.total != null) ? res.total : 0;
+    entry.currentPage = page;
+    _renderBoardTable(entry, res ? res.records : []);
+}
+
+function _renderBoardTable(entry, records) {
+    const { fieldDef, containerEl, fieldLabels, optionMaps, pageSize, currentPage, total } = entry;
+    const cols    = _normalizeListColumns(fieldDef.listColumns);
+    const widths  = _resolveWidths(cols);
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+    let html = '<table class="sfr-board-table" style="table-layout:fixed;width:100%"><thead><tr>';
+    cols.forEach((c, i) => {
+        const w = widths[i] ? ` style="width:${widths[i]}"` : '';
+        html += `<th${w}>${_colLabel(c.id, fieldLabels)}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    if (!records.length) {
+        html += `<tr><td colspan="${cols.length}" style="padding:12px;opacity:0.5;text-align:center">-</td></tr>`;
+    }
+    const authorIdByRid = {};
+    records.forEach(rec => {
+        const rid = rec['@record_id'] || '';
+        const sel = (rid && rid === currentRecordId) ? ' class="sfr-board-row-selected"' : '';
+        html += `<tr data-rid="${rid}" style="cursor:pointer"${sel}>`;
+        cols.forEach(c => {
+            let v = rec[c.id] !== undefined ? rec[c.id] : '';
+            if (c.id === '@created_at' || c.id === '@updated_at') {
+                const fmt = _formatBoardDateTime(v);
+                if (fmt.full) {
+                    html += `<td><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="${_escHtml(fmt.full)}">${_escHtml(fmt.display)}</span></td>`;
+                } else {
+                    html += `<td>${_escHtml(fmt.display)}</td>`;
+                }
+                return;
+            }
+            if (c.id === '@author') {
+                const authorId = rec['@author_id'] || '';
+                const authorName = _escHtml(String(rec['@author'] || authorId || ''));
+                if (authorId) authorIdByRid[rid] = authorId;
+                html += `<td><span class="sfr-author-cell" data-uid="${_escHtml(authorId)}"><span class="sfr-author-avatar-wrap"><img class="sfr-author-avatar" src="" alt="" aria-hidden="true"></span>${authorName}</span></td>`;
+                return;
+            }
+            if (optionMaps && optionMaps[c.id] && optionMaps[c.id][v] !== undefined) v = optionMaps[c.id][v];
+            html += `<td>${_escHtml(String(v))}</td>`;
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+
+    containerEl.innerHTML = html;
+
+    // Initialize date tooltips
+    containerEl.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+        new bootstrap.Tooltip(el, { container: 'body' });
+    });
+
+    // Load avatars asynchronously after DOM insertion
+    const authorCells = containerEl.querySelectorAll('.sfr-author-cell[data-uid]');
+    if (authorCells.length) {
+        authorCells.forEach(cell => {
+            const uid = cell.dataset.uid;
+            if (!uid) return;
+            const img = cell.querySelector('.sfr-author-avatar');
+            _loadAvatar(uid, img);
+        });
+    }
+
+    containerEl.querySelectorAll('tr[data-rid]').forEach(tr => {
+        tr.addEventListener('click', () => {
+            const rid = tr.dataset.rid;
+            if (!rid) return;
+            _boardNavToDetail(rid, fieldDef);
+        });
+    });
+
+    // Spacer pushes chrome to the bottom regardless of row count.
+    const spacer = document.createElement('div');
+    spacer.className = 'sfr-board-spacer';
+    containerEl.appendChild(spacer);
+
+    // Bottom chrome: pagination on top, new-btn below
+    const chrome = document.createElement('div');
+    chrome.className = 'sfr-board-chrome';
+
+    if (totalPages > 1) {
+        const pager = _buildPager(entry, currentPage, totalPages);
+        chrome.appendChild(pager);
+    }
+
+    if (fieldDef.detailFormPath) {
+        const newBtn = document.createElement('button');
+        newBtn.className = 'sfr-board-new-btn';
+        newBtn.textContent = '+ 새 글';
+        newBtn.addEventListener('click', () => _boardNavToDetail(null, fieldDef));
+        chrome.appendChild(newBtn);
+    }
+
+    containerEl.appendChild(chrome);
+}
+
+function _formatBoardDateTime(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+
+    const isUtc = /Z$/.test(raw);
+    const normalized = raw.replace('T', ' ').replace(/Z$/, '');
+    const m = normalized.match(/^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}):(\d{2}))?/);
+    if (!m) return normalized;
+
+    const [, year, month, day, hour = '00', minute = '00', second = '00'] = m;
+    const dt = isUtc
+        ? new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)))
+        : new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+    if (Number.isNaN(dt.getTime())) return normalized;
+
+    const now = new Date();
+    const isToday = dt.getFullYear() === now.getFullYear()
+        && dt.getMonth() === now.getMonth()
+        && dt.getDate() === now.getDate();
+
+    const pad = n => String(n).padStart(2, '0');
+    const full = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+    if (isToday) return { display: `${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`, full: null };
+    return { display: `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`, full };
+}
+
+function _buildPager(entry, currentPage, totalPages) {
+    const pager = document.createElement('div');
+    pager.className = 'sfr-board-pager';
+
+    const addBtn = (label, page, disabled) => {
+        const btn = document.createElement('button');
+        btn.className = 'sfr-board-pager-btn' + (page === currentPage ? ' sfr-board-pager-btn-active' : '');
+        btn.textContent = label;
+        btn.disabled = disabled;
+        if (!disabled) {
+            btn.addEventListener('click', () => _fetchAndRender(entry, page));
+        }
+        pager.appendChild(btn);
+    };
+
+    // Window of page buttons: show up to 5 around currentPage
+    const WINDOW = 2;
+    const first = Math.max(1, currentPage - WINDOW);
+    const last  = Math.min(totalPages, currentPage + WINDOW);
+
+    addBtn('«', 1, currentPage === 1);
+    addBtn('‹', currentPage - 1, currentPage === 1);
+    if (first > 1) {
+        const gap = document.createElement('span');
+        gap.className = 'sfr-board-pager-gap';
+        gap.textContent = '…';
+        pager.appendChild(gap);
+    }
+    for (let p = first; p <= last; p++) addBtn(String(p), p, false);
+    if (last < totalPages) {
+        const gap = document.createElement('span');
+        gap.className = 'sfr-board-pager-gap';
+        gap.textContent = '…';
+        pager.appendChild(gap);
+    }
+    addBtn('›', currentPage + 1, currentPage === totalPages);
+    addBtn('»', totalPages, currentPage === totalPages);
+
+    return pager;
+}
+
+// Called by ResizeObserver when the board container changes size.
+// Re-measures row height and reloads the current page if page size changed.
+async function _onBoardResize(entry) {
+    const { containerEl, fieldDef, fieldLabels } = entry;
+    const cols = _normalizeListColumns(fieldDef.listColumns);
+    const { headerH, rowH } = await _measureRowHeight(containerEl, cols, fieldLabels);
+    const chromeH = await _estimateChromeHeight(containerEl, fieldDef);
+    const newPageSize = _computePageSize(containerEl.clientHeight, headerH, rowH, chromeH);
+    if (newPageSize !== entry.pageSize) {
+        entry.pageSize = newPageSize;
+        // Jump to page 1 when page size changes to avoid out-of-range pages.
+        await _fetchAndRender(entry, 1);
+    }
+}
+
+function _applyDetailButtonState(isMine) {
+    // isMine: true = existing record owned by current user
+    //         false = existing record owned by someone else
+    //         null = new record (rid was null)
+    document.querySelectorAll('[data-board-command]').forEach(btn => {
+        const cmd = btn.dataset.boardCommand;
+        let enabled;
+        if (isMine === null) {
+            // new record: POST and LIST enabled
+            enabled = (cmd === 'POST' || cmd === 'LIST');
+        } else {
+            // existing record: LIST always, MODIFY/DELETE only if mine
+            enabled = (cmd === 'LIST') || ((cmd === 'MODIFY' || cmd === 'DELETE') && isMine);
+        }
+        btn.disabled = !enabled;
+    });
+}
+
+async function _boardNavToDetail(rid, fieldDef) {
+    const detailPath = fieldDef.detailFormPath || '';
+    if (!detailPath) return;
+
+    const tasks = [callPython('runner_load_schema', { path: detailPath, is_board_detail: true }).catch(() => null)];
+    if (rid) tasks.push(callPython('board_get', { record_id: rid, detail_form_path: detailPath }).catch(() => null));
+
+    const results = await Promise.all(tasks);
+    const schemaRes = results[0];
+    const recordRes = rid ? results[1] : null;
+
+    if (!schemaRes || !schemaRes.success || !schemaRes.schema) return;
+
+    _listSchema = currentSchema;
+    currentRecordId = rid || null;
+
+    // Save current page for each board field so we can restore it on back.
+    _savedBoardPages = {};
+    _boardFields.forEach(b => { _savedBoardPages[b.id] = b.currentPage; });
+
+    renderForm(schemaRes.schema);
+    if (rid) {
+        const record = recordRes && recordRes.record;
+        const isMine = !!(recordRes && recordRes.is_mine);
+        if (record) {
+            applySetValues(record);
+            _applyInfoRecord(record);
+        }
+        _applyDetailButtonState(isMine);
+    } else {
+        _applyDetailButtonState(null);
+    }
+}
+
+function boardNavBack() {
+    if (!_listSchema) return;
+    const schema = _listSchema;
+    _listSchema = null;
+    currentRecordId = null;
+    // _savedBoardPages is consumed by _loadBoardData during renderForm; clear after.
+    renderForm(schema);
+    _savedBoardPages = {};
+}
+
+function _refreshAllBoards() {
+    _boardFields.forEach(b => _loadBoardData(b.fieldDef, b.containerEl));
+}
+
+// ================================================================
+// SET VALUES (from caller via TCP → Python state_update → JS)
+// ================================================================
+function applySetValues(values) {
+    if (!currentSchema || !values) return;
+    currentSchema.fields.forEach(f => {
+        if (!(f.id in values)) return;
+        const val = values[f.id];
+        const el = document.getElementById('sfr-' + f.id);
+        if (!el) return;
+        if (f.type === 'checkbox') {
+            el.checked = !!val;
+            formValues[f.id] = !!val;
+        } else if (f.type === 'toggle') {
+            el.checked = !!val;
+            formValues[f.id] = !!val;
+        } else if (f.type === 'number') {
+            el.value = val;
+            formValues[f.id] = Number(val);
+        } else {
+            el.value = val;
+            formValues[f.id] = val;
+        }
+    });
+}
+
+function _applyInfoRecord(record) {
+    _infoFields.forEach(function(entry) {
+        var fid = entry.el.dataset.infoField || '@author';
+
+        if (fid === '@author') {
+            var authorId = record ? (record['@author_id'] || '') : '';
+            var authorName = record ? (record['@author'] || authorId || '') : '';
+            var nameSpan = entry.el.querySelector('.sfr-info-author-name');
+            if (nameSpan) nameSpan.textContent = authorName;
+            entry.el.style.opacity = record ? '' : '0.5';
+            var img = entry.el.querySelector('.sfr-author-avatar');
+            if (img) {
+                if (authorId) {
+                    _loadAvatar(authorId, img);
+                } else {
+                    img.src = '/common/resource/img/default-avatar.svg';
+                }
+            }
+            return;
+        }
+
+        var existing = bootstrap.Tooltip.getInstance(entry.el);
+        if (existing) existing.dispose();
+        entry.el.removeAttribute('data-bs-toggle');
+        entry.el.removeAttribute('data-bs-placement');
+        entry.el.removeAttribute('data-bs-title');
+
+        var v = '';
+        if (record) {
+            v = record[fid] !== undefined ? record[fid] : '';
+            if (fid === '@created_at' || fid === '@updated_at') {
+                var fmt = _formatBoardDateTime(String(v));
+                if (fmt && typeof fmt === 'object' && fmt.full) {
+                    entry.el.setAttribute('data-bs-toggle', 'tooltip');
+                    entry.el.setAttribute('data-bs-placement', 'top');
+                    entry.el.setAttribute('data-bs-title', fmt.full);
+                    new bootstrap.Tooltip(entry.el, { container: 'body' });
+                    v = fmt.display;
+                } else {
+                    v = (fmt && typeof fmt === 'object') ? fmt.display : (fmt || String(v));
+                }
+            }
+        }
+        entry.el.value = String(v);
+        entry.el.style.opacity = record ? '' : '0.5';
+    });
+}
+
+let _lastSetValuesSeq = -1;
+window.state_update = function(updates) {};
+
+// Poll for set_values updates from caller (avoids Qt cross-thread callJS issue)
+async function _pollSetValues() {
+    try {
+        const state = await callPython('runner_get_state', {});
+        if (state && state.set_values_seq !== undefined && state.set_values_seq !== _lastSetValuesSeq) {
+            _lastSetValuesSeq = state.set_values_seq;
+            applySetValues(state.set_values);
+        }
+    } catch(e) {}
+    setTimeout(_pollSetValues, 300);
+}
+setTimeout(_pollSetValues, 500);
+
+// ================================================================
+// STANDALONE MODE
+// ================================================================
+let _isStandaloneMode = false;
+
+function initStandaloneMode(state) {
+    if (!state || !state.auto_run) return;
+    _isStandaloneMode = true;
+}
+
+// ================================================================
+// APPINIT CALLBACKS
+// ================================================================
+window.getAppStateAction = () => 'runner_get_state';
+
+// skillform manages its own theme via renderForm (schema.docProps.theme)
+// Prevent common.js initStandaloneSettings from overriding it with desktop theme
+window.skillformNoStandaloneTheme = true;
+
+window.onAppStateLoaded = function(state) {
+    if (state && state.auto_run_lang) _currentLang = state.auto_run_lang;
+    initStandaloneMode(state);
+    const urlSchemaPath = new URLSearchParams(window.location.search).get('schema_path');
+    if (urlSchemaPath) {
+        callPython('runner_load_schema', { path: urlSchemaPath }).then(function(res) {
+            if (res && res.success && res.schema) {
+                renderForm(res.schema);
+            }
+        });
+        return;
+    }
+    if (state && state.schema) {
+        renderForm(state.schema);
+    }
+};
+
+async function onViewActivated() {
+    // When tab is switched to Runner, check if designer pushed a schema
+    const state = await callPython('runner_get_state', {});
+    if (state && state.schema && state.waiting) {
+        renderForm(state.schema);
+        setStatus('', '');
+    }
+}
+function onLanguageChange(lang) {
+    _currentLang = lang || 'en';
+    _refreshAllBoards();
+}
+
+
+// ================================================================
+// WEB BROWSER MOCK
+// ================================================================
+if (typeof isInWebBrowser !== 'undefined' && isInWebBrowser) {
+    setTimeout(function() {
+        renderForm({
+            docProps: { formName: "Sample Form", fontSize: 14 },
+            grid: { cols: 12, rowHeight: 48 },
+            fields: [
+                { id:'name',  type:'text',     label:'이름',   col:0, row:0, w:6, h:1, required:true },
+                { id:'cell',  type:'text',     label:'Cell',   col:6, row:0, w:6, h:1 },
+                { id:'drc',   type:'checkbox', label:'Run DRC', col:0, row:1, w:4, h:1 },
+                { id:'layer', type:'dropdown', label:'Layer',   col:4, row:1, w:4, h:1, options:['M1','M2','Poly'], default:'M1' },
+                { id:'cnt',   type:'number',   label:'Count',   col:8, row:1, w:4, h:1, default:1 },
+                { id:'note',  type:'textarea', label:'Note',    col:0, row:2, w:12,h:2 },
+            ]
+        });
+    }, 200);
+}
+</script>
+</body>
+</html>

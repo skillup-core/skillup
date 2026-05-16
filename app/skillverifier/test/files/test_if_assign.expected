@@ -1,0 +1,5 @@
+# Expected errors for test_if_assign.il
+# Format: line|func|type|var
+#
+2|test|undeclared(variable)|a
+3|test|undeclared(variable)|b

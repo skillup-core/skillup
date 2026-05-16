@@ -1,0 +1,22 @@
+# Expected errors for test_code.il
+# Format: line|func|type|var
+#
+9|testW01|undeclared(function)|undefinedFunction
+16|testW02|undeclared(variable)|undeclaredVar
+24|testW03|assignment|=
+50|testE03|undeclared(variable)|expr1
+50|testE03|undeclared(variable)|expr2
+72|testE06|undeclared(variable)|x
+81|testE07a|undeclared(variable)|x
+87|testE07b|undeclared(variable)|x
+34|testE01|redeclaration|myParam
+42|None|function_syntax|procedure
+50|testE03|if_syntax|if
+63|None|parameter_syntax|param
+71|testE06|binding_syntax|(123...)
+80|testE07a|binding_syntax|(123...)
+86|testE07b|binding_syntax|(string...)
+97|testE08a|cond_syntax|cond
+106|testE08b|cond_syntax|cond
+115|None|parameter_symbol|1
+122|testE09b|parameter_symbol|1

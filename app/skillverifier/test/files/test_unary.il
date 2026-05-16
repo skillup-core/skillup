@@ -1,0 +1,5 @@
+procedure(test(x)
+  let( ((y !x))
+    printf("%L\n" y)
+  )
+)

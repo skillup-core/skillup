@@ -1,0 +1,4 @@
+# Expected errors for test_escape.il
+# Format: line|func|type|var
+#
+2|test|undeclared(variable)|v

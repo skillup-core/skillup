@@ -1,0 +1,5 @@
+# Expected errors for test_simple_if.il
+# Format: line|func|type|var
+#
+1|None|undeclared(variable)|a
+1|None|undeclared(variable)|b

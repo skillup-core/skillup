@@ -1,0 +1,6 @@
+# Expected errors for test_keyword_args.il
+# Format: line|func|type|var
+#
+4|testKeywordArgs|undeclared(function)|hiCreateCyclicField
+5|testKeywordArgs|undeclared(function)|concat
+13|testKeywordArgs|undeclared(variable)|undeclaredVar

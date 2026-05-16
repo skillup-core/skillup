@@ -1,0 +1,53 @@
+/* Settings Page */
+
+.settings-container {
+    display: none;
+    padding: 20px;
+}
+
+.settings-container.active {
+    display: block;
+}
+
+.settings-section {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.settings-section h3 {
+    font-size: 16px;
+    margin-bottom: 15px;
+    color: var(--accent-text);
+}
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.settings-row:last-child {
+    border-bottom: none;
+}
+
+.settings-label {
+    font-size: 14px;
+}
+
+.settings-value {
+    display: flex;
+    align-items: center;
+}
+
+.settings-select {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+}

@@ -1,0 +1,5 @@
+# Expected errors for test_error_parentheses.il
+# Format: line|func|type|var
+#
+23|None|parenthesis|parenthesis
+23|None|parenthesis|parenthesis

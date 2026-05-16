@@ -1,0 +1,7 @@
+## Chat Agent
+
+A general-purpose conversational assistant.
+
+- Ask any question or describe what you need help with.
+- Supports a wide range of topics: code, explanations, writing, and more.
+- Press `Enter` to send, `Shift+Enter` for a new line.

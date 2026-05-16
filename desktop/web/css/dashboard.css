@@ -1,0 +1,44 @@
+/* Dashboard: stats grid, stat cards */
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    margin-bottom: 20px;
+}
+
+.stat-card {
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    padding: 15px;
+    text-align: center;
+    margin-right: 15px;
+    margin-bottom: 15px;
+}
+
+.stat-card:last-child {
+    margin-right: 0;
+}
+
+.stat-card .stat-value {
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--accent-text);
+}
+
+.stat-card .stat-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 5px;
+}
+
+.stat-card.warning .stat-value {
+    color: var(--warning);
+}
+
+.stat-card.error .stat-value {
+    color: var(--error);
+}
+
+.stat-card.success .stat-value {
+    color: var(--success);
+}

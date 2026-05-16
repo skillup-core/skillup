@@ -1,0 +1,8 @@
+# Expected errors for test_scope_and_conditions.il
+# Format: line|func|type|var
+#
+5|a|undeclared(variable)|err
+13|b|undeclared(variable)|d
+19|c|undeclared(variable)|err
+26|d|assignment|=
+27|d|assignment|=

@@ -1,0 +1,108 @@
+Skillup Unit Test Summary
+================================
+
+Test Execution Date: 2025-11-13
+Total Tests: 14
+Success Rate: 100% (14/14)
+
+Test Categories
+---------------
+
+1. Valid SKILL Code Tests (3 tests)
+   ✓ test_valid_basic      - Basic SKILL constructs
+   ✓ test_valid_advanced   - Advanced features
+   ✓ test_valid_config     - Configuration patterns
+
+2. Error Detection Tests - Basic (3 tests)
+   ✓ test_undeclared_errors      - Counts undeclared errors
+   ✓ test_redeclaration_errors   - Counts redeclaration errors
+   ✓ test_mixed_errors           - Counts mixed error types
+
+3. Error Detection Tests - Detailed (4 tests) ✨ NEW
+   ✓ test_undeclared_errors_detailed
+      • Uses test_error_undeclared.expected file
+      • Verifies 8 exact errors (line, func, var)
+   
+   ✓ test_redeclaration_errors_detailed
+      • Uses test_error_redeclaration.expected file
+      • Verifies 2 exact errors (line, func, var)
+   
+   ✓ test_mixed_errors_detailed
+      • Uses test_error_mixed.expected file
+      • Verifies 7 exact errors (line, func, var)
+   
+   ✓ test_parenthesis_errors
+      • Detects parenthesis mismatches
+
+4. Existing Test Files (3 tests)
+   ✓ test1.il
+   ✓ test_comprehensive.il
+   ✓ test_real.il
+
+5. Cadence Sample Tests (1 test)
+   ✓ minRectArea.il from Cadence samples
+
+Expected Error Files (.expected)
+---------------------------------
+Detailed tests now use external .expected files for validation:
+
+File: test/test_error_undeclared.expected
+Format: line|func|type|var
+Example:
+  5|None|undeclared|undeclaredVar
+  10|testUndeclared|undeclared|missingVariable
+
+Benefits:
+  ✅ Easy to update without modifying Python code
+  ✅ Clear separation of test data and test logic
+  ✅ Human-readable format
+  ✅ No .expected file = valid code (no errors expected)
+
+Current .expected files:
+  - test_error_undeclared.expected (8 errors)
+  - test_error_redeclaration.expected (2 errors)
+  - test_error_mixed.expected (7 errors)
+
+Detailed Validation Features
+-----------------------------
+The detailed tests verify:
+• Exact line numbers where errors occur
+• Specific variable/parameter names involved
+• Function context (global scope vs specific function)
+• Error type classification (undeclared, redeclaration)
+
+Example verification:
+  Expected: 10|testUndeclared|undeclared|missingVariable
+  Actual:   [error] line 10, in function testUndeclared, using undeclared variable, missingVariable
+  Result:   ✓ Match!
+
+Test File Organization
+----------------------
+All unit test files are in the test/ directory:
+- test_valid_*.il       - Valid code (no errors expected)
+- test_error_*.il       - Error detection (specific errors expected)
+- test_error_*.expected - Expected error definitions
+
+Running Tests
+-------------
+./run_tests.sh                                    # Run all 14 tests
+python3 test_skillup.py                     # Run with Python directly
+python3 -m unittest test_skillup            # Run with unittest
+
+Run specific test categories:
+python3 -m unittest test_skillup.TestUndeclaredVariables.test_undeclared_errors_detailed
+python3 -m unittest test_skillup.TestParameterRedeclaration.test_redeclaration_errors_detailed
+python3 -m unittest test_skillup.TestMixedErrors.test_mixed_errors_detailed
+
+Individual Test Files
+---------------------
+python3 skillup.py test/test_valid_basic.il
+python3 skillup.py test/test_error_undeclared.il
+
+Documentation
+-------------
+- README.md       - Main project documentation
+- TEST_GUIDE.md   - Comprehensive testing guide
+- test/README.md  - Test file descriptions
+
+All 14 tests passing successfully! ✓

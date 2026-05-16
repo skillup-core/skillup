@@ -1,0 +1,97 @@
+/* Top Bar: header, buttons, clock */
+
+.top-bar {
+    height: 50px;
+    min-height: 50px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+}
+
+.top-bar-left {
+    display: flex;
+    align-items: center;
+}
+
+.hamburger-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 5px;
+    margin-right: 15px;
+    display: none;
+}
+
+.top-bar-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.top-bar-right {
+    display: flex;
+    align-items: center;
+}
+
+.close-app-btn,
+.minimize-app-btn,
+.popout-app-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: 4px;
+    transition: all 0.2s;
+    display: none;
+    margin-right: 10px;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    outline: none;
+}
+
+.close-app-btn:focus,
+.minimize-app-btn:focus,
+.popout-app-btn:focus {
+    outline: none;
+    box-shadow: none;
+}
+
+/* Show button when JavaScript sets display: block */
+.close-app-btn[style*="display: block"],
+.minimize-app-btn[style*="display: block"],
+.popout-app-btn[style*="display: block"] {
+    display: flex !important;
+}
+
+.close-app-btn svg,
+.minimize-app-btn svg {
+    display: block;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.close-app-btn:hover {
+    background: var(--error);
+    color: white;
+}
+
+.minimize-app-btn:hover,
+.popout-app-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.clock {
+    font-size: 14px;
+    color: var(--text-secondary);
+    font-family: 'D2Coding', monospace;
+}

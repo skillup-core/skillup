@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skillup Agent</title>
+    <link rel="stylesheet" href="/common/style/default.css">
+    <!-- Bootstrap (for tooltips) -->
+    <link rel="stylesheet" href="/common/bootstrap/5.3.3/bootstrap.min.css">
+    <script src="/common/bootstrap/5.3.3/bootstrap.bundle.min.js"></script>
+    <script src="/common/script/appinit.js" onerror="this.onerror=null; this.src='../../../../desktop/common/script/appinit.js';"></script>
+    <script src="/common/marked/16.x/marked.min.js" onerror="this.onerror=null; this.src='../../../../desktop/common/marked/16.x/marked.min.js';"></script>
+    <link id="hljs-theme" rel="stylesheet" href="/common/highlight.js/11.x/styles/github-dark.min.css">
+    <script src="/common/highlight.js/11.x/highlight.min.js" onerror="this.onerror=null; this.src='../../../../desktop/common/highlight.js/11.x/highlight.min.js';"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-primary, #1a1d23);
+            color: var(--text-primary, #e0e0e0);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 14px;
+        }
+
+        /* ── Overlay screens ── */
+        .sa-overlay {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+            padding: 32px 24px;
+        }
+        .sa-overlay.active { display: flex; }
+
+        .sa-spinner {
+            width: 36px;
+            height: 36px;
+            border: 3px solid var(--border-color, #373c47);
+            border-top-color: var(--accent-color, #4a90e2);
+            border-radius: 50%;
+            animation: sa-spin 0.8s linear infinite;
+            margin-bottom: 16px;
+        }
+        @keyframes sa-spin { to { transform: rotate(360deg); } }
+
+        .sa-status-text {
+            color: var(--text-secondary, #a0a0a0);
+            font-size: 14px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .sa-error-text {
+            color: var(--danger-color, #e74c3c);
+            font-size: 13px;
+            margin-bottom: 16px;
+            text-align: center;
+            max-width: 400px;
+        }
+
+        .sa-btn {
+            background: var(--accent-color, #4a90e2);
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 20px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .sa-btn:hover { opacity: 0.88; }
+
+        .sa-btn-secondary {
+            background: transparent;
+            color: var(--text-secondary, #a0a0a0);
+            border: 1px solid var(--border-color, #373c47);
+            border-radius: 6px;
+            padding: 7px 18px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .sa-btn-secondary:hover {
+            border-color: var(--accent-color, #4a90e2);
+            color: var(--text-primary, #e0e0e0);
+        }
+
+        .sa-section-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary, #e0e0e0);
+            margin-bottom: 16px;
+        }
+
+        /* ── CIW list ── */
+        .sa-list {
+            list-style: none;
+            margin: 0 0 16px;
+            padding: 0;
+            width: 100%;
+            max-width: 480px;
+        }
+        .sa-list-item {
+            background: var(--bg-secondary, #22252e);
+            border: 1px solid var(--border-color, #373c47);
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: border-color 0.15s;
+            position: relative;
+        }
+        .sa-list-item:hover {
+            border-color: var(--accent-color, #4a90e2);
+        }
+        .sa-list-item.disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+        .sa-list-item.disabled:hover {
+            border-color: var(--border-color, #373c47);
+        }
+        .sa-list-item-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary, #e0e0e0);
+            margin-bottom: 3px;
+        }
+        .sa-list-item-ciw {
+            font-size: 11px;
+            color: var(--text-secondary, #a0a0a0);
+            font-weight: normal;
+            margin-left: 6px;
+        }
+        .sa-list-item-sub {
+            font-size: 11px;
+            color: var(--text-secondary, #a0a0a0);
+        }
+
+        /* ── Chat UI ── */
+        #chat-ui {
+            display: none;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+        }
+        #chat-ui.active {
+            display: flex;
+        }
+
+        .sa-chat-header {
+            display: flex;
+            align-items: center;
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border-color, #373c47);
+            background: var(--bg-secondary, #22252e);
+            flex-shrink: 0;
+        }
+        .sa-chat-agent-name {
+            flex: 1;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary, #e0e0e0);
+        }
+        .sa-chat-ciw-label {
+            font-size: 11px;
+            color: var(--text-secondary, #a0a0a0);
+            margin-right: 12px;
+        }
+        .sa-header-btn {
+            background: var(--bg-tertiary, #2a2d38);
+            border: 1px solid var(--border-color, #373c47);
+            border-radius: 6px;
+            padding: 5px 7px;
+            color: var(--text-secondary, #a0a0a0);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 32px;
+            flex-shrink: 0;
+            transition: all 0.2s;
+            margin-left: 6px;
+        }
+        .sa-header-btn:hover {
+            background: var(--bg-hover, #31353f);
+            color: var(--text-primary, #e0e0e0);
+        }
+        .sa-header-btn.active {
+            border-color: var(--accent-primary, #4a90e2);
+            color: var(--accent-primary, #4a90e2);
+        }
+
+        /* ── Messages ── */
+        #chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            min-height: 0;
+        }
+
+        .sa-msg {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 14px;
+        }
+        .sa-msg-user { justify-content: flex-end; }
+        .sa-msg-assistant { justify-content: flex-start; }
+
+        .sa-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+        .sa-msg-assistant .sa-avatar { margin-right: 8px; }
+        .sa-msg-user .sa-avatar { margin-left: 8px; }
+
+        .sa-bubble {
+            max-width: 75%;
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 14px;
+            line-height: 1.6;
+            word-break: break-word;
+            font-family: var(--font-mono, 'Consolas', 'Monaco', monospace);
+        }
+        .sa-msg-user .sa-bubble {
+            background: var(--accent-color, #4a90e2);
+            color: #fff;
+            border-top-right-radius: 3px;
+            white-space: pre-wrap;
+        }
+        .sa-msg-assistant .sa-bubble {
+            background: var(--bg-secondary, #22252e);
+            border: 1px solid var(--border-color, #373c47);
+            color: var(--text-primary, #e0e0e0);
+            border-top-left-radius: 3px;
+        }
+
+        /* markdown rendered content */
+        .sa-msg-assistant .sa-bubble p { margin: 0 0 8px; }
+        .sa-msg-assistant .sa-bubble p:last-child { margin-bottom: 0; }
+        .sa-msg-assistant .sa-bubble h1,
+        .sa-msg-assistant .sa-bubble h2,
+        .sa-msg-assistant .sa-bubble h3,
+        .sa-msg-assistant .sa-bubble h4 {
+            margin: 10px 0 4px;
+            font-size: 14px;
+            font-weight: 700;
+        }
+        .sa-msg-assistant .sa-bubble ul,
+        .sa-msg-assistant .sa-bubble ol {
+            margin: 4px 0 8px;
+            padding-left: 20px;
+        }
+        .sa-msg-assistant .sa-bubble li { margin-bottom: 2px; }
+        /* inline code */
+        .sa-msg-assistant .sa-bubble code {
+            background: #2d2f36;
+            border: 1px solid var(--border-color, #373c47);
+            border-radius: 3px;
+            padding: 1px 5px;
+            font-size: 12px;
+            font-family: var(--font-mono, 'Consolas', 'Monaco', monospace);
+            color: #e5c46a;
+        }
+        /* code block: let hljs handle background/padding via its theme */
+        .sa-msg-assistant .sa-bubble pre {
+            border: 1px solid var(--border-color, #373c47);
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 6px 0;
+            padding: 0;
+        }
+        .sa-msg-assistant .sa-bubble pre code {
+            border: none;
+            border-radius: 6px;
+            padding: 10px 12px;
+            font-size: 12px;
+            color: inherit;
+            background: transparent;
+        }
+        /* light theme overrides for inline code */
+        body.sa-theme-light .sa-msg-assistant .sa-bubble code {
+            background: #f0ead6;
+            border-color: #d0c8a8;
+            color: #b07d00;
+        }
+        .sa-msg-assistant .sa-bubble table {
+            border-collapse: collapse;
+            margin: 6px 0 10px;
+            font-size: 12px;
+            width: auto;
+        }
+        .sa-msg-assistant .sa-bubble th,
+        .sa-msg-assistant .sa-bubble td {
+            border: 1px solid var(--border-color, #373c47);
+            padding: 5px 10px;
+            text-align: left;
+        }
+        .sa-msg-assistant .sa-bubble th {
+            background: #2a2f38;
+            font-weight: 600;
+        }
+        .sa-msg-assistant .sa-bubble td {
+            background: #1e2229;
+        }
+        .sa-msg-assistant .sa-bubble tbody tr:nth-child(even) td {
+            background: #232830;
+        }
+        .sa-msg-assistant .sa-bubble blockquote {
+            border-left: 3px solid var(--accent-color, #4a90e2);
+            margin: 6px 0;
+            padding: 4px 10px;
+            color: var(--text-secondary, #a0a0a0);
+        }
+        .sa-msg-assistant .sa-bubble hr {
+            border: none;
+            border-top: 1px solid var(--border-color, #373c47);
+            margin: 8px 0;
+        }
+        .sa-msg-assistant .sa-bubble a {
+            color: var(--accent-color, #4a90e2);
+            text-decoration: none;
+        }
+        .sa-msg-assistant .sa-bubble strong { font-weight: 700; }
+        .sa-msg-assistant .sa-bubble em { font-style: italic; }
+
+        .sa-thinking {
+            display: flex;
+            align-items: center;
+            margin-bottom: 14px;
+        }
+        .sa-thinking-dots {
+            display: flex;
+            align-items: center;
+            background: var(--bg-secondary, #22252e);
+            border: 1px solid var(--border-color, #373c47);
+            border-radius: 10px;
+            padding: 10px 16px;
+        }
+        .sa-thinking-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--text-secondary, #a0a0a0);
+            margin-right: 5px;
+            animation: sa-blink 1.2s ease-in-out infinite;
+        }
+        .sa-thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+        .sa-thinking-dot:nth-child(3) { animation-delay: 0.4s; margin-right: 0; }
+        @keyframes sa-blink {
+            0%, 80%, 100% { opacity: 0.3; }
+            40% { opacity: 1; }
+        }
+
+        .sa-error-msg {
+            color: var(--danger-color, #e74c3c);
+            font-size: 12px;
+            padding: 6px 12px;
+            margin-bottom: 8px;
+        }
+
+        /* ── Input area ── */
+        .sa-input-area {
+            display: flex;
+            align-items: flex-end;
+            padding: 12px 16px;
+            border-top: 1px solid var(--border-color, #373c47);
+            background: var(--bg-secondary, #22252e);
+            flex-shrink: 0;
+        }
+        #chat-input {
+            flex: 1;
+            resize: none;
+            background: var(--bg-primary, #1a1d23);
+            border: 1px solid var(--border-color, #373c47);
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 14px;
+            color: var(--text-primary, #e0e0e0);
+            font-family: var(--font-mono, 'Consolas', 'Monaco', monospace);
+            outline: none;
+            min-height: 38px;
+            max-height: 120px;
+            overflow-y: auto;
+            margin-right: 8px;
+        }
+        #chat-input:focus {
+            border-color: var(--accent-color, #4a90e2);
+        }
+        #chat-input:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        #btn-send {
+            width: 36px;
+            height: 36px;
+            border-radius: 6px;
+            background: var(--accent-color, #4a90e2);
+            border: none;
+            color: #fff;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        #btn-send:hover { opacity: 0.85; }
+        #btn-send:disabled { opacity: 0.4; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+<!-- ── Phase 1: Connecting ── -->
+<div class="sa-overlay active" id="overlay-connect">
+    <div class="sa-spinner" id="connect-spinner"></div>
+    <div class="sa-status-text" id="connect-status" data-en="Connecting to llamacpp server..." data-ko="llamacpp 서버에 연결 중...">Connecting to llamacpp server...</div>
+    <div class="sa-error-text" id="connect-error" style="display:none;"></div>
+    <button class="sa-btn" id="btn-retry-connect" style="display:none;" onclick="startConnect()" data-en="Retry" data-ko="재시도">Retry</button>
+</div>
+
+<!-- ── Phase 2: CIW selection ── -->
+<div class="sa-overlay" id="overlay-ciw">
+    <div class="sa-section-title" data-en="Select CIW Window" data-ko="CIW 창 선택">Select CIW Window</div>
+    <ul class="sa-list" id="ciw-list"></ul>
+    <div class="sa-error-text" id="ciw-error" style="display:none;"></div>
+    <button class="sa-btn-secondary" onclick="startConnect()" data-en="Back" data-ko="뒤로">Back</button>
+</div>
+
+<!-- ── Phase 3: Agent selection ── -->
+<div class="sa-overlay" id="overlay-agent">
+    <div class="sa-section-title" data-en="Select Agent" data-ko="에이전트 선택">Select Agent</div>
+    <ul class="sa-list" id="agent-list"></ul>
+    <div class="sa-error-text" id="agent-error" style="display:none;"></div>
+</div>
+
+<!-- ── Phase 4: Initializing ── -->
+<div class="sa-overlay" id="overlay-init">
+    <div class="sa-spinner"></div>
+    <div class="sa-status-text" data-en="Initializing agent..." data-ko="에이전트 초기화 중...">Initializing agent...</div>
+    <div class="sa-error-text" id="init-error" style="display:none;"></div>
+    <button class="sa-btn" id="btn-init-back" style="display:none;" onclick="backToAgent()" data-en="Back" data-ko="뒤로">Back</button>
+</div>
+
+<!-- ── Phase 5: Chat ── -->
+<div id="chat-ui">
+    <div class="sa-chat-header">
+        <div class="sa-chat-agent-name" id="header-agent-name"></div>
+        <div class="sa-chat-ciw-label" id="header-ciw-label"></div>
+        <button id="btn-log" class="sa-header-btn" onclick="toggleLog()" aria-label="Toggle log"
+            data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="로그 활성화"
+            data-tooltip-en-off="Enable log" data-tooltip-ko-off="로그 활성화"
+            data-tooltip-en-on="Log: /tmp/skillup/skillupagent/log.txt" data-tooltip-ko-on="로그경로: /tmp/skillup/skillupagent/log.txt">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+                <polyline points="10 9 9 9 8 9"/>
+            </svg>
+        </button>
+        <button class="sa-header-btn" onclick="resetSession()" aria-label="Reset session"
+            data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="초기화"
+            data-tooltip-en="Reset" data-tooltip-ko="초기화">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 4v6h-6"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+        </button>
+    </div>
+    <div id="chat-messages"></div>
+    <div class="sa-input-area">
+        <textarea id="chat-input" rows="1" disabled
+            placeholder="Type a message..."
+            onkeydown="onInputKeydown(event)"
+            oninput="autoResize(this)"></textarea>
+        <button id="btn-send" disabled onclick="sendMessage()" aria-label="Send">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2 8L14 2L10 8L14 14L2 8Z" fill="currentColor"/>
+            </svg>
+        </button>
+    </div>
+</div>
+
+<script>
+    // ── marked + hljs setup ───────────────────────────────────────
+    if (window.marked) {
+        marked.setOptions({ gfm: true, breaks: true });
+    }
+
+    function _applyHljsTheme(theme) {
+        var isDark = (theme !== 'white');
+        var href = isDark
+            ? '/common/highlight.js/11.x/styles/github-dark.min.css'
+            : '/common/highlight.js/11.x/styles/github.min.css';
+        var el = document.getElementById('hljs-theme');
+        if (el) el.href = href;
+        if (isDark) {
+            document.body.classList.remove('sa-theme-light');
+        } else {
+            document.body.classList.add('sa-theme-light');
+        }
+    }
+
+    // ── State ────────────────────────────────────────────────────
+    let _phase = 'connect';   // connect | ciw | agent | init | chat
+    let _selectedCiw   = null;
+    let _selectedAgent = null;
+    let _thinking      = false;
+    let _lang          = 'ko';
+    let _ciwWindows    = [];
+    let _afterHostDialog = false;  // true when retrying after host dialog
+    let _logEnabled    = false;
+
+    // ── i18n ─────────────────────────────────────────────────────
+    function applyLang(lang) {
+        _lang = lang || 'ko';
+        document.querySelectorAll('[data-' + _lang + ']').forEach(function(el) {
+            el.textContent = el.getAttribute('data-' + _lang);
+        });
+        document.querySelectorAll('[data-bs-toggle="tooltip"][data-tooltip-en][data-tooltip-ko]').forEach(function(el) {
+            var text = el.getAttribute('data-tooltip-' + _lang);
+            el.setAttribute('data-bs-title', text);
+            var tip = window.bootstrap && bootstrap.Tooltip.getInstance(el);
+            if (tip) { tip.setContent({ '.tooltip-inner': text }); }
+        });
+        _updateLogTooltip();
+        var input = document.getElementById('chat-input');
+        if (input) {
+            input.placeholder = _lang === 'ko' ? '메시지를 입력하세요...' : 'Type a message...';
+        }
+    }
+
+    function t(ko, en) {
+        return _lang === 'ko' ? ko : en;
+    }
+
+    // ── Log toggle ───────────────────────────────────────────────
+    function _updateLogTooltip() {
+        var btn = document.getElementById('btn-log');
+        if (!btn) return;
+        var suffix = _logEnabled ? '-on' : '-off';
+        var text = btn.getAttribute('data-tooltip-' + _lang + suffix);
+        if (!text) return;
+        btn.setAttribute('data-bs-title', text);
+        var tip = window.bootstrap && bootstrap.Tooltip.getInstance(btn);
+        if (tip) { tip.setContent({ '.tooltip-inner': text }); }
+    }
+
+    function toggleLog() {
+        _logEnabled = !_logEnabled;
+        var btn = document.getElementById('btn-log');
+        if (btn) btn.classList.toggle('active', _logEnabled);
+        _updateLogTooltip();
+    }
+
+    // ── Phase switching ──────────────────────────────────────────
+    function showPhase(phase) {
+        _phase = phase;
+        var overlays = ['overlay-connect','overlay-ciw','overlay-agent','overlay-init'];
+        overlays.forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.classList.remove('active');
+            }
+        });
+        var chatUi = document.getElementById('chat-ui');
+        chatUi.classList.remove('active');
+
+        if (phase === 'chat') {
+            chatUi.classList.add('active');
+        } else {
+            var overlay = document.getElementById('overlay-' + phase);
+            if (overlay) overlay.classList.add('active');
+        }
+    }
+
+    // ── Connect phase ────────────────────────────────────────────
+    function startConnect() {
+        _afterHostDialog = false;
+        _doConnect();
+    }
+
+    function _doConnect() {
+        showPhase('connect');
+        document.getElementById('connect-spinner').style.display = '';
+        document.getElementById('connect-status').style.display  = '';
+        document.getElementById('connect-error').style.display   = 'none';
+        document.getElementById('btn-retry-connect').style.display = 'none';
+
+        callPython('agent_connect', {}).then(function(r) {
+            if (r && r.success) {
+                _afterHostDialog = false;
+                loadAgentListThenCiw();
+            } else {
+                var msg = (r && r.error) || t('서버에 연결할 수 없습니다.', 'Cannot connect to server.');
+                _showConnectFailed(msg, r);
+            }
+        }).catch(function(e) {
+            _showConnectFailed(String(e), null);
+        });
+    }
+
+    function _showConnectFailed(msg, r) {
+        var host = (r && r.host) || '127.0.0.1';
+        var port = (r && r.port) || 8080;
+        var displayMsg = t(
+            '서버에 연결할 수 없습니다. (' + host + ':' + port + ')',
+            'Cannot connect to server. (' + host + ':' + port + ')'
+        );
+        document.getElementById('connect-spinner').style.display = 'none';
+        document.getElementById('connect-status').style.display  = 'none';
+        document.getElementById('connect-error').style.display   = '';
+        document.getElementById('connect-error').textContent     = displayMsg;
+        document.getElementById('btn-retry-connect').style.display = '';
+
+        if (!_afterHostDialog) {
+            _afterHostDialog = true;
+            var currentHost = (r && r.host) || '127.0.0.1';
+            var currentPort = (r && r.port) || 8080;
+            _showHostDialog(currentHost, currentPort);
+        }
+    }
+
+    function _showHostDialog(defaultHost, defaultPort) {
+        var p = window.parent;
+        if (!p || !p.desktopModal) return;
+
+        var html =
+            '<div style="margin-bottom:10px;font-size:13px;color:var(--text-secondary,#a0a0a0);">' +
+            escHtml(t('LLM 서버에 연결할 수 없습니다. IP와 PORT를 입력하세요.',
+                      'Cannot connect to LLM server. Enter the IP and PORT.')) +
+            '</div>' +
+            '<div style="display:flex;align-items:center;margin-bottom:8px;">' +
+            '<label style="width:48px;font-size:13px;flex-shrink:0;">IP</label>' +
+            '<input id="sa-host-input" type="text" value="' + escHtml(String(defaultHost)) + '" ' +
+            'style="flex:1;background:var(--bg-primary,#1a1d23);border:1px solid var(--border-color,#373c47);' +
+            'border-radius:4px;padding:5px 8px;font-size:13px;color:var(--text-primary,#e0e0e0);outline:none;">' +
+            '</div>' +
+            '<div style="display:flex;align-items:center;">' +
+            '<label style="width:48px;font-size:13px;flex-shrink:0;">PORT</label>' +
+            '<input id="sa-port-input" type="text" value="' + escHtml(String(defaultPort)) + '" ' +
+            'style="flex:1;background:var(--bg-primary,#1a1d23);border:1px solid var(--border-color,#373c47);' +
+            'border-radius:4px;padding:5px 8px;font-size:13px;color:var(--text-primary,#e0e0e0);outline:none;">' +
+            '</div>';
+
+        p.desktopModal.open({
+            title: t('서버 연결 설정', 'Server Connection'),
+            html: html,
+            buttons: [
+                {
+                    label: t('취소', 'Cancel'),
+                    onClick: function() { p.desktopModal.close(); }
+                },
+                {
+                    label: t('연결', 'Connect'),
+                    primary: true,
+                    onClick: function() {
+                        var hostEl = p.document.getElementById('sa-host-input');
+                        var portEl = p.document.getElementById('sa-port-input');
+                        if (!hostEl || !portEl) { p.desktopModal.close(); return; }
+                        var host = hostEl.value.trim();
+                        var port = parseInt(portEl.value.trim(), 10);
+                        if (!host) {
+                            hostEl.style.borderColor = 'var(--danger-color,#e74c3c)';
+                            return;
+                        }
+                        if (isNaN(port) || port < 1 || port > 65535) {
+                            portEl.style.borderColor = 'var(--danger-color,#e74c3c)';
+                            return;
+                        }
+                        p.desktopModal.close();
+                        callPython('agent_set_host', {host: host, port: port}).then(function() {
+                            _doConnect();
+                        }).catch(function() {
+                            _doConnect();
+                        });
+                    }
+                }
+            ]
+        });
+
+        setTimeout(function() {
+            var doc = p.document;
+            var hostInput = doc.getElementById('sa-host-input');
+            if (hostInput) { hostInput.select(); hostInput.focus(); }
+        }, 80);
+    }
+
+    // ── Connect → fetch agents + CIW list in parallel ────────────
+    function loadAgentListThenCiw() {
+        Promise.all([
+            callPython('agent_list', {language: _lang}),
+            callPython('agent_ciw_list', {}),
+        ]).then(function(results) {
+            var agents  = (results[0] && results[0].agents)      || [];
+            var windows = (results[1] && results[1].ciw_windows) || [];
+
+            if (agents.length === 0) {
+                // no agents at all — fall into normal CIW error path
+                _showCiwError(windows);
+                return;
+            }
+
+            var hasCiw = windows.length > 0;
+
+            if (agents.length === 1) {
+                var only = agents[0];
+                if (only.require_ciw === false) {
+                    _selectedCiw = null;
+                    selectAgent(only);
+                } else if (hasCiw) {
+                    // auto-select single CIW if only one, else show CIW list
+                    if (windows.length === 1) {
+                        selectCiw(windows[0]);
+                    } else {
+                        showCiwList(windows);
+                    }
+                } else {
+                    _showCiwError(windows);
+                }
+                return;
+            }
+
+            // multiple agents: show list; CIW-requiring agents disabled when no CIW
+            _selectedCiw = null;
+            _ciwWindows  = windows;
+            showAgentList(agents, hasCiw);
+        }).catch(function() {
+            loadCiwList();
+        });
+    }
+
+    function _showCiwError(windows) {
+        document.getElementById('connect-spinner').style.display = 'none';
+        document.getElementById('connect-status').style.display  = 'none';
+        document.getElementById('connect-error').style.display   = '';
+        document.getElementById('connect-error').textContent     =
+            t('Virtuoso CIW 창을 찾을 수 없습니다. Virtuoso가 실행 중인지 확인하세요.',
+              'Virtuoso CIW window not found. Is Virtuoso running?');
+        document.getElementById('btn-retry-connect').style.display = '';
+    }
+
+    // ── CIW phase ────────────────────────────────────────────────
+    function loadCiwList() {
+        callPython('agent_ciw_list', {}).then(function(r) {
+            var windows = (r && r.ciw_windows) || [];
+            if (windows.length === 0) {
+                document.getElementById('connect-spinner').style.display = 'none';
+                document.getElementById('connect-status').style.display  = 'none';
+                document.getElementById('connect-error').style.display   = '';
+                document.getElementById('connect-error').textContent     =
+                    t('Virtuoso CIW 창을 찾을 수 없습니다. Virtuoso가 실행 중인지 확인하세요.',
+                      'Virtuoso CIW window not found. Is Virtuoso running?');
+                document.getElementById('btn-retry-connect').style.display = '';
+                return;
+            }
+            if (windows.length === 1) {
+                // Auto-select single CIW
+                selectCiw(windows[0]);
+                return;
+            }
+            showCiwList(windows);
+        }).catch(function(e) {
+            document.getElementById('connect-error').style.display = '';
+            document.getElementById('connect-error').textContent   = String(e);
+            document.getElementById('btn-retry-connect').style.display = '';
+        });
+    }
+
+    function showCiwList(windows) {
+        var list = document.getElementById('ciw-list');
+        list.innerHTML = '';
+        windows.forEach(function(w) {
+            var li = document.createElement('li');
+            li.className = 'sa-list-item';
+            li.innerHTML =
+                '<div class="sa-list-item-title">' + escHtml(w.title || 'CIW') + '</div>' +
+                '<div class="sa-list-item-sub">PID ' + (w.pid || '-') + '</div>';
+            li.onclick = function() { selectCiw(w); };
+            list.appendChild(li);
+        });
+        document.getElementById('ciw-error').style.display = 'none';
+        showPhase('ciw');
+    }
+
+    function selectCiw(ciw) {
+        _selectedCiw = ciw;
+        loadAgentList();
+    }
+
+    function backToCiw() {
+        callPython('agent_ciw_list', {}).then(function(r) {
+            var windows = (r && r.ciw_windows) || [];
+            if (windows.length <= 1) {
+                startConnect();
+            } else {
+                showCiwList(windows);
+            }
+        }).catch(function() { startConnect(); });
+    }
+
+    // ── Agent phase ───────────────────────────────────────────────
+    function loadAgentList() {
+        callPython('agent_list', {language: _lang}).then(function(r) {
+            var agents = (r && r.agents) || [];
+            if (agents.length === 0) {
+                var errEl = document.getElementById('connect-error');
+                errEl.style.display = '';
+                errEl.textContent   = t('에이전트가 없습니다. agent 디렉토리를 확인하세요.',
+                                        'No agents found. Check the agent directory.');
+                document.getElementById('connect-spinner').style.display = 'none';
+                document.getElementById('connect-status').style.display  = 'none';
+                document.getElementById('btn-retry-connect').style.display = '';
+                showPhase('connect');
+                return;
+            }
+            if (agents.length === 1) {
+                selectAgent(agents[0]);
+                return;
+            }
+            showAgentList(agents);
+        }).catch(function(e) {
+            showPhase('connect');
+            document.getElementById('connect-error').textContent = String(e);
+            document.getElementById('connect-error').style.display = '';
+        });
+    }
+
+    function showAgentList(agents, hasCiw) {
+        // hasCiw undefined means called from CIW-already-selected path
+        var ciwAvailable = (hasCiw === undefined) ? true : hasCiw;
+        var list = document.getElementById('agent-list');
+        list.innerHTML = '';
+        agents.forEach(function(a) {
+            var li = document.createElement('li');
+            var needCiw  = a.require_ciw !== false;
+            var disabled = needCiw && !ciwAvailable;
+            li.className = 'sa-list-item' + (disabled ? ' disabled' : '');
+            li.innerHTML =
+                '<div class="sa-list-item-title">' + escHtml(a.name || a.id) +
+                (disabled ? '<span class="sa-list-item-ciw">' + t('(* CIW가 필요함)', '(* CIW required)') + '</span>' : '') +
+                '</div>' +
+                (a.desc ? '<div class="sa-list-item-sub">' + escHtml(a.desc) + '</div>' : '');
+            if (!disabled) {
+                li.onclick = function() { selectAgent(a); };
+            }
+            list.appendChild(li);
+        });
+        document.getElementById('agent-error').style.display = 'none';
+        showPhase('agent');
+    }
+
+    function backToAgent() {
+        callPython('agent_list', {language: _lang}).then(function(r) {
+            var agents = (r && r.agents) || [];
+            if (agents.length <= 1) {
+                backToCiw();
+            } else {
+                showAgentList(agents);
+            }
+        }).catch(function() { backToCiw(); });
+    }
+
+    function selectAgent(agent) {
+        _selectedAgent = agent;
+
+        if (agent.require_ciw === false) {
+            // CIW-free agent: clear any previously selected CIW
+            _selectedCiw = null;
+        } else if (!_selectedCiw) {
+            // CIW required but not yet selected: use cached list or fetch fresh
+            if (_ciwWindows.length === 1) {
+                _selectedCiw = _ciwWindows[0];
+            } else if (_ciwWindows.length > 1) {
+                showCiwList(_ciwWindows);
+                return;
+            } else {
+                loadCiwList();
+                return;
+            }
+        }
+
+        document.getElementById('init-error').style.display = 'none';
+        document.getElementById('btn-init-back').style.display = 'none';
+        showPhase('init');
+
+        var lang = (window.parent && window.parent.currentLanguage) || _lang;
+        callPython('agent_start', {
+            ciw:      _selectedCiw,
+            agent_id: agent.id,
+            language: lang,
+            log:      _logEnabled,
+        }).then(function(r) {
+            if (!r || !r.success) {
+                var err = (r && r.error) || '';
+                // Subprocess response timeout means the agent is still initializing
+                if (err === 'Subprocess response timeout') { return; }
+                var msg = err || t('에이전트 시작 실패', 'Failed to start agent');
+                document.getElementById('init-error').textContent    = msg;
+                document.getElementById('init-error').style.display  = '';
+                document.getElementById('btn-init-back').style.display = '';
+            }
+            // success: wait for onAgentEvent({type:'ready'}) via callJS
+        }).catch(function(e) {
+            document.getElementById('init-error').textContent   = String(e);
+            document.getElementById('init-error').style.display = '';
+            document.getElementById('btn-init-back').style.display = '';
+        });
+    }
+
+    // ── Chat phase ────────────────────────────────────────────────
+    function enterChat() {
+        var agentName = _selectedAgent ? (_selectedAgent.name || _selectedAgent.id) : '';
+        var ciwTitle  = _selectedCiw ? (_selectedCiw.title || 'CIW') : '';
+
+        document.getElementById('header-agent-name').textContent = agentName;
+        document.getElementById('header-ciw-label').textContent  = ciwTitle;
+
+        document.getElementById('chat-messages').innerHTML = '';
+        showPhase('chat');
+        enableInput(true);
+        document.getElementById('chat-input').focus();
+    }
+
+    function enableInput(yes) {
+        document.getElementById('chat-input').disabled = !yes;
+        document.getElementById('btn-send').disabled   = !yes;
+    }
+
+    function sendMessage() {
+        var input = document.getElementById('chat-input');
+        var msg   = input.value.trim();
+        if (!msg || _thinking) return;
+
+        if (_inputHistory[0] !== msg) _inputHistory.unshift(msg);
+        _historyIdx   = -1;
+        _historyDraft = '';
+        input.value = '';
+        autoResize(input);
+        appendUserMsg(msg);
+        showThinking();
+        enableInput(false);
+
+        callPython('agent_chat', {message: msg, log: _logEnabled}).then(function(r) {
+            if (!r || !r.success) {
+                var err = (r && r.error) || '';
+                // Subprocess response timeout means the request is still being
+                // processed in a background thread; the real result will arrive
+                // via onAgentEvent({type:'response'}). Treat as benign.
+                if (err === 'Subprocess response timeout') { return; }
+                hideThinking();
+                appendError(err || t('전송 실패', 'Send failed'));
+                enableInput(true);
+            }
+            // wait for onAgentEvent({type:'response'}) via callJS
+        }).catch(function(e) {
+            hideThinking();
+            appendError(String(e));
+            enableInput(true);
+        });
+    }
+
+    var _inputHistory = [];
+    var _historyIdx   = -1;
+    var _historyDraft = '';
+
+    function onInputKeydown(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+            return;
+        }
+        var input = document.getElementById('chat-input');
+        if (e.key === 'ArrowUp') {
+            if (_inputHistory.length === 0) return;
+            e.preventDefault();
+            if (_historyIdx === -1) _historyDraft = input.value;
+            _historyIdx = Math.min(_historyIdx + 1, _inputHistory.length - 1);
+            input.value = _inputHistory[_historyIdx];
+            autoResize(input);
+        } else if (e.key === 'ArrowDown') {
+            if (_historyIdx === -1) return;
+            e.preventDefault();
+            _historyIdx--;
+            input.value = _historyIdx === -1 ? _historyDraft : _inputHistory[_historyIdx];
+            autoResize(input);
+        }
+    }
+
+    function autoResize(el) {
+        el.style.height = 'auto';
+        el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    }
+
+    var _BOT_ICON_SVG =
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" width="36" height="36">' +
+        '<rect width="64" height="64" rx="32" fill="#1d4ed8"/>' +
+        '<rect x="16" y="22" width="32" height="24" rx="5" stroke="#fff" stroke-width="3" fill="none"/>' +
+        '<rect x="9" y="29" width="5" height="9" rx="2" fill="#fff"/>' +
+        '<rect x="50" y="29" width="5" height="9" rx="2" fill="#fff"/>' +
+        '<line x1="32" y1="22" x2="32" y2="15" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>' +
+        '<circle cx="32" cy="13" r="2.5" fill="#fff"/>' +
+        '<circle cx="25" cy="33" r="3" fill="#fff"/>' +
+        '<circle cx="39" cy="33" r="3" fill="#fff"/>' +
+        '<path d="M25 42 Q32 47 39 42" stroke="#fff" stroke-width="2.5" stroke-linecap="round" fill="none"/>' +
+        '</svg>';
+
+    function _makeAvatar(isUser) {
+        var el = document.createElement('div');
+        el.className = 'sa-avatar';
+        if (isUser) {
+            var src = '/common/resource/img/default-avatar.svg';
+            try {
+                var img = window.parent && window.parent.document.getElementById('topbar-avatar-img');
+                if (img && img.src) src = img.src;
+            } catch(e) {}
+            el.innerHTML = '<img src="' + src + '" style="width:100%;height:100%;object-fit:cover;" alt="">';
+        } else {
+            el.innerHTML = _BOT_ICON_SVG;
+        }
+        return el;
+    }
+
+    function appendUserMsg(text) {
+        var div = document.createElement('div');
+        div.className = 'sa-msg sa-msg-user';
+        var bubble = document.createElement('div');
+        bubble.className = 'sa-bubble';
+        bubble.textContent = text;
+        div.appendChild(bubble);
+        div.appendChild(_makeAvatar(true));
+        appendMsg(div);
+    }
+
+    function appendAssistantMsg(text) {
+        var div = document.createElement('div');
+        div.className = 'sa-msg sa-msg-assistant';
+        div.appendChild(_makeAvatar(false));
+        var bubble = document.createElement('div');
+        bubble.className = 'sa-bubble';
+        if (window.marked) {
+            bubble.innerHTML = marked.parse(text);
+            if (window.hljs) {
+                bubble.querySelectorAll('pre code').forEach(function(block) {
+                    hljs.highlightElement(block);
+                });
+            }
+        } else {
+            bubble.style.whiteSpace = 'pre-wrap';
+            bubble.textContent = text;
+        }
+        div.appendChild(bubble);
+        appendMsg(div);
+    }
+
+    function appendError(text) {
+        var div = document.createElement('div');
+        div.className = 'sa-error-msg';
+        div.textContent = text;
+        appendMsg(div);
+    }
+
+    function showThinking() {
+        _thinking = true;
+        var div = document.createElement('div');
+        div.className = 'sa-thinking';
+        div.id = 'thinking-indicator';
+        div.innerHTML =
+            '<div class="sa-thinking-dots">' +
+            '<div class="sa-thinking-dot"></div>' +
+            '<div class="sa-thinking-dot"></div>' +
+            '<div class="sa-thinking-dot"></div>' +
+            '</div>';
+        appendMsg(div);
+    }
+
+    function hideThinking() {
+        _thinking = false;
+        var el = document.getElementById('thinking-indicator');
+        if (el) el.parentNode.removeChild(el);
+    }
+
+    function appendMsg(el) {
+        var container = document.getElementById('chat-messages');
+        container.appendChild(el);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function resetSession() {
+        enableInput(false);
+        callPython('agent_reset', {}).then(function() {
+            startConnect();
+        }).catch(function() {
+            startConnect();
+        });
+    }
+
+    // ── callJS handler (Python -> JS) ─────────────────────────────
+    function onAgentEvent(data) {
+        var type = data && data.type;
+        if (type === 'ready') {
+            enterChat();
+            if (data.usage) {
+                appendAssistantMsg(data.usage);
+            }
+        } else if (type === 'start_error') {
+            document.getElementById('init-error').textContent   = data.error || 'Error';
+            document.getElementById('init-error').style.display = '';
+            document.getElementById('btn-init-back').style.display = '';
+        } else if (type === 'response') {
+            hideThinking();
+            appendAssistantMsg(data.content || '');
+            enableInput(true);
+            document.getElementById('chat-input').focus();
+        } else if (type === 'chat_error') {
+            hideThinking();
+            appendError(data.error || t('오류가 발생했습니다.', 'An error occurred.'));
+            enableInput(true);
+        }
+    }
+
+    // ── Utilities ─────────────────────────────────────────────────
+    function escHtml(s) {
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    // ── Language ──────────────────────────────────────────────────
+    window.addEventListener('message', function(event) {
+        var data = event.data;
+        if (!data || !data.action) return;
+        if (data.action === 'setLanguage') {
+            applyLang(data.language || 'ko');
+        } else if (data.action === 'setTheme') {
+            _applyHljsTheme(data.theme || 'default');
+        }
+    });
+
+    // ── Init ──────────────────────────────────────────────────────
+    function init() {
+        if (window.isInWebBrowser) {
+            document.getElementById('connect-status').textContent =
+                'Web browser mode: connect to desktop app to use.';
+            return;
+        }
+        try {
+            var parentLang = window.parent && window.parent.currentLanguage;
+            if (parentLang) applyLang(parentLang);
+        } catch(e) {}
+        try {
+            var themeEl = window.parent && window.parent.document.getElementById('theme-select');
+            if (themeEl) _applyHljsTheme(themeEl.value || 'default');
+        } catch(e) {}
+
+        if (window.callPythonReady) {
+            startConnect();
+        } else {
+            window.addEventListener('callPythonReady', startConnect, {once: true});
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        init();
+        if (window.parent !== window) {
+            window.parent.postMessage({action: 'viewReady'}, '*');
+        }
+        [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]')).forEach(function(el) {
+            new bootstrap.Tooltip(el);
+        });
+    });
+</script>
+</body>
+</html>

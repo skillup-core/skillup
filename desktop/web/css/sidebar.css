@@ -1,0 +1,319 @@
+/* Sidebar: nav, divider, header, brand, menu items, taskbar */
+
+.sidebar {
+    width: 180px;
+    min-width: 180px;
+    background: var(--bg-secondary);
+    display: flex;
+    flex-direction: column;
+    transition: width 0.2s ease, min-width 0.2s ease;
+    overflow: hidden;
+    position: relative;
+}
+
+.sidebar.collapsed {
+    width: 50px;
+    min-width: 50px;
+}
+
+/* Sidebar Divider (clickable border) */
+.sidebar-divider {
+    width: 3px;
+    min-width: 3px;
+    background: var(--border-color);
+    cursor: pointer;
+    position: relative;
+    transition: background 0.15s;
+    flex-shrink: 0;
+}
+
+.sidebar-divider:hover {
+    background: var(--text-secondary);
+}
+
+/* Virtual hover area (invisible) */
+.sidebar-divider::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 18px;
+    height: 80px;
+}
+
+/* Grip: centered with expanded hit area */
+.sidebar-divider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 12px;
+    height: 32px;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    background-color: var(--text-secondary);
+    background-clip: padding-box;
+    border-radius: 2px;
+    opacity: 0.4;
+}
+
+.sidebar-divider:hover::after {
+    opacity: 0.85;
+}
+
+.sidebar-header {
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color);
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.sidebar.collapsed .sidebar-header {
+    padding: 14px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sidebar.collapsed .sidebar-header h1 {
+    font-size: 0;
+    justify-content: center;
+}
+
+.sidebar.collapsed .sidebar-header h1 img {
+    margin-right: 0;
+    width: 22px;
+    height: 22px;
+    font-size: initial;
+}
+
+.sidebar.collapsed .sidebar-header h1 .brand-text {
+    display: none;
+}
+
+.sidebar.collapsed .sidebar-header p {
+    display: none;
+}
+
+.sidebar-header h1 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+}
+
+.sidebar-header h1 img {
+    width: 24px;
+    height: 24px;
+    margin-right: 8px;
+}
+
+.brand-text {
+    display: inline-flex;
+    align-items: baseline;
+    line-height: 1;
+}
+
+.brand-skill {
+    color: var(--brand-skill-color, #ffffff);
+    font-weight: 300;
+    font-size: 0.95em;
+    letter-spacing: 0px;
+    transform: scaleX(1.25);
+    display: inline-block;
+}
+
+.brand-up {
+    color: #d97706;
+    font-weight: 800;
+    font-size: 0.65em;
+    position: relative;
+    top: -6px;
+    margin-left: 7px;
+    letter-spacing: 0.5px;
+}
+
+.sidebar-header p {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 5px 0 0 0;
+}
+
+.sidebar-menu {
+    flex: 1;
+    padding: 10px 0;
+    overflow-y: auto;
+}
+
+.menu-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 20px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+}
+
+.menu-item:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.menu-item.active {
+    background: var(--bg-tertiary);
+    color: var(--accent-text);
+    border-left-color: var(--accent-text);
+}
+
+.menu-item svg {
+    width: 18px;
+    height: 18px;
+    margin-right: 12px;
+    fill: currentColor;
+    flex-shrink: 0;
+}
+
+.app-menu-icon {
+    width: 18px;
+    height: 18px;
+    margin-right: 12px;
+    flex-shrink: 0;
+    object-fit: contain;
+}
+
+.sidebar.collapsed .menu-item {
+    padding: 12px 0;
+    justify-content: center;
+    border-left: none;
+}
+
+.sidebar.collapsed .menu-item svg,
+.sidebar.collapsed .menu-item .app-menu-icon {
+    margin-right: 0;
+}
+
+.sidebar.collapsed .menu-item span {
+    display: none;
+}
+
+/* Hide text during sidebar animation */
+.sidebar.animating .menu-item span,
+.sidebar.animating .sidebar-header p,
+.sidebar.animating .menu-section-title {
+    visibility: hidden;
+}
+
+.sidebar.collapsed .menu-section-title {
+    display: none;
+}
+
+.sidebar.collapsed .menu-separator {
+    margin: 10px 8px;
+}
+
+.menu-separator {
+    height: 1px;
+    background: var(--border-color);
+    margin: 10px 15px;
+}
+
+.menu-section-title {
+    padding: 10px 20px 5px;
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    letter-spacing: 0.5px;
+}
+
+.back-to-desktop {
+    color: var(--accent-text);
+}
+
+.exit-app {
+    color: var(--error);
+}
+
+/* Taskbar running app entry */
+.taskbar-app-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 20px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+    position: relative;
+}
+
+.taskbar-app-item:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.taskbar-app-item.active {
+    background: var(--bg-tertiary);
+    color: var(--accent-text);
+    border-left-color: var(--accent-text);
+}
+
+.taskbar-app-item .taskbar-app-icon {
+    width: 18px;
+    height: 18px;
+    margin-right: 10px;
+    flex-shrink: 0;
+    object-fit: contain;
+}
+
+.taskbar-app-item .taskbar-app-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+}
+
+.taskbar-app-item .taskbar-app-close {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s;
+    flex-shrink: 0;
+    margin-left: 6px;
+    border-radius: 3px;
+    color: var(--text-secondary);
+}
+
+.taskbar-app-item:hover .taskbar-app-close {
+    opacity: 0.6;
+}
+
+.taskbar-app-item .taskbar-app-close:hover {
+    opacity: 1;
+    color: var(--error);
+    background: var(--bg-primary);
+}
+
+.sidebar.collapsed .taskbar-app-item {
+    padding: 10px 0;
+    justify-content: center;
+    border-left: none;
+}
+
+.sidebar.collapsed .taskbar-app-item .taskbar-app-name,
+.sidebar.collapsed .taskbar-app-item .taskbar-app-close {
+    display: none;
+}
+
+.sidebar.collapsed .taskbar-app-item .taskbar-app-icon {
+    margin-right: 0;
+}

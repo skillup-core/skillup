@@ -1,0 +1,64 @@
+/* App Content Area: iframe management */
+
+#app-content {
+    padding: 0;
+    height: 100%;
+    overflow-y: auto;
+    position: relative;
+}
+
+#app-content.active {
+    display: block;
+}
+
+/* When app-content is "hidden" but preserving iframe state,
+   keep layout dimensions intact to prevent scroll position reset */
+#app-content.preserve-hidden {
+    visibility: hidden !important;
+    pointer-events: none !important;
+    position: absolute !important;
+    z-index: -1 !important;
+}
+
+/* Iframe visibility management - prevent flicker during page transitions */
+#app-content iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+#app-content iframe.iframe-visible {
+    visibility: visible;
+    pointer-events: auto;
+}
+
+/* App Dashboard Style */
+.app-dashboard {
+    padding: 20px;
+}
+
+.app-section {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.app-section h3 {
+    font-size: 16px;
+    margin-bottom: 15px;
+    color: var(--accent-text);
+    display: flex;
+    align-items: center;
+}
+
+.app-section h3 svg {
+    width: 20px;
+    height: 20px;
+    margin-right: 10px;
+    fill: currentColor;
+}

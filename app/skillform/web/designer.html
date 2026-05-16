@@ -1,0 +1,2417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Form Designer - Skill Form</title>
+    <script src="/common/script/appinit.js" onerror="this.onerror=null;this.src='../../../../web/common/script/appinit.js';"></script>
+    <link rel="stylesheet" href="/common/style/default.css">
+    <link rel="stylesheet" href="/common/bootstrap/5.3.3/bootstrap.min.css">
+    <script src="/common/bootstrap/5.3.3/bootstrap.bundle.min.js"></script>
+    <style>
+        html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+        .sfd-recent-tooltip { z-index: 100100 !important; }
+        .sfd-recent-tooltip .tooltip-inner { max-width: none; white-space: nowrap; }
+    </style>
+</head>
+<body>
+<link rel="stylesheet" href="skillform.css" onerror="this.onerror=null;this.href='/app/skillform/skillform.css';">
+
+<div class="sfd-root" id="sfd-root-el">
+
+    <!-- ── Top toolbar ───────────────────────────────────────────── -->
+    <div class="sfd-topbar">
+        <span class="sfd-title" id="tb-title">Form Designer</span>
+        <div class="sfd-topbar-mid">
+            <div class="sfd-toolbar-file">
+                <button class="sfd-icon-btn" onclick="doNew()" aria-label="New" data-i18n-key="New">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="1" width="8" height="14" rx="1"/><polyline points="9,1 9,5 13,5"/><line x1="9" y1="1" x2="13" y2="5"/></svg>
+                </button>
+                <button class="sfd-icon-btn" onclick="doOpen()" aria-label="Open" data-i18n-key="Open">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 4.5h14v9a1 1 0 01-1 1H2a1 1 0 01-1-1V4.5z"/><path d="M1 4.5l2.5-3h4l1.5 1.5H14a1 1 0 011 1V6"/></svg>
+                </button>
+                <button class="sfd-icon-btn sfd-icon-btn-save" onclick="doSave()" aria-label="Save" data-i18n-key="Save" id="btn-save" aria-disabled="true">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="14" height="14" rx="1.5"/><rect x="4" y="1" width="8" height="5" rx="0.5" fill="currentColor" stroke="none" opacity="0.4"/><rect x="4" y="9" width="8" height="5" rx="0.5"/></svg>
+                </button>
+                <div class="sfd-filepath-label-wrap">
+                    <span class="sfd-filepath-label" id="tb-filepath-label"></span>
+                </div>
+            </div>
+        </div>
+        <div class="sfd-topbar-actions">
+            <button class="sfd-icon-btn sfd-icon-btn-run" onclick="doRun()" aria-label="Run" data-i18n-key="Run" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                <svg viewBox="0 0 16 16" fill="currentColor"><polygon points="4,2 14,8 4,14"/></svg>
+            </button>
+            <button class="sfd-icon-btn sfd-icon-btn-code" onclick="doShowCode()" aria-label="Code" data-i18n-key="Code" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="5,4 1,8 5,12"/><polyline points="11,4 15,8 11,12"/><line x1="9" y1="2" x2="7" y2="14"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- ── Main area ─────────────────────────────────────────────── -->
+    <div class="sfd-main">
+
+        <!-- Left: component palette -->
+        <div class="sfd-palette">
+            <div id="palette-list"></div>
+        </div>
+
+        <!-- Center: canvas -->
+        <div id="sfd-canvas" class="sfd-canvas">
+            <div id="sfd-canvas-inner" class="sfd-canvas-inner"></div>
+        </div>
+
+        <!-- Resizer between canvas and properties panel -->
+        <div class="sfd-props-resizer" id="sfd-props-resizer"></div>
+
+        <!-- Right: properties panel -->
+        <div class="sfd-props" id="sfd-props">
+            <div class="sfd-props-title" id="sfd-props-title">Properties</div>
+            <div id="sfd-props-body">
+                <div class="sfd-props-empty" id="sfd-props-empty">Select a component</div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+// ================================================================
+// CONFIG
+// ================================================================
+const COMPONENT_TYPES = [
+    { type:'text',      label:'Text',       icon:'T',  defaultW:6, defaultH:1 },
+    { type:'number',    label:'Number',     icon:'#',  defaultW:3, defaultH:1 },
+    { type:'checkbox',  label:'Checkbox',   icon:'☑',  defaultW:4, defaultH:1 },
+    { type:'toggle',    label:'Toggle',     icon:'⊙',  defaultW:3, defaultH:1 },
+    { type:'dropdown',  label:'Dropdown',   icon:'▾',  defaultW:6, defaultH:1 },
+    { type:'radio',     label:'Radio',      icon:'◉',  defaultW:6, defaultH:2 },
+    { type:'textarea',  label:'Textarea',   icon:'¶',  defaultW:12,defaultH:2 },
+    { type:'file',      label:'File Path',  icon:'📁︎', defaultW:8, defaultH:1 },
+    { type:'date',      label:'Date',       icon:'📅︎', defaultW:4, defaultH:1 },
+    { type:'color',     label:'Color',      icon:'🎨︎', defaultW:3, defaultH:1 },
+    { type:'slider',    label:'Slider',     icon:'↔',  defaultW:6, defaultH:1 },
+    { type:'label',     label:'Label',      icon:'Aa', defaultW:6, defaultH:1 },
+    { type:'separator', label:'Separator',  icon:'—',  defaultW:12,defaultH:1 },
+    { type:'button',    label:'Button',     icon:'▶',  defaultW:3, defaultH:1 },
+    { type:'board',     label:'List',       icon:'☰',  defaultW:12,defaultH:6 },
+    { type:'info',      label:'Info',        icon:'ℹ',  defaultW:6, defaultH:1 },
+];
+
+const COMPONENT_GROUPS = [
+    {
+        key: 'basic',
+        labelKey: 'palette.group_basic',
+        expanded: true,
+        types: ['text','number','checkbox','toggle','dropdown','radio','textarea','slider','label','button']
+    },
+    {
+        key: 'advanced',
+        labelKey: 'palette.group_advanced',
+        expanded: false,
+        types: ['file','date','color','separator']
+    },
+    {
+        key: 'board',
+        labelKey: 'palette.group_board',
+        expanded: false,
+        types: ['board','info']
+    }
+];
+
+// ================================================================
+// CONFIG
+// ================================================================
+const GRID_CELL_W = 56;
+const GRID_ROW_H = 64;
+
+// ================================================================
+// STATE
+// ================================================================
+let gridRowH  = GRID_ROW_H;
+let fields    = [];      // array of field objects
+let selectedId = null;
+let currentFile = '';
+let recentFiles = [];
+let panX = 0;
+let panY = 0;
+
+// Document-level properties
+let docProps = {
+    formName: 'My Form',
+    fontSize: 16,   // px
+    formSize: { mode: 'auto', cols: 0, rows: 0 },  // window size: auto=fit to fields, set=explicit grid count
+    theme: 'light',  // 'auto'=follow Skillup setting, 'light'=force light, 'dark'=force dark
+};
+
+let _idSeq = 0;
+function newId() { return 'f' + (++_idSeq); }
+function generateUUID() {
+    if (crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+}
+
+// drag state
+let drag = null;
+/*
+  drag = {
+    mode: 'palette'|'move'|'resize',
+    type: component type (palette mode)
+    fieldId: (move/resize mode)
+    ghostEl: HTMLElement,
+    startX, startY,         // mousedown position
+    originCol, originRow,   // field original col/row (move)
+    originW, originH,       // field original w/h (resize)
+  }
+*/
+
+// ================================================================
+// GRID HELPERS
+// ================================================================
+function getCanvas()   { return document.getElementById('sfd-canvas'); }
+function getInner()    { return document.getElementById('sfd-canvas-inner'); }
+
+function cellSize() {
+    return { cw: GRID_CELL_W, rh: gridRowH };
+}
+
+function pxToCell(px, py) {
+    const { cw, rh } = cellSize();
+    return {
+        col: Math.max(0, Math.floor(px / cw)),
+        row: Math.max(0, Math.floor(py / rh))
+    };
+}
+
+function cellToPx(col, row) {
+    const { cw, rh } = cellSize();
+    return { x: col * cw, y: row * rh };
+}
+
+function fieldPx(f) {
+    const { cw, rh } = cellSize();
+    return { x: f.col * cw, y: f.row * rh, w: f.w * cw, h: f.h * rh };
+}
+
+// ================================================================
+// RENDER CANVAS
+// ================================================================
+function renderCanvas(pushToRunner = true) {
+    const wrap  = getCanvas();
+    const inner = getInner();
+
+    const { cw, rh } = cellSize();
+    wrap.style.backgroundSize     = cw + 'px ' + rh + 'px';
+    wrap.style.backgroundPosition = (panX % cw) + 'px ' + (panY % rh) + 'px';
+
+    // inner height: enough to hold all fields + extra room
+    let maxRow = 4;
+    fields.forEach(f => { maxRow = Math.max(maxRow, f.row + f.h); });
+    inner.style.height = (maxRow + 20) * rh + 'px';
+
+    // Apply pan offset to inner
+    inner.style.transform = 'translate(' + panX + 'px, ' + panY + 'px)';
+
+    // Remove old field elements (placeholder survives, but reset ref if detached)
+    Array.from(inner.querySelectorAll('.sfd-field')).forEach(el => el.remove());
+    Array.from(inner.querySelectorAll('.sfd-size-boundary')).forEach(el => el.remove());
+    if (_dropPlaceholder && !inner.contains(_dropPlaceholder)) _dropPlaceholder = null;
+
+    // Render fields into inner
+    // Render separators first so they appear below other components
+    const sorted = [...fields].sort((a, b) => (a.type === 'separator' ? -1 : 0) - (b.type === 'separator' ? -1 : 0));
+    sorted.forEach(f => {
+        const el = createFieldEl(f);
+        inner.appendChild(el);
+    });
+
+    // Draw form size boundary if mode is "set"
+    const fs = docProps.formSize || { mode: 'auto', cols: 0, rows: 0 };
+    if (fs.mode === 'set' && fs.cols > 0 && fs.rows > 0) {
+        const boundaryW = fs.cols * cw;
+        const boundaryH = fs.rows * rh;
+        const vline = document.createElement('div');
+        vline.className = 'sfd-size-boundary';
+        vline.style.position = 'absolute';
+        vline.style.left = boundaryW + 'px';
+        vline.style.top = '0';
+        vline.style.width = '1px';
+        vline.style.height = boundaryH + 'px';
+        vline.style.borderLeft = '2px dashed var(--color-primary, #0d6efd)';
+        vline.style.pointerEvents = 'none';
+        inner.appendChild(vline);
+
+        const hline = document.createElement('div');
+        hline.className = 'sfd-size-boundary';
+        hline.style.position = 'absolute';
+        hline.style.left = '0';
+        hline.style.top = boundaryH + 'px';
+        hline.style.width = boundaryW + 'px';
+        hline.style.height = '1px';
+        hline.style.borderTop = '2px dashed var(--color-primary, #0d6efd)';
+        hline.style.pointerEvents = 'none';
+        inner.appendChild(hline);
+    }
+
+}
+
+function createFieldEl(f) {
+    let { x, y, w, h } = fieldPx(f);
+    const { cw, rh } = cellSize();
+
+    // Separator box: adjust position/size by center vs edge
+    if (f.type === 'separator' && (f.lineType || 'horizontal') === 'box') {
+        const isEdge = f.align === 'edge';
+        const ox = isEdge ? 0 : cw / 2;
+        const oy = isEdge ? 0 : rh / 2;
+        x += ox; y += oy; w -= ox * 2; h -= oy * 2;
+    }
+
+    const el = document.createElement('div');
+    el.className = 'sfd-field' + (f.id === selectedId ? ' sfd-field-selected' : '');
+    el.dataset.id = f.id;
+    el.style.left   = x + 'px';
+    el.style.top    = y + 'px';
+    el.style.width  = w + 'px';
+    el.style.height = h + 'px';
+
+    const meta = COMPONENT_TYPES.find(c => c.type === f.type) || { icon: '?', label: f.type };
+
+    if (f.type === 'separator') {
+        const lt = f.lineType || 'horizontal';
+        const isEdge = f.align === 'edge';
+        el.style.border = 'none';
+        el.style.background = 'transparent';
+        el.style.padding = '0';
+        el.style.overflow = 'visible';
+        if (lt === 'vertical') {
+            el.style.flexDirection = 'column';
+            el.style.alignItems = isEdge ? 'flex-start' : 'center';
+            el.innerHTML = `
+                <div style="width:2px;flex:1;background:var(--border-color,#ced4da)"></div>
+                <div class="sfd-field-resize" data-id="${f.id}"></div>
+                <button class="sfd-field-del" data-id="${f.id}">✕</button>
+            `;
+        } else if (lt === 'box') {
+            el.style.border = '2px solid var(--border-color,#ced4da)';
+            el.style.borderRadius = '0';
+            el.innerHTML = `
+                <div class="sfd-field-resize" data-id="${f.id}"></div>
+                <button class="sfd-field-del sfd-field-del-overlay" data-id="${f.id}">✕</button>
+            `;
+        } else {
+            el.style.alignItems = isEdge ? 'flex-start' : 'center';
+            el.innerHTML = `
+                <div style="flex:1;height:2px;background:var(--border-color,#ced4da)"></div>
+                <div class="sfd-field-resize" data-id="${f.id}"></div>
+                <button class="sfd-field-del" data-id="${f.id}">✕</button>
+            `;
+        }
+    } else {
+        el.innerHTML = `
+            <div class="sfd-field-icon">${meta.icon}</div>
+            <div class="sfd-field-body">
+                <div class="sfd-field-type">${meta.label}</div>
+                <div class="sfd-field-label">${f.type === 'info' ? (t(_INFO_FIELD_LABEL_KEYS[f.infoField]) || f.infoField || '') : (f.label || '')}</div>
+            </div>
+            <div class="sfd-field-resize" data-id="${f.id}"></div>
+            <button class="sfd-field-del" data-id="${f.id}">✕</button>
+        `;
+    }
+
+    // Select on left-click; right-click passes through to pan
+    el.addEventListener('mousedown', function(e) {
+        if (e.button !== 0) return;
+        if (e.target.classList.contains('sfd-field-resize')) return;
+        if (e.target.classList.contains('sfd-field-del')) return;
+        e.stopPropagation();
+        if (drag) return;
+        selectField(f.id);
+        startMoveDrag(e, f.id);
+    });
+
+    // Double-click: focus label input in properties panel
+    el.addEventListener('dblclick', function(e) {
+        e.stopPropagation();
+        drag = null;
+        selectField(f.id);
+        const input = document.querySelector('#sfd-props-body input[type="text"]');
+        if (input) { input.focus(); input.select(); }
+    });
+
+    // Delete button
+    el.querySelector('.sfd-field-del').addEventListener('click', function(e) {
+        e.stopPropagation();
+        deleteField(f.id);
+    });
+
+    // Resize handle (not present for separator)
+    const resizeHandle = el.querySelector('.sfd-field-resize');
+    if (resizeHandle) {
+        resizeHandle.addEventListener('mousedown', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            startResizeDrag(e, f.id);
+        });
+    }
+
+    return el;
+}
+
+// ================================================================
+// FIELD OPERATIONS
+// ================================================================
+function addField(type, col, row) {
+    const meta = COMPONENT_TYPES.find(c => c.type === type);
+    const w = meta.defaultW;
+    const h = meta.defaultH;
+    const f = {
+        id:    newId(),
+        type:  type,
+        label: (type === 'info') ? undefined : meta.label,
+        col:   col,
+        row:   row,
+        w:     w,
+        h:     h,
+        // type-specific defaults
+        required:    false,
+        placeholder: '',
+        default:     '',
+        options:     (type === 'dropdown' || type === 'radio') ? ['Option 1', 'Option 2'] : undefined,
+        font:        (type !== 'separator' && type !== 'button') ? 'mono' : undefined,
+        align:       (type === 'separator') ? 'center' : undefined,
+        lineType:    (type === 'separator') ? 'horizontal' : undefined,
+        variant:     (type === 'button') ? 'primary' : undefined,
+        boardCommand:(type === 'button') ? 'NONE' : undefined,
+        detailFormPath: (type === 'board') ? '' : undefined,
+        listColumns: (type === 'board') ? [] : undefined,
+        infoField: (type === 'info') ? '@author' : undefined,
+        dirOnly:     (type === 'file') ? false : undefined,
+        filter:      (type === 'file') ? '' : undefined,
+        min:         (type === 'number' || type === 'slider') ? '' : undefined,
+        max:         (type === 'number' || type === 'slider') ? '' : undefined,
+        step:        (type === 'slider') ? 1 : undefined,
+        multiline:   false,
+        readonly:    false,
+    };
+    // Remove undefined keys
+    Object.keys(f).forEach(k => { if (f[k] === undefined) delete f[k]; });
+    fields.push(f);
+    selectField(f.id);
+    renderCanvas();
+    return f;
+}
+
+async function deleteField(id) {
+    const f = fields.find(f => f.id === id);
+    const label = (f && f.label) ? f.label : id;
+    const confirmed = await parent.showConfirmDialog(
+        t('dlg.delete_field_title'),
+        t('dlg.delete_field_msg').replace('{label}', label),
+        { yesStyle: 'danger' }
+    );
+    if (!confirmed) return;
+    fields = fields.filter(f => f.id !== id);
+    if (selectedId === id) { selectedId = null; renderProps(); }
+    renderCanvas();
+}
+
+function selectField(id) {
+    if (selectedId === id) return;
+    // Update selected class in-place without rebuilding the whole DOM
+    const inner = getInner();
+    inner.querySelectorAll('.sfd-field').forEach(el => {
+        el.classList.toggle('sfd-field-selected', el.dataset.id === id);
+    });
+    selectedId = id;
+    renderProps();
+}
+
+
+const _INFO_FIELD_LABEL_KEYS = {
+    '@author':     'props.board_sys_author',
+    '@created_at': 'props.board_sys_created_at',
+    '@updated_at': 'props.board_sys_updated_at',
+    '@row_id':     'props.board_sys_row_id',
+    '@record_id':  'props.board_sys_record_id',
+};
+
+function updateInfoField(id, sysFieldId) {
+    const f = fields.find(function(x) { return x.id === id; });
+    if (!f) return;
+    f.infoField = sysFieldId;
+    renderCanvas();
+    renderProps();
+}
+
+function updateField(id, key, value) {
+    const f = fields.find(f => f.id === id);
+    if (!f) return;
+    f[key] = value;
+    // Box separator needs at least 2 rows of height to be usable
+    if (f.type === 'separator' && key === 'lineType' && value === 'box' && f.h < 2) {
+        f.h = 2;
+    }
+    renderCanvas();
+}
+
+// ================================================================
+// DRAG — PALETTE
+// ================================================================
+function initPalette() {
+    const list = document.getElementById('palette-list');
+    list.innerHTML = '';
+    COMPONENT_GROUPS.forEach(function(group) {
+        const header = document.createElement('div');
+        header.className = 'sfd-palette-group-header';
+        header.appendChild(document.createTextNode(t(group.labelKey)));
+        const body = document.createElement('div');
+        body.className = 'sfd-palette-group-body';
+        if (!group.expanded) body.style.display = 'none';
+        header.addEventListener('click', function() {
+            const collapsed = body.style.display === 'none';
+            body.style.display = collapsed ? '' : 'none';
+        });
+        group.types.forEach(function(type) {
+            const meta = COMPONENT_TYPES.find(function(c) { return c.type === type; });
+            if (!meta) return;
+            const item = document.createElement('div');
+            item.className = 'sfd-palette-item';
+            item.innerHTML = '<span class="sfd-palette-icon">' + meta.icon + '</span><span>' + meta.label + '</span>';
+            item.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                startPaletteDrag(e, meta.type);
+            });
+            body.appendChild(item);
+        });
+        list.appendChild(header);
+        list.appendChild(body);
+    });
+}
+
+function startPaletteDrag(e, type) {
+    const meta = COMPONENT_TYPES.find(c => c.type === type);
+    const ghost = document.createElement('div');
+    ghost.className = 'sfd-ghost';
+    ghost.textContent = meta.label;
+    document.body.appendChild(ghost);
+    positionGhost(ghost, e.clientX, e.clientY);
+
+    drag = { mode: 'palette', type, ghostEl: ghost, startX: e.clientX, startY: e.clientY };
+    bindDragEvents();
+}
+
+// ================================================================
+// DRAG — MOVE
+// ================================================================
+const DRAG_THRESHOLD = 3; // pixels before move drag activates
+
+function startMoveDrag(e, fieldId) {
+    e.preventDefault();
+    const f = fields.find(f => f.id === fieldId);
+    if (!f) return;
+
+    // Compute mouse offset within the field so the field doesn't jump on drag start
+    const { px, py } = canvasRelPos(e.clientX, e.clientY);
+    const { cw, rh } = cellSize();
+    const offsetCol = px / cw - f.col;
+    const offsetRow = py / rh - f.row;
+
+    drag = {
+        mode: 'move', fieldId,
+        ghostEl: null,
+        startX: e.clientX, startY: e.clientY,
+        originCol: f.col, originRow: f.row,
+        offsetCol, offsetRow,
+        dragging: false   // becomes true once threshold is crossed
+    };
+    bindDragEvents();
+}
+
+// ================================================================
+// DRAG — RESIZE
+// ================================================================
+function startResizeDrag(e, fieldId) {
+    const f = fields.find(f => f.id === fieldId);
+    if (!f) return;
+    drag = {
+        mode: 'resize', fieldId,
+        ghostEl: null,
+        startX: e.clientX, startY: e.clientY,
+        originW: f.w, originH: f.h,
+        originCol: f.col, originRow: f.row
+    };
+    bindDragEvents();
+}
+
+// ================================================================
+// DRAG — COMMON EVENTS
+// ================================================================
+function bindDragEvents() {
+    document.removeEventListener('mousemove', onDragMove);
+    document.removeEventListener('mouseup',   onDragEnd);
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('mouseup',   onDragEnd);
+}
+
+function unbindDragEvents() {
+    document.removeEventListener('mousemove', onDragMove);
+    document.removeEventListener('mouseup',   onDragEnd);
+}
+
+
+function positionGhost(el, cx, cy) {
+    el.style.left = (cx + 12) + 'px';
+    el.style.top  = (cy + 4)  + 'px';
+}
+
+let _dropPlaceholder = null;
+
+function updateDropPlaceholder(col, row, w, h) {
+    const inner = getInner();
+    if (!_dropPlaceholder) {
+        _dropPlaceholder = document.createElement('div');
+        _dropPlaceholder.className = 'sfd-drop-placeholder';
+        inner.appendChild(_dropPlaceholder);
+    }
+    const { cw, rh } = cellSize();
+    _dropPlaceholder.style.left   = (col * cw) + 'px';
+    _dropPlaceholder.style.top    = (row * rh) + 'px';
+    _dropPlaceholder.style.width  = (w   * cw) + 'px';
+    _dropPlaceholder.style.height = (h   * rh) + 'px';
+}
+
+function removeDropPlaceholder() {
+    if (_dropPlaceholder) {
+        _dropPlaceholder.remove();
+        _dropPlaceholder = null;
+    }
+}
+
+function canvasRelPos(clientX, clientY) {
+    const canvas = getCanvas();
+    const rect = canvas.getBoundingClientRect();
+    return { px: clientX - rect.left - panX, py: clientY - rect.top - panY };
+}
+
+function onDragMove(e) {
+    if (!drag) return;
+
+    // Primary drag-end detection: button released (works even when mouseup was spurious)
+    if (e.buttons === 0) {
+        onDragEnd(e);
+        return;
+    }
+
+    // For move mode, activate drag only after threshold is crossed
+    if (drag.mode === 'move' && !drag.dragging) {
+        const dx = Math.abs(e.clientX - drag.startX);
+        const dy = Math.abs(e.clientY - drag.startY);
+        if (dx < DRAG_THRESHOLD && dy < DRAG_THRESHOLD) return;
+        drag.dragging = true;
+        document.body.style.cursor = 'grabbing';
+    }
+
+    if (drag.ghostEl) positionGhost(drag.ghostEl, e.clientX, e.clientY);
+
+    if (drag.mode === 'move' && drag.dragging) {
+        const { px, py } = canvasRelPos(e.clientX, e.clientY);
+        const { cw, rh } = cellSize();
+        const col = Math.floor(px / cw - drag.offsetCol);
+        const row = Math.floor(py / rh - drag.offsetRow);
+        const f = fields.find(f => f.id === drag.fieldId);
+        if (f) updateDropPlaceholder(
+            Math.max(0, col),
+            Math.max(0, row),
+            f.w, f.h
+        );
+    }
+
+    if (drag.mode === 'palette') {
+        const canvas = getCanvas();
+        const rect = canvas.getBoundingClientRect();
+        if (e.clientX >= rect.left && e.clientX <= rect.right &&
+            e.clientY >= rect.top  && e.clientY <= rect.bottom) {
+            const { px, py } = canvasRelPos(e.clientX, e.clientY);
+            const { col, row } = pxToCell(px, py);
+            const meta = COMPONENT_TYPES.find(c => c.type === drag.type);
+            if (meta) updateDropPlaceholder(
+                Math.max(0, col),
+                Math.max(0, row),
+                meta.defaultW, meta.defaultH
+            );
+        } else {
+            removeDropPlaceholder();
+        }
+    }
+
+    if (drag.mode === 'resize') {
+        const f = fields.find(f => f.id === drag.fieldId);
+        if (!f) return;
+        const { cw, rh } = cellSize();
+        const dw = Math.round((e.clientX - drag.startX) / cw);
+        const dh = Math.round((e.clientY - drag.startY) / rh);
+        f.w = Math.max(1, drag.originW + dw);
+        f.h = Math.max(1, drag.originH + dh);
+        // Update only the resizing element's size without rebuilding the whole DOM
+        const el = getInner().querySelector('.sfd-field[data-id="' + f.id + '"]');
+        if (el) {
+            const isBox = f.type === 'separator' && (f.lineType || 'horizontal') === 'box';
+            const ox = (isBox && f.align !== 'edge') ? cw / 2 : 0;
+            const oy = (isBox && f.align !== 'edge') ? rh / 2 : 0;
+            el.style.width  = (f.w * cw - ox * 2) + 'px';
+            el.style.height = (f.h * rh - oy * 2) + 'px';
+        }
+    }
+}
+
+function onDragEnd(e) {
+    if (!drag) return;
+    // move mode: mouseup before threshold — treat as click, not drag
+    if (drag.mode === 'move' && !drag.dragging) {
+        drag = null;
+        unbindDragEvents();
+        document.body.style.cursor = '';
+        return;
+    }
+
+    // Capture what we need before clearing state
+    const endDrag = drag;
+    drag = null;
+    unbindDragEvents();
+
+    if (endDrag.ghostEl) endDrag.ghostEl.remove();
+    removeDropPlaceholder();
+    document.body.style.cursor = '';
+
+    const { px, py } = canvasRelPos(e.clientX, e.clientY);
+    const { cw, rh } = cellSize();
+    const { col, row } = pxToCell(px, py);
+
+    if (endDrag.mode === 'palette') {
+        const canvas = getCanvas();
+        const rect = canvas.getBoundingClientRect();
+        if (e.clientX >= rect.left && e.clientX <= rect.right &&
+            e.clientY >= rect.top  && e.clientY <= rect.bottom) {
+            addField(endDrag.type, Math.max(0, col), Math.max(0, row));
+        }
+    } else if (endDrag.mode === 'move' && endDrag.dragging) {
+        const f = fields.find(f => f.id === endDrag.fieldId);
+        if (f) {
+            f.col = Math.max(0, Math.floor(px / cw - endDrag.offsetCol));
+            f.row = Math.max(0, Math.floor(py / rh - endDrag.offsetRow));
+            renderCanvas();
+        }
+    } else if (endDrag.mode === 'resize') {
+        renderCanvas(); // finalize resize and push to runner
+    }
+}
+
+// ================================================================
+// PROPERTIES PANEL
+// ================================================================
+function renderDocProps() {
+    const fs = docProps.formSize || { mode: 'auto', cols: 0, rows: 0 };
+    const isFixed = fs.mode === 'set';
+    const body = document.getElementById('sfd-props-body');
+    body.innerHTML = `
+        <div class="sfd-prop-section">${t('props.section.document')}</div>
+        <div class="sfd-prop-row">
+            <label>${t('props.title_name')}</label>
+            <input type="text" value="${escHtml(docProps.formName)}"
+                   oninput="docProps.formName=this.value;"
+                   onchange="docProps.formName=this.value;"/>
+        </div>
+        <div class="sfd-prop-row">
+            <label>Form ID</label>
+            <input type="text" value="${escHtml(docProps.formId||'')}" readonly style="opacity:0.6;cursor:default;font-size:0.78em;"/>
+        </div>
+        <div class="sfd-prop-row">
+            <label>${t('props.font_size')}</label>
+            <input type="number" value="${docProps.fontSize}" min="8" max="32" step="1"
+                   oninput="updateDocFontSize(parseInt(this.value)||14)"
+                   onchange="updateDocFontSize(parseInt(this.value)||14)"/>
+        </div>
+        <div class="sfd-prop-row">
+            <label>${t('props.theme')}</label>
+            <select onchange="docProps.theme=this.value">
+                <option value="light" ${(docProps.theme||'light')==='light' ? 'selected' : ''}>${t('props.theme.light')}</option>
+                <option value="dark"  ${(docProps.theme||'light')==='dark'  ? 'selected' : ''}>${t('props.theme.dark')}</option>
+                <option value="auto"  ${(docProps.theme||'light')==='auto'  ? 'selected' : ''}>${t('props.theme.auto')}</option>
+            </select>
+        </div>
+        <div class="sfd-prop-section">${t('props.section.formsize')}</div>
+        <div class="sfd-prop-row">
+            <label>${t('props.size_mode')}</label>
+            <select onchange="updateFormSizeMode(this.value)">
+                <option value="auto"  ${!isFixed ? 'selected' : ''}>${t('props.size_mode.auto')}</option>
+                <option value="set" ${isFixed  ? 'selected' : ''}>${t('props.size_mode.set')}</option>
+            </select>
+        </div>
+        <div id="sfd-formsize-fixed" style="display:${isFixed ? '' : 'none'}">
+            <div class="sfd-prop-row">
+                <label>${t('props.cols')}</label>
+                <input type="number" value="${fs.cols || ''}" min="1" step="1"
+                       oninput="updateFormSizeCols(parseInt(this.value)||0)"
+                       onchange="updateFormSizeCols(parseInt(this.value)||0)"/>
+            </div>
+            <div class="sfd-prop-row">
+                <label>${t('props.rows')}</label>
+                <input type="number" value="${fs.rows || ''}" min="1" step="1"
+                       oninput="updateFormSizeRows(parseInt(this.value)||0)"
+                       onchange="updateFormSizeRows(parseInt(this.value)||0)"/>
+            </div>
+        </div>
+    `;
+}
+
+function updateDocFontSize(size) {
+    docProps.fontSize = size;
+}
+
+function getAutofitDimensions() {
+    let maxCol = 0, maxRow = 0;
+    fields.forEach(f => {
+        maxCol = Math.max(maxCol, f.col + f.w);
+        maxRow = Math.max(maxRow, f.row + f.h);
+    });
+    return { cols: maxCol || 12, rows: maxRow || 1 };
+}
+
+function updateFormSizeMode(mode) {
+    if (!docProps.formSize) docProps.formSize = { mode: 'auto', cols: 0, rows: 0 };
+    docProps.formSize.mode = mode;
+    if (mode === 'set') {
+        const af = getAutofitDimensions();
+        docProps.formSize.cols = af.cols;
+        docProps.formSize.rows = af.rows;
+        renderProps();
+    }
+    const fixedRow = document.getElementById('sfd-formsize-fixed');
+    if (fixedRow) fixedRow.style.display = mode === 'set' ? '' : 'none';
+    renderCanvas();
+}
+
+function updateFormSizeCols(v) {
+    if (!docProps.formSize) docProps.formSize = { mode: 'set', cols: 0, rows: 0 };
+    docProps.formSize.cols = v;
+    renderCanvas();
+}
+
+function updateFormSizeRows(v) {
+    if (!docProps.formSize) docProps.formSize = { mode: 'set', cols: 0, rows: 0 };
+    docProps.formSize.rows = v;
+    renderCanvas();
+}
+
+function renderProps() {
+    const body = document.getElementById('sfd-props-body');
+    if (!selectedId) {
+        renderDocProps();
+        return;
+    }
+    const f = fields.find(f => f.id === selectedId);
+    if (!f) { body.innerHTML = `<div class="sfd-props-empty">${t('props.empty')}</div>`; return; }
+
+    let html = '';
+
+    if (f.type === 'info') {
+        const infoLabel = t(_INFO_FIELD_LABEL_KEYS[f.infoField]) || f.infoField || '';
+        html += '<div class="sfd-prop-row"><label>' + t('props.label') + '</label>' +
+            '<span style="padding:2px 4px;color:var(--text-secondary,#6c757d)">' + escHtml(infoLabel) + '</span></div>';
+    } else {
+        html += propText('label', t('props.label'), f.label || '');
+    }
+    html += propText('id', t('props.field_id'), f.id);
+    if (f.type !== 'separator' && f.type !== 'button') {
+        html += `<div class="sfd-prop-row"><label>${t('props.font')}</label>
+            <select onchange="updateField('${f.id}','font',this.value)">
+                <option value="mono" ${(f.font||'mono')==='mono'?'selected':''}>Mono</option>
+                <option value="sans" ${f.font==='sans'?'selected':''}>Sans</option>
+            </select></div>`;
+    }
+    if (f.type === 'button') {
+        html += `<div class="sfd-prop-row"><label>${t('props.variant')}</label>
+            <select onchange="updateField('${f.id}','variant',this.value)">
+                <option value="primary"   ${(f.variant||'primary')==='primary'?'selected':''}>${t('props.variant.primary')}</option>
+                <option value="secondary" ${f.variant==='secondary'?'selected':''}>${t('props.variant.secondary')}</option>
+                <option value="danger"    ${f.variant==='danger'?'selected':''}>${t('props.variant.danger')}</option>
+            </select></div>`;
+        html += `<div class="sfd-prop-section">${t('props.section.board')}</div>`;
+        html += `<div class="sfd-prop-row"><label>${t('props.board_command')}</label>
+            <select onchange="updateField('${f.id}','boardCommand',this.value)">
+                <option value="NONE"   ${(f.boardCommand||'NONE')==='NONE'?'selected':''}>NONE</option>
+                <option value="POST"   ${f.boardCommand==='POST'?'selected':''}>POST</option>
+                <option value="MODIFY" ${f.boardCommand==='MODIFY'?'selected':''}>MODIFY</option>
+                <option value="DELETE" ${f.boardCommand==='DELETE'?'selected':''}>DELETE</option>
+                <option value="LIST"   ${f.boardCommand==='LIST'?'selected':''}>LIST</option>
+            </select></div>`;
+    }
+    if (f.type !== 'label' && f.type !== 'separator' && f.type !== 'button') {
+        html += propCheck('required', t('props.required'), f.required);
+        html += propCheck('readonly', t('props.readonly'), f.readonly);
+    }
+    if (f.type === 'text' || f.type === 'textarea' || f.type === 'file') {
+        html += propText('placeholder', t('props.placeholder'), f.placeholder || '');
+    }
+    if (f.type !== 'label' && f.type !== 'separator' && f.type !== 'button') {
+        html += propText('default', t('props.default'), f.default !== undefined ? String(f.default) : '');
+    }
+
+    if (f.type === 'number' || f.type === 'slider') {
+        html += propText('min', t('props.min'), f.min !== undefined ? String(f.min) : '');
+        html += propText('max', t('props.max'), f.max !== undefined ? String(f.max) : '');
+        if (f.type === 'slider') {
+            html += propText('step', t('props.step'), f.step !== undefined ? String(f.step) : '1');
+        }
+    }
+    if (f.type === 'dropdown' || f.type === 'radio') {
+        html += propOptions('options', t('props.options'), f.options || []);
+    }
+    if (f.type === 'radio') {
+        html += propCheck('inline', t('props.inline'), f.inline || false);
+    }
+    if (f.type === 'file') {
+        html += propCheck('dirOnly', t('props.dir_only'), f.dirOnly || false);
+        html += propText('filter', t('props.filter'), f.filter || '');
+    }
+    if (f.type === 'separator') {
+        const lt = f.lineType || 'horizontal';
+        html += `<div class="sfd-prop-row"><label>${t('props.sep_type')}</label>
+            <select onchange="updateField('${f.id}','lineType',this.value)">
+                <option value="horizontal" ${lt==='horizontal'?'selected':''}>${t('props.sep_type.horizontal')}</option>
+                <option value="vertical"   ${lt==='vertical'?'selected':''}>${t('props.sep_type.vertical')}</option>
+                <option value="box"        ${lt==='box'?'selected':''}>${t('props.sep_type.box')}</option>
+            </select></div>`;
+        html += `<div class="sfd-prop-row"><label>${t('props.sep_align')}</label>
+            <select onchange="updateField('${f.id}','align',this.value)">
+                <option value="center" ${(f.align||'center')==='center'?'selected':''}>${t('props.sep_align.center')}</option>
+                <option value="edge"   ${f.align==='edge'?'selected':''}>${t('props.sep_align.edge')}</option>
+            </select></div>`;
+    }
+    if (f.type === 'textarea') {
+        html += propText('rows', t('props.textarea_rows'), f.rows !== undefined ? String(f.rows) : '3');
+    }
+    if (f.type === 'label') {
+        html += `<div class="sfd-prop-row">
+            <label>${t('props.label_size')}</label>
+            <select onchange="updateField('${f.id}','fontSize',this.value)">
+                ${['small','normal','large','h3','h2','h1'].map(s =>
+                    `<option value="${s}" ${f.fontSize===s?'selected':''}>${s}</option>`).join('')}
+            </select>
+        </div>`;
+    }
+    if (f.type === 'board') {
+        html += `<div class="sfd-prop-section">${t('props.section.board')}</div>`;
+        html += `<div class="sfd-prop-row">
+            <label>${t('props.board_detail_form')}</label>
+            <div style="display:flex;width:100%">
+                <input type="text" id="inp-detail-form-path" value="${escHtml(f.detailFormPath || '')}"
+                       style="flex:1;min-width:0"
+                       onchange="updateField('${f.id}','detailFormPath',this.value)"
+                       oninput="updateField('${f.id}','detailFormPath',this.value)"/>
+                <button id="btn-detail-form-browse" class="sfd-browse-btn">...</button>
+            </div>
+        </div>`;
+        const colSummary = _listColumnsSummary(f.listColumns || []);
+        html += `<div class="sfd-prop-row">
+            <label>${t('props.board_list_columns')}</label>
+            <button class="sfd-col-edit-btn" id="btn-list-columns-edit">${escHtml(colSummary) || t('props.board_columns_edit')}</button>
+        </div>`;
+    }
+
+    if (f.type === 'info') {
+        html += '<div class="sfd-prop-section">' + t('props.section.info') + '</div>';
+        const INFO_FIELD_OPTIONS = [
+            { id: '@author',     labelKey: 'props.board_sys_author'     },
+            { id: '@created_at', labelKey: 'props.board_sys_created_at' },
+            { id: '@updated_at', labelKey: 'props.board_sys_updated_at' },
+            { id: '@row_id',     labelKey: 'props.board_sys_row_id'     },
+            { id: '@record_id',  labelKey: 'props.board_sys_record_id'  },
+        ];
+        const cur = f.infoField || '@author';
+        const opts = INFO_FIELD_OPTIONS.map(function(sf) {
+            const sel = cur === sf.id ? ' selected' : '';
+            return '<option value="' + sf.id + '"' + sel + '>' + t(sf.labelKey) + '</option>';
+        }).join('');
+        html += '<div class="sfd-prop-row">' +
+            '<label>' + t('props.info_field') + '</label>' +
+            '<select onchange="updateInfoField(\'' + f.id + '\',this.value)">' +
+            opts + '</select></div>';
+    }
+
+    html += `<div class="sfd-prop-section">${t('props.section.grid')}</div>`;
+    html += `<div class="sfd-prop-row"><label>${t('props.grid_col')}</label><input type="number" value="${f.col}" min="0" onchange="updateFieldInt('${f.id}','col',this.value)"/></div>`;
+    html += `<div class="sfd-prop-row"><label>${t('props.grid_row')}</label><input type="number" value="${f.row}" min="0" onchange="updateFieldInt('${f.id}','row',this.value)"/></div>`;
+    html += `<div class="sfd-prop-row"><label>${t('props.grid_w')}</label><input type="number" value="${f.w}" min="1" onchange="updateFieldInt('${f.id}','w',this.value)"/></div>`;
+    html += `<div class="sfd-prop-row"><label>${t('props.grid_h')}</label><input type="number" value="${f.h}" min="1" onchange="updateFieldInt('${f.id}','h',this.value)"/></div>`;
+
+    body.innerHTML = html;
+
+    if (f.type === 'board') {
+        const editBtn = body.querySelector('#btn-list-columns-edit');
+        if (editBtn) editBtn.addEventListener('click', function() { openListColumnsDialog(f.id); });
+        const browseBtn = body.querySelector('#btn-detail-form-browse');
+        if (browseBtn) browseBtn.addEventListener('click', function() { browseDetailFormPath(f.id); });
+    }
+}
+
+function propText(key, labelText, value) {
+    return `<div class="sfd-prop-row">
+        <label>${labelText}</label>
+        <input type="text" value="${escHtml(value)}"
+               onchange="updateField('${selectedId}','${key}',this.value)"
+               oninput="updateField('${selectedId}','${key}',this.value)"/>
+    </div>`;
+}
+
+function propCheck(key, labelText, value) {
+    return `<div class="sfd-prop-row">
+        <label>${labelText}</label>
+        <input type="checkbox" ${value ? 'checked' : ''}
+               onchange="updateField('${selectedId}','${key}',this.checked)"/>
+    </div>`;
+}
+
+function propOptions(key, labelText, arr) {
+    return `<div class="sfd-prop-row sfd-prop-col">
+        <label>${labelText}</label>
+        <textarea rows="4" onchange="updateFieldOptions('${selectedId}','${key}',this.value)"
+                  oninput="updateFieldOptions('${selectedId}','${key}',this.value)">${escHtml(arr.join('\n'))}</textarea>
+    </div>`;
+}
+
+function updateFieldInt(id, key, value) {
+    updateField(id, key, parseInt(value) || 0);
+    renderProps();
+}
+
+function updateFieldOptions(id, key, value) {
+    const arr = value.split('\n').map(s => s.trim()).filter(Boolean);
+    updateField(id, key, arr);
+}
+
+function updateFieldListColumns(id, value) {
+    const arr = value.split(',').map(s => s.trim()).filter(Boolean);
+    updateField(id, 'listColumns', arr);
+}
+
+function _normalizeListColumns(raw) {
+    if (!raw || !raw.length) return [];
+    return raw.map(c => {
+        if (typeof c === 'string') return { id: c, width: '' };
+        const w = (c.width || '');
+        return { id: c.id || '', width: w === 'rest' ? 'rest' : w.replace(/%$/, '') };
+    });
+}
+
+function _listColumnsSummary(raw) {
+    const cols = _normalizeListColumns(raw);
+    if (!cols.length) return '';
+    const restIdx = cols.findIndex(c => c.width === 'rest');
+    const fixedSum = cols.filter((_, i) => i !== restIdx).reduce((a, c) => a + (parseFloat(c.width) || 0), 0);
+    const restPct = Math.max(0, 100 - fixedSum);
+    return cols.map((c, i) => {
+        if (i === restIdx) return `${c.id}(${restPct}%)`;
+        const n = parseFloat(c.width);
+        return isNaN(n) ? c.id : `${c.id}(${n}%)`;
+    }).join(', ');
+}
+
+// ================================================================
+// LIST COLUMNS DIALOG
+// ================================================================
+function openListColumnsDialog(fieldId) {
+    const field = fields.find(f => f.id === fieldId);
+    if (!field) return;
+
+    const detailPath = (field.detailFormPath || '').trim();
+    const systemFields = [
+        { id: '@row_id',     label: t('props.board_sys_row_id')     },
+        { id: '@created_at', label: t('props.board_sys_created_at') },
+        { id: '@updated_at', label: t('props.board_sys_updated_at') },
+        { id: '@record_id',  label: t('props.board_sys_record_id')  },
+        { id: '@author',     label: t('props.board_sys_author')     },
+    ];
+    const currentCols = _normalizeListColumns(field.listColumns || []);
+
+    // Show dialog immediately; load detail fields asynchronously if path is set
+    const dlg = _showListColumnsDialog(fieldId, [], systemFields, currentCols);
+
+    if (detailPath && dlg) {
+        callPython('board_read_detail_fields', { path: detailPath }).then(function(res) {
+            const af = (res && res.fields) ? res.fields : [];
+            dlg.refreshFields(af);
+        }).catch(function() {});
+    }
+}
+
+async function browseDetailFormPath(fieldId) {
+    const field = fields.find(f => f.id === fieldId);
+    if (!field) return;
+    const existingPath = field.detailFormPath || '';
+    const startDir = existingPath
+        ? existingPath.replace(/\/[^/]+$/, '') || '/'
+        : (currentFile ? currentFile.replace(/\/[^/]+$/, '') || '/' : '~');
+    const r = await _showWebFileDialog('file', {
+        language: window._currentLang || 'en',
+        filter: '*.json',
+        startDir,
+    });
+    if (!r || !r.success || !r.path) return;
+    updateField(fieldId, 'detailFormPath', r.path);
+    renderProps();
+}
+
+function _showListColumnsDialog(fieldId, availableFields, systemFields, currentCols) {
+    try {
+    let allFields = [...availableFields, ...systemFields];
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:9000;';
+
+    function buildRows(cols) {
+        return cols.map((c, i) => {
+            const isRest = c.width === 'rest';
+            const widthVal = isRest ? '' : (c.width || '');
+            const fieldLabel = allFields.find(f => f.id === c.id);
+            const label = fieldLabel ? `${fieldLabel.label} (${c.id})` : c.id;
+            return `<tr data-idx="${i}">
+                <td style="padding:4px 6px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis;color:${_fg}">${escHtml(label)}</td>
+                <td style="padding:4px 6px">
+                    <input type="number" class="dlg-width-input" data-idx="${i}" value="${escHtml(widthVal)}"
+                           placeholder="%" min="0" max="100" style="width:54px;padding:2px 4px;font-size:12px;border:1px solid ${_border};border-radius:3px;background:${_inputBg};color:${_fg}"
+                           ${isRest ? 'disabled' : ''}>
+                </td>
+                <td style="padding:4px 6px">
+                    <label style="display:flex;align-items:center;cursor:pointer;font-size:12px;color:${_fg}">
+                        <input type="radio" name="dlg-rest-radio" class="dlg-rest-chk" data-idx="${i}" style="margin-right:4px" ${isRest ? 'checked' : ''}>
+                    </label>
+                </td>
+                <td style="padding:4px 2px">
+                    <button class="dlg-move-up" data-idx="${i}" style="padding:1px 5px;font-size:11px;cursor:pointer;background:none;border:1px solid ${_border};border-radius:3px;color:${_fg}" ${i===0?'disabled':''}>↑</button>
+                    <button class="dlg-move-dn" data-idx="${i}" style="padding:1px 5px;font-size:11px;cursor:pointer;background:none;border:1px solid ${_border};border-radius:3px;color:${_fg}" ${i===cols.length-1?'disabled':''}>↓</button>
+                </td>
+                <td style="padding:4px 2px">
+                    <button class="dlg-del-row" data-idx="${i}" style="padding:1px 6px;font-size:11px;cursor:pointer;background:none;border:1px solid #ef4444;border-radius:3px;color:#ef4444">✕</button>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    function buildAddOptions(cols) {
+        const usedIds = new Set(cols.map(c => c.id));
+        const opts = allFields.filter(f => !usedIds.has(f.id))
+            .map(f => `<option value="${escHtml(f.id)}">${escHtml(f.label)} (${escHtml(f.id)})</option>`)
+            .join('');
+        return opts ? `<option value="">-- ${t('props.board_add_column')} --</option>${opts}`
+                    : `<option value="" disabled>${t('props.board_all_added')}</option>`;
+    }
+
+    function render(cols) {
+        tbody.innerHTML = buildRows(cols);
+        addSel.innerHTML = buildAddOptions(cols);
+        bindRowEvents(cols);
+    }
+
+    function readCurrentCols() {
+        const rows = Array.from(tbody.querySelectorAll('tr[data-idx]'));
+        return rows.map(tr => {
+            const idx = parseInt(tr.dataset.idx);
+            const restRadio = tr.querySelector('.dlg-rest-chk');
+            const widthInp = tr.querySelector('.dlg-width-input');
+            return {
+                id: cols[idx] ? cols[idx].id : '',
+                width: restRadio && restRadio.checked ? 'rest' : (widthInp ? widthInp.value.trim() : '')
+            };
+        }).filter(c => c.id);
+    }
+
+    function bindRowEvents(currentColsRef) {
+        tbody.querySelectorAll('.dlg-rest-chk').forEach(radio => {
+            radio.addEventListener('change', () => {
+                // When a radio is selected, enable/disable all width inputs accordingly
+                tbody.querySelectorAll('.dlg-rest-chk').forEach(r => {
+                    const ridx = parseInt(r.dataset.idx);
+                    const inp = tbody.querySelector(`.dlg-width-input[data-idx="${ridx}"]`);
+                    if (inp) inp.disabled = r.checked;
+                });
+                updatePreview();
+            });
+        });
+        tbody.querySelectorAll('.dlg-width-input').forEach(inp => {
+            inp.addEventListener('input', updatePreview);
+        });
+        tbody.querySelectorAll('.dlg-del-row').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.dataset.idx);
+                cols = readCurrentCols();
+                cols.splice(idx, 1);
+                render(cols);
+                updatePreview();
+            });
+        });
+        tbody.querySelectorAll('.dlg-move-up').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.dataset.idx);
+                if (idx === 0) return;
+                cols = readCurrentCols();
+                [cols[idx-1], cols[idx]] = [cols[idx], cols[idx-1]];
+                render(cols);
+                updatePreview();
+            });
+        });
+        tbody.querySelectorAll('.dlg-move-dn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.dataset.idx);
+                cols = readCurrentCols();
+                if (idx >= cols.length - 1) return;
+                [cols[idx], cols[idx+1]] = [cols[idx+1], cols[idx]];
+                render(cols);
+                updatePreview();
+            });
+        });
+    }
+
+    function updatePreview() {
+        const c = readCurrentCols();
+        const restIdx = c.findIndex(x => x.width === 'rest');
+        const fixed = c.filter((_, i) => i !== restIdx).map(x => parseFloat(x.width) || 0);
+        const used = fixed.reduce((a, b) => a + b, 0);
+        const restPct = Math.max(0, 100 - used);
+        const parts = c.map((x, i) => {
+            if (i === restIdx) return `${x.id}(${restPct}%)`;
+            const n = parseFloat(x.width);
+            return isNaN(n) ? x.id : `${x.id}(${n}%)`;
+        });
+        previewEl.textContent = parts.join(', ') || '-';
+        const warn = !isNaN(used) && restIdx === -1 && Math.abs(used - 100) > 0.5 && used > 0;
+        warnEl.style.display = warn ? '' : 'none';
+        if (warn) warnEl.textContent = `${t('props.board_total_pct')}: ${used.toFixed(1)}%`;
+    }
+
+    let cols = currentCols.map(c => ({ ...c }));
+
+    // Read actual theme colors from a known styled element
+    const _ref = document.getElementById('sfd-root-el') || document.body;
+    const _cs = window.getComputedStyle(_ref);
+    const _bg      = _cs.getPropertyValue('--bg-secondary').trim() || _cs.backgroundColor || '#20242b';
+    const _fg      = _cs.getPropertyValue('--text-primary').trim() || _cs.color || '#e4e6eb';
+    const _border  = _cs.getPropertyValue('--border-color').trim() || '#373c47';
+    const _inputBg = _cs.getPropertyValue('--bg-primary').trim() || '#1a1d23';
+    const _btnPrimary = _cs.getPropertyValue('--accent-primary').trim() || '#3b82f6';
+    const _secondary  = _cs.getPropertyValue('--text-secondary').trim() || '#b0b3b8';
+
+    const panel = document.createElement('div');
+    panel.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:${_bg};color:${_fg};border:1px solid ${_border};border-radius:6px;padding:18px;width:460px;max-height:80vh;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,0.4);z-index:9001;`;
+
+    panel.innerHTML = `
+        <div style="font-weight:600;margin-bottom:12px;font-size:14px;color:${_fg}">${t('props.board_list_columns_dlg')}</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;color:${_fg};border-top:1px solid ${_border}">
+            <thead><tr style="border-bottom:1px solid ${_border}">
+                <th style="padding:4px 6px;text-align:left;font-weight:500">${t('props.board_col_field')}</th>
+                <th style="padding:4px 6px;text-align:left;font-weight:500">${t('props.board_col_width')}</th>
+                <th style="padding:4px 6px;text-align:left;font-weight:500">${t('props.board_col_rest')}</th>
+                <th></th><th></th>
+            </tr></thead>
+            <tbody id="dlg-col-tbody"></tbody>
+        </table>
+        <div style="margin-top:8px;display:flex;align-items:center">
+            <select id="dlg-add-sel" style="flex:1;padding:4px 6px;font-size:12px;border:1px solid ${_border};border-radius:3px;background:${_inputBg};color:${_fg}"></select>
+            <button id="dlg-add-btn" style="margin-left:6px;padding:4px 10px;font-size:12px;cursor:pointer;background:${_btnPrimary};color:#fff;border:none;border-radius:3px">${t('props.board_add_column')}</button>
+        </div>
+        <div id="dlg-warn" style="display:none;color:#ef4444;font-size:12px;margin-top:6px"></div>
+        <div style="margin-top:6px;font-size:11px;color:${_secondary}">${t('props.board_preview')}: <span id="dlg-preview"></span></div>
+        <div style="display:flex;justify-content:flex-end;margin-top:14px">
+            <button id="dlg-cancel" style="padding:5px 14px;font-size:13px;cursor:pointer;background:none;border:1px solid ${_border};border-radius:4px;color:${_fg}">${t('dlg.cancel')}</button>
+            <button id="dlg-ok" style="margin-left:8px;padding:5px 14px;font-size:13px;cursor:pointer;background:${_btnPrimary};color:#fff;border:none;border-radius:4px">${t('dlg.ok')}</button>
+        </div>
+    `;
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    const tbody = panel.querySelector('#dlg-col-tbody');
+    const addSel = panel.querySelector('#dlg-add-sel');
+    const previewEl = panel.querySelector('#dlg-preview');
+    const warnEl = panel.querySelector('#dlg-warn');
+
+    render(cols);
+    updatePreview();
+
+    panel.querySelector('#dlg-add-btn').addEventListener('click', () => {
+        const id = addSel.value;
+        if (!id) return;
+        cols = readCurrentCols();
+        cols.push({ id, width: '' });
+        render(cols);
+        updatePreview();
+    });
+
+    function doClose() { overlay.remove(); }
+
+    panel.querySelector('#dlg-cancel').addEventListener('click', doClose);
+    overlay.addEventListener('click', e => { if (e.target === overlay) doClose(); });
+
+    panel.querySelector('#dlg-ok').addEventListener('click', () => {
+        const result = readCurrentCols();
+        updateField(fieldId, 'listColumns', result);
+        renderProps();
+        doClose();
+    });
+
+    return {
+        refreshFields: function(newAvail) {
+            if (!document.body.contains(overlay)) return;
+            allFields = [...newAvail, ...systemFields];
+            cols = readCurrentCols();
+            render(cols);
+            updatePreview();
+        }
+    };
+    } catch(e) { console.log('[board] dialog error', String(e)); }
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+
+// ================================================================
+// SAVE / OPEN / NEW
+// ================================================================
+function formToJson() {
+    return {
+        schemaVersion: 1,
+        title: docProps.formName,
+        docProps: Object.assign({}, docProps),
+        grid: { rowHeight: gridRowH, cellW: GRID_CELL_W },
+        fields: [...fields].sort((a, b) => a.row !== b.row ? a.row - b.row : a.col - b.col).map(f => Object.assign({}, f))
+    };
+}
+
+function jsonToForm(data) {
+    if (!data) return;
+    // Load docProps (backwards-compatible: fall back to title field)
+    if (data.docProps) {
+        docProps = Object.assign({ formName: 'My Form', fontSize: 16, formSize: { mode: 'auto', cols: 0, rows: 0 }, theme: 'light' }, data.docProps);
+    } else if (data.title) {
+        docProps.formName = data.title;
+    }
+    if (!docProps.formId) {
+        docProps.formId = generateUUID();
+        const saveBtn = document.getElementById('btn-save');
+        if (saveBtn) saveBtn.setAttribute('aria-disabled', 'false');
+    }
+    if (data.grid) {
+        gridRowH  = data.grid.rowHeight || GRID_ROW_H;
+    }
+    fields = (data.fields || []).map(f => Object.assign({}, f));
+    // Restore _idSeq
+    fields.forEach(f => {
+        const n = parseInt((f.id || '').replace(/\D/g,''));
+        if (!isNaN(n) && n > _idSeq) _idSeq = n;
+    });
+    selectedId = null;
+    renderCanvas();
+    renderProps();
+}
+
+function setCurrentFile(path) {
+    currentFile = path;
+    const label = document.getElementById('tb-filepath-label');
+    if (label) {
+        label.textContent = path ? path.split('/').pop() : '';
+        label.dataset.path = path || '';
+    }
+    const saveBtn = document.getElementById('btn-save');
+    if (saveBtn) saveBtn.setAttribute('aria-disabled', path ? 'false' : 'true');
+}
+
+function setRecentFiles(paths) {
+    recentFiles = Array.isArray(paths) ? paths.filter(Boolean) : [];
+}
+
+function showSaveConfirm(lang) {
+    return new Promise(resolve => {
+        const isKo = (lang || 'en') === 'ko';
+        const msg  = isKo ? '저장하시겠습니까?' : 'Save file?';
+        const yes  = isKo ? '저장' : 'Save';
+        const no   = isKo ? '취소' : 'Cancel';
+
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.45);z-index:99999;display:flex;align-items:center;justify-content:center';
+
+        const box = document.createElement('div');
+        box.style.cssText = 'background:var(--bg-secondary,#2a2f38);border:1px solid var(--border-color,#373c47);border-radius:8px;padding:24px 28px;min-width:220px;text-align:center;color:var(--text-primary,#e4e6eb);font-size:0.9rem;box-shadow:0 8px 32px rgba(0,0,0,0.5)';
+
+        const text = document.createElement('div');
+        text.textContent = msg;
+        text.style.marginBottom = '18px';
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;justify-content:center;';
+
+        const btnYes = document.createElement('button');
+        btnYes.textContent = yes;
+        btnYes.style.cssText = 'padding:5px 20px;border-radius:4px;border:none;background:var(--color-primary,#0d6efd);color:#fff;cursor:pointer;font-size:0.85rem;font-family:inherit';
+
+        const btnNo = document.createElement('button');
+        btnNo.textContent = no;
+        btnNo.style.cssText = 'padding:5px 20px;border-radius:4px;border:1px solid var(--border-color,#555);background:transparent;color:var(--text-primary,#e4e6eb);cursor:pointer;font-size:0.85rem;font-family:inherit;margin-left:10px';
+
+        btnRow.appendChild(btnYes);
+        btnRow.appendChild(btnNo);
+        box.appendChild(text);
+        box.appendChild(btnRow);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+
+        function done(result) {
+            overlay.remove();
+            resolve(result);
+        }
+        btnYes.addEventListener('click', () => done(true));
+        btnNo.addEventListener('click',  () => done(false));
+        overlay.addEventListener('click', e => { if (e.target === overlay) done(false); });
+    });
+}
+
+async function doSave() {
+    const saveBtn = document.getElementById('btn-save');
+    if (saveBtn && saveBtn.getAttribute('aria-disabled') === 'true') return;
+    const confirmed = await showSaveConfirm(window._currentLang);
+    if (!confirmed) return;
+    const schema = formToJson();
+    const r = await callPython('designer_save', { path: currentFile, schema });
+    if (r && r.success) {
+        if (Array.isArray(r.recent_files)) setRecentFiles(r.recent_files);
+        setStatus('status.saved', 'ok');
+    } else {
+        setStatus('status.save_failed', 'err');
+    }
+}
+
+async function doOpen() {
+    const startDir = currentFile ? currentFile.replace(/\/[^/]+$/, '') || '/' : '~';
+    const r = await _showWebFileDialog('file', {
+        language: window._currentLang || 'en',
+        filter: '*.json',
+        startDir,
+    });
+    if (!r || !r.success || !r.path) return;
+    const path = r.path;
+    const res = await callPython('designer_load', { path });
+    if (res && res.success) {
+        setCurrentFile(path);
+        if (Array.isArray(res.recent_files)) setRecentFiles(res.recent_files);
+        jsonToForm(res.schema || {});
+        setStatus(res.is_new ? 'status.new_form' : 'status.opened', 'ok');
+    } else {
+        setStatus('status.open_failed', 'err');
+    }
+}
+
+async function loadRecentFile(path, closeMenu) {
+    if (!path) return;
+    if (typeof closeMenu === 'function') closeMenu();
+    const res = await callPython('designer_load', { path });
+    if (res && res.success) {
+        setCurrentFile(path);
+        if (Array.isArray(res.recent_files)) setRecentFiles(res.recent_files);
+        jsonToForm(res.schema || {});
+        setStatus(res.is_new ? 'status.new_form' : 'status.opened', 'ok');
+    } else {
+        setStatus('status.open_failed', 'err');
+    }
+}
+
+function getRecentMenuHoverBg() {
+    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg-secondary').trim();
+    const m = bg.match(/^#([0-9a-f]{6})$/i);
+    if (!m) return 'rgba(255,255,255,0.08)';
+    const hex = m[1];
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.65 ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)';
+}
+
+function showRecentFilesMenu(anchorEl) {
+    const anchor = anchorEl || document.getElementById('tb-filepath-label');
+    if (!anchor) return;
+
+    const existing = document.getElementById('sfd-recent-files-overlay');
+    if (existing) {
+        existing.remove();
+        return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'sfd-recent-files-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99998';
+
+    const menu = document.createElement('div');
+    menu.style.cssText = 'position:fixed;min-width:200px;width:max-content;max-width:min(80vw, 900px);max-height:360px;overflow:auto;background:var(--bg-secondary,#2a2f38);border:1px solid var(--border-color,#373c47);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,0.35);padding:4px 0';
+    menu.addEventListener('click', function(e) { e.stopPropagation(); });
+    const hoverBg = getRecentMenuHoverBg();
+
+    const rect = anchor.getBoundingClientRect();
+    const top = rect.bottom + 8;
+    menu.style.top = top + 'px';
+    menu.style.left = '12px';
+
+    function cleanupAndClose() {
+        document.removeEventListener('keydown', onKeyDown);
+        document.removeEventListener('mousedown', onDocMouseDown, true);
+        menu.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {
+            const tip = bootstrap.Tooltip.getInstance(el);
+            if (tip) tip.dispose();
+        });
+        overlay.remove();
+    }
+
+    if (recentFiles.length === 0) {
+        const empty = document.createElement('div');
+        empty.textContent = (window._currentLang || 'en') === 'ko' ? '최근 작업 파일이 없습니다.' : 'No recent files.';
+        empty.style.cssText = 'padding:8px 12px;color:var(--text-secondary,#9aa0a6);font-size:0.86rem';
+        menu.appendChild(empty);
+    } else {
+        recentFiles.forEach(path => {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;border-radius:0';
+            row.onmouseenter = () => { row.style.background = hoverBg; };
+            row.onmouseleave = () => { row.style.background = 'transparent'; };
+
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.style.cssText = 'flex:1;min-width:0;padding:4px 8px 4px 12px;border:none;background:transparent;color:var(--color-primary,#8ab4ff);text-align:left;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:0.84rem;font-weight:400';
+            item.setAttribute('data-bs-toggle', 'tooltip');
+            item.setAttribute('data-bs-placement', 'bottom');
+            item.setAttribute('title', path);
+            item.textContent = path.split('/').pop() || path;
+            item.addEventListener('click', function() { loadRecentFile(path, cleanupAndClose); });
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.style.cssText = 'flex-shrink:0;width:22px;height:22px;display:flex;align-items:center;justify-content:center;margin-right:6px;border:1px solid transparent;border-radius:4px;background:transparent;color:var(--text-secondary,#9aa0a6);cursor:pointer;font-size:0.78rem;line-height:1;outline:none';
+            removeBtn.textContent = '✕';
+            removeBtn.onmouseenter = () => { removeBtn.style.color = 'var(--text-primary,#e4e6eb)'; removeBtn.style.borderColor = 'var(--text-secondary,#9aa0a6)'; };
+            removeBtn.onmouseleave = () => { removeBtn.style.color = 'var(--text-secondary,#9aa0a6)'; removeBtn.style.borderColor = 'transparent'; };
+            removeBtn.addEventListener('click', async function(e) {
+                e.stopPropagation();
+                const r = await callPython('designer_remove_recent', { path });
+                if (r && r.success) {
+                    setRecentFiles(r.recent_files);
+                    row.remove();
+                    if (menu.querySelectorAll('[data-bs-toggle="tooltip"]').length === 0) {
+                        const empty = document.createElement('div');
+                        empty.textContent = (window._currentLang || 'en') === 'ko' ? '최근 작업 파일이 없습니다.' : 'No recent files.';
+                        empty.style.cssText = 'padding:8px 12px;color:var(--text-secondary,#9aa0a6);font-size:0.86rem';
+                        menu.insertBefore(empty, menu.firstChild);
+                    }
+                }
+            });
+
+            row.appendChild(item);
+            row.appendChild(removeBtn);
+            menu.appendChild(row);
+        });
+    }
+
+    const divider = document.createElement('div');
+    divider.style.cssText = 'height:1px;margin:4px 0;background:var(--border-color,#373c47)';
+    menu.appendChild(divider);
+
+    const openItem = document.createElement('button');
+    openItem.type = 'button';
+    openItem.style.cssText = 'display:flex;align-items:center;width:100%;padding:4px 12px;border:none;border-radius:0;background:transparent;color:var(--text-primary,#e4e6eb);text-align:left;cursor:pointer;font-size:0.9rem';
+    openItem.onmouseenter = () => { openItem.style.background = hoverBg; };
+    openItem.onmouseleave = () => { openItem.style.background = 'transparent'; };
+    openItem.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M1 4.5h14v9a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4.5z"></path><path d="M1 4.5l2.5-3h4l1.5 1.5H14a1 1 0 0 1 1 1V6"></path></svg><span style="margin-left:12px;">' + ((window._currentLang || 'en') === 'ko' ? '열기...' : 'Open...') + '</span>';
+    openItem.addEventListener('click', async function() {
+        cleanupAndClose();
+        await doOpen();
+    });
+    menu.appendChild(openItem);
+
+    overlay.appendChild(menu);
+    document.body.appendChild(overlay);
+    const menuRect = menu.getBoundingClientRect();
+    const left = Math.max(12, Math.min(rect.left, window.innerWidth - menuRect.width - 12));
+    menu.style.left = left + 'px';
+    menu.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+        new bootstrap.Tooltip(el, {
+            container: 'body',
+            customClass: 'sfd-recent-tooltip',
+        });
+    });
+    setTimeout(() => {
+        document.addEventListener('keydown', onKeyDown);
+        document.addEventListener('mousedown', onDocMouseDown, true);
+    }, 0);
+
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) cleanupAndClose();
+    });
+
+    function onDocMouseDown(e) {
+        if (!menu.contains(e.target) && !anchor.contains(e.target)) {
+            cleanupAndClose();
+        }
+    }
+
+    function onKeyDown(e) {
+        if (e.key === 'Escape') cleanupAndClose();
+    }
+}
+
+function doNew() {
+    fields = [];
+    selectedId = null;
+    _idSeq = 0;
+    docProps = { formName: 'My Form', formId: generateUUID(), fontSize: 16, formSize: { mode: 'auto', cols: 0, rows: 0 } };
+    setCurrentFile('');
+    renderCanvas();
+    renderProps();
+    setStatus('status.new_form', 'ok');
+}
+
+// ================================================================
+// RUNNER
+// ================================================================
+
+async function doRun() {
+    if (fields.length === 0) {
+        setStatus('status.no_components', 'err');
+        return;
+    }
+
+    const schema = formToJson();
+    const r = await callPython('designer_run_standalone', { schema, lang: window._currentLang || 'en' });
+    if (r && r.success) {
+        setStatus('status.runner_opened', 'ok');
+    } else {
+        setStatus('status.run_failed', 'err');
+    }
+}
+
+// ================================================================
+// CODE GENERATION
+// ================================================================
+
+function _pyDefault(f) {
+    switch (f.type) {
+        case 'number': case 'slider':
+            return (f.default !== undefined && f.default !== '') ? String(f.default) : '0';
+        case 'checkbox': case 'toggle':
+            return f.default ? 'True' : 'False';
+        case 'dropdown': case 'radio':
+            if (f.default !== undefined && f.default !== '') return JSON.stringify(f.default);
+            return (f.options && f.options.length) ? JSON.stringify(f.options[0]) : "''";
+        default:
+            return (f.default !== undefined && f.default !== '') ? JSON.stringify(f.default) : "''";
+    }
+}
+
+function generatePythonCode(flds, dProps, lang, hasExecutor, skillupPy, formPath) {
+    const isKo = lang === 'ko';
+    const formName = (dProps && dProps.formName) || 'My Form';
+
+    const inputFields  = flds.filter(f => !['button','label','separator'].includes(f.type));
+    const buttonFields = flds.filter(f => f.type === 'button');
+
+    const cSkillupPy = isKo ? '# skillup.py 경로'        : '# path to skillup.py';
+    const cPythonBin = isKo ? '# Python 인터프리터'       : '# Python interpreter';
+    const cFormPath  = isKo ? '# 디자인이 방금 임시 저장됨' : '# design just auto-saved';
+    const cReady     = isKo ? '# 폼 창이 열림'            : '# form window opened';
+    const cValues    = isKo ? '# 필드 값 읽기'            : '# read field values';
+    const cClosed    = isKo ? '# 폼 창이 닫힘'            : '# form window closed';
+    const cHandle    = id  => isKo ? `# '${id}' 처리`    : `# handle '${id}'`;
+
+    const L = [];
+    L.push('"""');
+    L.push(`${formName} - skillform caller`);
+    L.push('"""');
+    L.push('');
+    L.push('import sys');
+    L.push('import os');
+    L.push('');
+    L.push('');
+    L.push(`SKILLUP_PY = ${JSON.stringify(skillupPy)}  ${cSkillupPy}`);
+    if (!hasExecutor) {
+        L.push(`PYTHON_BIN = sys.executable  ${cPythonBin}`);
+    }
+    L.push(`FORM       = ${JSON.stringify(formPath)}  ${cFormPath}`);
+    L.push('');
+    L.push("sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(SKILLUP_PY)),");
+    L.push("                                'app', 'skillform', 'lib', 'python'))");
+    L.push('from libform import SkillForm');
+    L.push('');
+    L.push('');
+    L.push('def on_event(form, ev):');
+    L.push("    t = ev.get('type')");
+    L.push('');
+    L.push("    if t == 'ready':");
+    L.push(`        pass  ${cReady}`);
+    if (isKo) {
+        L.push("        # form.set_values({'id': 'some_value'})  # 초기값 쓰기");
+        L.push("        # v = form.load_values('/tmp/saved.json')  # 저장된 값 읽기");
+        L.push("        # form.set_values(v)  # 저장된 값으로 초기화 가능");
+    } else {
+        L.push("        # form.set_values({'id': 'some_value'})  # set initial values");
+        L.push("        # v = form.load_values('/tmp/saved.json')  # read saved values");
+        L.push("        # form.set_values(v)  # restore saved values");
+    }
+    L.push('');
+    L.push("    elif t == 'button_click':");
+    L.push("        btn = ev['button_id']");
+    L.push("        v   = ev.get('values', {})");
+
+    if (inputFields.length > 0) {
+        L.push('');
+        L.push(`        ${cValues}`);
+        const maxLen = inputFields.reduce((m, f) => Math.max(m, f.id.length), 0);
+        for (const f of inputFields) {
+            L.push(`        ${f.id.padEnd(maxLen)} = v.get(${JSON.stringify(f.id)}, ${_pyDefault(f)})`);
+        }
+    }
+
+    if (buttonFields.length > 0) {
+        L.push('');
+        buttonFields.forEach((f, i) => {
+            const kw = i === 0 ? 'if' : 'elif';
+            L.push(`        ${kw} btn == ${JSON.stringify(f.id)}:`);
+            if (isKo) {
+                L.push(`            # form.save_values(v, '/tmp/saved.json')  # 파일로 저장`);
+            } else {
+                L.push(`            # form.save_values(v, '/tmp/saved.json')  # save to file`);
+            }
+            for (const inp of inputFields) {
+                L.push(`            print(f'- ${inp.id}:', ${inp.id})`);
+            }
+            if (isKo) {
+                L.push(`            # form.close()  # 창을 닫음  ${cHandle(f.id)}`);
+            } else {
+                L.push(`            # form.close()  # close the window  ${cHandle(f.id)}`);
+            }
+        });
+    }
+
+    L.push('');
+    L.push("    elif t == 'window_closed':");
+    L.push(`        pass  ${cClosed}`);
+    L.push('');
+    L.push('');
+    if (hasExecutor) {
+        L.push('SkillForm.with_executor(FORM, SKILLUP_PY).run(on_event)');
+    } else {
+        L.push('SkillForm(FORM, skillup_py=SKILLUP_PY, python_bin=PYTHON_BIN).run(on_event)');
+    }
+
+    return L.join('\n');
+}
+
+function generateSkillCode(flds, dProps, lang, hasExecutor, skillupPy, formPath, libformIl, callerIl) {
+    const isKo = lang === 'ko';
+    const formName = (dProps && dProps.formName) || 'My Form';
+    const snakeName = formName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') || 'my_form';
+
+    // camelCase prefix for procedure names: "My Form" -> "myForm"
+    const words = formName.trim().split(/\s+/);
+    const camel = words.map((w, i) => {
+        const clean = w.replace(/[^a-zA-Z0-9]/g, '');
+        return i === 0 ? clean.toLowerCase() : (clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase());
+    }).join('') || 'myForm';
+
+    const inputFields  = flds.filter(f => !['button','label','separator'].includes(f.type));
+    const buttonFields = flds.filter(f => f.type === 'button');
+
+    const cReady     = isKo ? '; 폼 창이 열림'           : '; form window opened';
+    const cValues    = isKo ? '; 필드 값 읽기'           : '; read field values';
+    const cClosed    = isKo ? '; 폼 창이 닫힘'           : '; form window closed';
+    const cHandle    = id  => isKo ? `; '${id}' 처리`   : `; handle '${id}'`;
+
+    const allVars = ['evType', 'btnId', 'vals', ...inputFields.map(f => f.id)];
+
+    const L = [];
+    L.push(`;;; ${snakeName}.il - ${formName} skillform caller`);
+    L.push(';;;');
+    const libformPath  = libformIl || '/path/to/skillup-full/app/skillform/lib/skill/libform.il';
+    const callerPath   = callerIl  || (hasExecutor
+        ? '/path/to/skillup-full/app/skillform/example/caller/skill/caller_with_executor.il'
+        : '/path/to/skillup-full/app/skillform/example/caller/skill/caller.il');
+    L.push(';;; Run from Virtuoso CIW:');
+    L.push(`load(${JSON.stringify(libformPath)})`);
+    L.push(`load(${JSON.stringify(callerPath)})`);
+    L.push('');
+    if (hasExecutor) {
+        L.push(`procedure(${camel}Run()`);
+        L.push(`  skillformRunWithExecutor(${JSON.stringify(formPath)} ${JSON.stringify(skillupPy)} '${camel}Handler))`);
+    } else {
+        L.push(`procedure(${camel}Run(pythonBin)`);
+        L.push(`  skillformRun(${JSON.stringify(formPath)} ${JSON.stringify(skillupPy)} pythonBin '${camel}Handler))`);
+    }
+    L.push('');
+    L.push(`procedure(${camel}Handler(form ev)`);
+    L.push(`  let((${allVars.join(' ')})`);
+    L.push('    evType = ev->type');
+    L.push('    cond(');
+    L.push('');
+    // ready branch
+    L.push('      (equal(evType "ready")');
+    if (isKo) {
+        L.push('       ; skillformSetValues(form skillformLoadValues("/tmp/saved.json")) ; 저장된 값 읽기 가능');
+        L.push('       ; skillformSetValues(form list(list("id" "some_value"))) ; 초기값 쓰기');
+    } else {
+        L.push('       ; skillformSetValues(form skillformLoadValues("/tmp/saved.json")) ; restore saved values');
+        L.push('       ; skillformSetValues(form list(list("id" "some_value"))) ; set initial values');
+    }
+    L.push(`       nil) ${cReady}`);
+    L.push('');
+    // button_click branch
+    L.push('      (equal(evType "button_click")');
+    L.push('       btnId = ev->button_id');
+    L.push('       vals  = ev->values');
+    if (inputFields.length > 0) {
+        L.push(`       ${cValues}`);
+        for (const f of inputFields) L.push(`       ${f.id} = vals->${f.id}`);
+    }
+    if (buttonFields.length > 0) {
+        L.push('       cond(');
+        buttonFields.forEach(f => {
+            L.push('');
+            L.push(`         (equal(btnId ${JSON.stringify(f.id)})`);
+            if (isKo) {
+                L.push(`          ; skillformSaveValues(vals "/tmp/saved.json") ; 파일로 저장`);
+            } else {
+                L.push(`          ; skillformSaveValues(vals "/tmp/saved.json") ; save to file`);
+            }
+            for (const inp of inputFields) {
+                L.push(`          printf("- ${inp.id}: %L\\n" ${inp.id})`);
+            }
+            if (isKo) {
+                L.push(`          ; skillformClose(form) ; 창을 닫음`);
+            } else {
+                L.push(`          ; skillformClose(form) ; close the window`);
+            }
+            L.push(`          nil) ${cHandle(f.id)}`);
+        });
+        L.push('       ))');  // )) = inner cond + button_click branch
+    } else {
+        L.push('       nil)');  // ) = button_click branch
+    }
+    L.push('');
+    // window_closed branch + close outer cond + let + procedure
+    L.push('      (equal(evType "window_closed")');
+    L.push(`       nil)))) ${cClosed}`);
+    L.push('');
+    L.push(`${camel}Run()`);
+
+    return L.join('\n');
+}
+
+function generateCommandCode(dProps, lang, pythonBin, skillupPy, formPath) {
+    const isKo = lang === 'ko';
+    const formName = (dProps && dProps.formName) || 'My Form';
+    const L = [];
+    if (isKo) {
+        L.push(`# ${formName} - 커맨드라인 실행`);
+        L.push('#');
+        L.push('# 아래 명령으로 폼 GUI 창을 직접 띄웁니다.');
+    } else {
+        L.push(`# ${formName} - command-line usage`);
+        L.push('#');
+        L.push('# Run the form GUI directly from the command line.');
+    }
+    L.push('');
+    L.push(`${JSON.stringify(pythonBin)} ${JSON.stringify(skillupPy)} \\`);
+    L.push(`    --desktop --app:skillform \\`);
+    L.push(`    --skillform-run=${JSON.stringify(formPath)}`);
+    return L.join('\n');
+}
+
+async function doShowCode() {
+    if (fields.length === 0) {
+        setStatus('status.no_components', 'err');
+        return;
+    }
+
+    const lang = window._currentLang || 'en';
+    let hasExecutor = false;
+    let skillupPy   = '/path/to/skillup.py';
+    let pythonBin   = 'python3';
+    let formPath    = '/tmp/skillform_sample.json';
+    let libformIl   = '';
+    let callerIl    = '';
+    try {
+        const r = await callPython('designer_prepare_code', { schema: formToJson() });
+        if (r && r.success) {
+            hasExecutor = r.has_executor || false;
+            skillupPy   = r.skillup_py  || skillupPy;
+            pythonBin   = r.python_bin  || pythonBin;
+            formPath    = r.form_path   || formPath;
+            libformIl   = r.libform_il  || '';
+            callerIl    = r.caller_il   || '';
+        }
+    } catch(e) {}
+
+    const cmdCode = generateCommandCode(docProps, lang, pythonBin, skillupPy, formPath);
+    const pyCode  = generatePythonCode(fields, docProps, lang, hasExecutor, skillupPy, formPath);
+    const skCode  = generateSkillCode(fields, docProps, lang, hasExecutor, skillupPy, formPath, libformIl, callerIl);
+    let currentTab = 'command';
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.45);z-index:99999;display:flex;align-items:center;justify-content:center';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--bg-secondary,#2a2f38);border:1px solid var(--border-color,#373c47);border-radius:8px;width:660px;max-width:92vw;max-height:86vh;display:flex;flex-direction:column;color:var(--text-primary,#e4e6eb);box-shadow:0 8px 32px rgba(0,0,0,0.5)';
+
+    // inject CodeMirror assets once
+    if (!document.getElementById('_cm_css')) {
+        const cmCss = document.createElement('link');
+        cmCss.id = '_cm_css';
+        cmCss.rel = 'stylesheet';
+        cmCss.href = '/common/codemirror/5.65.16/codemirror.min.css';
+        document.head.appendChild(cmCss);
+        const cmTheme = document.createElement('link');
+        cmTheme.rel = 'stylesheet';
+        cmTheme.href = '/common/codemirror/5.65.16/theme/dracula.min.css';
+        document.head.appendChild(cmTheme);
+    }
+
+    function loadScript(src) {
+        return new Promise(resolve => {
+            if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+            const s = document.createElement('script');
+            s.src = src;
+            s.onload = resolve;
+            s.onerror = resolve;
+            document.head.appendChild(s);
+        });
+    }
+
+    // focus-ring suppression style (injected once)
+    if (!document.getElementById('_code_dlg_style')) {
+        const st = document.createElement('style');
+        st.id = '_code_dlg_style';
+        st.textContent = '.sfd-code-btn:focus{outline:none!important;box-shadow:none!important}.CodeMirror{font-size:0.76rem;background:#282a36!important;color:#f8f8f2!important}.CodeMirror-gutters{background:#282a36!important;border-right-color:#44475a!important}.CodeMirror-linenumber{color:#6272a4!important}.CodeMirror-scrollbar-filler,.CodeMirror-gutter-filler{background:#282a36!important}';
+        document.head.appendChild(st);
+    }
+
+    // header
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border-color,#373c47);flex-shrink:0';
+    const title = document.createElement('span');
+    title.textContent = t('code.title');
+    title.style.cssText = 'font-weight:700;font-size:0.9rem';
+    const closeX = document.createElement('button');
+    closeX.textContent = '✕';
+    closeX.className = 'sfd-code-btn';
+    closeX.style.cssText = 'border:none;background:none;color:var(--text-secondary,#6c757d);cursor:pointer;font-size:1rem;padding:0 4px;line-height:1';
+    header.appendChild(title);
+    header.appendChild(closeX);
+
+    // tab bar
+    const tabBar = document.createElement('div');
+    tabBar.style.cssText = 'display:flex;border-bottom:1px solid var(--border-color,#373c47);padding:0 16px;flex-shrink:0';
+
+    function makeTabBtn(labelKey, tabId) {
+        const btn = document.createElement('button');
+        btn.textContent = t(labelKey);
+        btn.dataset.tab = tabId;
+        btn.className = 'sfd-code-btn';
+        btn.style.cssText = 'padding:7px 14px;border:none;background:none;cursor:pointer;font-size:0.83rem;font-family:inherit;color:var(--text-secondary,#6c757d);border-bottom:2px solid transparent;margin-bottom:-1px';
+        return btn;
+    }
+    const tabCmd = makeTabBtn('code.tab.command', 'command');
+    const tabPy  = makeTabBtn('code.tab.python', 'python');
+    const tabSk  = makeTabBtn('code.tab.skill', 'skill');
+    tabBar.appendChild(tabCmd);
+    tabBar.appendChild(tabPy);
+    tabBar.appendChild(tabSk);
+
+    // code area (CodeMirror mount point)
+    const codeWrap = document.createElement('div');
+    codeWrap.style.cssText = 'flex:1;min-height:0;overflow:hidden;padding:0;position:relative';
+
+    // footer
+    const footer = document.createElement('div');
+    footer.style.cssText = 'display:flex;justify-content:flex-end;padding:10px 16px;border-top:1px solid var(--border-color,#373c47);flex-shrink:0';
+    const copyBtn = document.createElement('button');
+    copyBtn.textContent = t('code.copy');
+    copyBtn.className = 'sfd-code-btn';
+    copyBtn.style.cssText = 'padding:5px 14px;border-radius:4px;border:1px solid var(--border-color,#555);background:transparent;color:var(--text-primary,#e4e6eb);cursor:pointer;font-size:0.83rem;font-family:inherit;margin-left:8px';
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = t('code.close');
+    closeBtn.className = 'sfd-code-btn';
+    closeBtn.style.cssText = 'padding:5px 14px;border-radius:4px;border:none;background:var(--color-primary,#0d6efd);color:#fff;cursor:pointer;font-size:0.83rem;font-family:inherit;margin-left:8px';
+    footer.appendChild(copyBtn);
+    footer.appendChild(closeBtn);
+
+    box.appendChild(header);
+    box.appendChild(tabBar);
+    box.appendChild(codeWrap);
+    box.appendChild(footer);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    // load CodeMirror then init editor
+    let cm = null;
+    Promise.all([
+        loadScript('/common/codemirror/5.65.16/codemirror.min.js')
+    ]).then(() => Promise.all([
+        loadScript('/common/codemirror/5.65.16/mode/python/python.min.js'),
+        loadScript('/common/codemirror/5.65.16/mode/scheme/scheme.min.js')
+    ])).then(() => {
+        if (!overlay.isConnected) return;
+        cm = window.CodeMirror(codeWrap, {
+            value: cmdCode,
+            mode: null,
+            theme: 'dracula',
+            readOnly: true,
+            lineNumbers: true,
+            lineWrapping: false
+        });
+        function syncCmSize() {
+            const h = codeWrap.clientHeight;
+            if (h > 0) cm.setSize('100%', h);
+        }
+        syncCmSize();
+        if (window.ResizeObserver) {
+            new ResizeObserver(syncCmSize).observe(codeWrap);
+        }
+        selectTab('command');
+    });
+
+    function selectTab(tab) {
+        currentTab = tab;
+        const activeColor = 'var(--color-primary,#0d6efd)';
+        const inactiveColor = 'var(--text-secondary,#6c757d)';
+        tabCmd.style.color = tab === 'command' ? activeColor : inactiveColor;
+        tabCmd.style.borderBottomColor = tab === 'command' ? activeColor : 'transparent';
+        tabPy.style.color = tab === 'python' ? activeColor : inactiveColor;
+        tabPy.style.borderBottomColor = tab === 'python' ? activeColor : 'transparent';
+        tabSk.style.color = tab === 'skill' ? activeColor : inactiveColor;
+        tabSk.style.borderBottomColor = tab === 'skill' ? activeColor : 'transparent';
+        if (cm) {
+            const codeMap  = { command: cmdCode, python: pyCode, skill: skCode };
+            const modeMap  = { command: null, python: 'python', skill: 'scheme' };
+            cm.setValue(codeMap[tab] || '');
+            cm.setOption('mode', modeMap[tab] || 'shell');
+        }
+    }
+
+    tabCmd.addEventListener('click', () => selectTab('command'));
+    tabPy.addEventListener('click', () => selectTab('python'));
+    tabSk.addEventListener('click', () => selectTab('skill'));
+
+    copyBtn.addEventListener('click', () => {
+        const fallbackMap = { command: cmdCode, python: pyCode, skill: skCode };
+        const text = cm ? cm.getValue() : (fallbackMap[currentTab] || '');
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).catch(() => {});
+        } else {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.cssText = 'position:fixed;opacity:0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); } catch(e) {}
+            ta.remove();
+        }
+        copyBtn.textContent = t('code.copied');
+        setTimeout(() => { copyBtn.textContent = t('code.copy'); }, 1500);
+    });
+
+    function doClose() { overlay.remove(); }
+    closeBtn.addEventListener('click', doClose);
+    closeX.addEventListener('click', doClose);
+    overlay.addEventListener('click', e => { if (e.target === overlay) doClose(); });
+}
+
+function _copyFallback(el) {
+    el.select();
+    try { document.execCommand('copy'); } catch(e) {}
+}
+
+function setStatus(msgKey, type) {
+    showToast(t(msgKey) || msgKey, { type: type });
+}
+
+// ================================================================
+// CANVAS CLICK (deselect) + PAN (right-click drag)
+// ================================================================
+function initCanvas() {
+    const canvas = getCanvas();
+    const inner  = getInner();
+
+    // Deselect when clicking empty inner area (left click)
+    inner.addEventListener('mousedown', function(e) {
+        if (e.button !== 0) return;
+        if (e.target !== inner) return;
+        inner.querySelectorAll('.sfd-field-selected').forEach(el => el.classList.remove('sfd-field-selected'));
+        selectedId = null;
+        renderProps();
+    });
+
+    // Pan: right-click drag anywhere in canvas
+    canvas.addEventListener('mousedown', function(e) {
+        if (e.button !== 2) return;
+        e.preventDefault();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startPanX = panX;
+        const startPanY = panY;
+        document.body.classList.add('sfd-panning');
+
+        function onMove(e) {
+            // If right mouse button was released outside the window, end pan
+            if (!(e.buttons & 2)) { onEnd(); return; }
+            panX = Math.min(0, startPanX + (e.clientX - startX));
+            panY = Math.min(0, startPanY + (e.clientY - startY));
+            inner.style.transform = 'translate(' + panX + 'px, ' + panY + 'px)';
+            const { cw, rh } = cellSize();
+            canvas.style.backgroundPosition = (panX % cw) + 'px ' + (panY % rh) + 'px';
+        }
+        function onEnd() {
+            document.body.classList.remove('sfd-panning');
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onEnd);
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onEnd);
+    });
+
+    // Suppress context menu
+    canvas.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+
+    // 'f' key: reset pan to (0,0) — ignore when typing in inputs
+    document.addEventListener('keydown', function(e) {
+        const tag = document.activeElement && document.activeElement.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if (e.key === 'f' || e.key === 'F') {
+            panX = 0;
+            panY = 0;
+            inner.style.transform = 'translate(0px, 0px)';
+            canvas.style.backgroundPosition = '0px 0px';
+        }
+        if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+            deleteField(selectedId);
+        }
+    });
+}
+
+// ================================================================
+// APPINIT CALLBACKS
+// ================================================================
+window.getAppStateAction = () => 'designer_get_state';
+window.state_update = function(updates) {};
+
+window.onAppStateLoaded = function(state) {
+    if (state && state.file) {
+        setCurrentFile(state.file);
+    }
+    setRecentFiles(state && state.recent_files);
+    if (state && state.schema) {
+        jsonToForm(state.schema);
+    }
+};
+
+function onViewActivated() { renderCanvas(); }
+
+const I18N = {
+    en: {
+        // toolbar
+        'New': 'New', 'Open': 'Open', 'Save': 'Save', 'Run': 'Run', 'Code': 'Code',
+        // code dialog
+        'code.title': 'Code Sample', 'code.tab.command': 'Command', 'code.tab.python': 'Python', 'code.tab.skill': 'Skill',
+        'code.close': 'Close', 'code.copy': 'Copy', 'code.copied': 'Copied!',
+        'code.no_form': 'No components to generate code for',
+        // status messages
+        'status.saved': 'Saved', 'status.save_failed': 'Save failed',
+        'status.opened': 'Opened', 'status.new_form': 'New form',
+        'status.open_failed': 'Open failed',
+        'status.no_components': 'No components to run',
+        'status.runner_opened': 'Runner opened', 'status.run_failed': 'Failed to open runner',
+        // properties panel
+        'props.title': 'Properties',
+        'props.empty': 'Select a component',
+        'props.section.document': 'Document',
+        'props.section.formsize': 'Form Initial Size',
+        'props.section.grid': 'Grid',
+        'props.title_name': 'Title Name',
+        'props.font_size': 'Font Size (px)',
+        'props.theme': 'Theme',
+        'props.theme.light': 'Light', 'props.theme.dark': 'Dark', 'props.theme.auto': 'Auto',
+        'props.size_mode': 'Mode',
+        'props.size_mode.auto': 'Auto Fit', 'props.size_mode.set': 'Set',
+        'props.cols': 'Cols', 'props.rows': 'Rows',
+        'props.label': 'Label', 'props.field_id': 'Field ID',
+        'props.font': 'Font',
+        'props.variant': 'Variant',
+        'props.variant.primary': 'Primary', 'props.variant.secondary': 'Secondary', 'props.variant.danger': 'Danger',
+        'props.required': 'Required', 'props.readonly': 'Read-only',
+        'props.placeholder': 'Placeholder', 'props.default': 'Default',
+        'props.min': 'Min', 'props.max': 'Max', 'props.step': 'Step',
+        'props.options': 'Options (one per line)',
+        'props.inline': 'Inline (horizontal)',
+        'props.dir_only': 'Directory only',
+        'props.filter': 'Extensions (e.g. *.py *.txt)',
+        'props.sep_type': 'Type',
+        'props.sep_type.horizontal': 'Horizontal', 'props.sep_type.vertical': 'Vertical', 'props.sep_type.box': 'Box',
+        'props.sep_align': 'Align',
+        'props.sep_align.center': 'Center', 'props.sep_align.edge': 'Edge',
+        'props.textarea_rows': 'Rows',
+        'props.label_size': 'Size',
+        'props.grid_col': 'Col', 'props.grid_row': 'Row',
+        'props.grid_w': 'W (cols)', 'props.grid_h': 'H (rows)',
+        'props.section.board': 'Board',
+        'props.board_command': 'Board Command',
+        'props.board_detail_form': 'Detail Form Path',
+        'props.board_list_columns': 'List Columns',
+        'props.board_columns_edit': 'Edit columns...',
+        'props.board_list_columns_dlg': 'List Columns',
+        'props.board_col_field': 'Field',
+        'props.board_col_width': 'Width (%)',
+        'props.board_col_rest': 'Rest',
+        'props.board_add_column': 'Add',
+        'props.board_all_added': 'All fields added',
+        'props.board_total_pct': 'Total',
+        'props.board_preview': 'Preview',
+        'props.board_sys_row_id': 'Row No',
+        'props.board_sys_created_at': 'Created At',
+        'props.board_sys_updated_at': 'Updated At',
+        'props.board_sys_record_id': 'Record ID',
+        'props.board_sys_author': 'Author',
+        'props.section.info': 'Info Fields',
+        'props.info_field': 'Field',
+        'palette.group_basic': 'Basic',
+        'palette.group_advanced': 'Advanced',
+        'palette.group_board': 'Board',
+        'dlg.ok': 'OK',
+        'dlg.cancel': 'Cancel',
+        'dlg.delete_field_title': 'Delete Component',
+        'dlg.delete_field_msg': 'Delete "{label}"?',
+    },
+    ko: {
+        // toolbar
+        'New': '새 폼', 'Open': '열기', 'Save': '저장', 'Run': '실행', 'Code': '코드',
+        // code dialog
+        'code.title': '코드 샘플', 'code.tab.command': 'Command', 'code.tab.python': 'Python', 'code.tab.skill': 'Skill',
+        'code.close': '닫기', 'code.copy': '복사', 'code.copied': '복사됨!',
+        'code.no_form': '코드를 생성할 컴포넌트가 없습니다',
+        // properties panel
+        'props.title': '속성',
+        'props.empty': '컴포넌트를 선택하세요',
+        'props.section.document': '문서',
+        'props.section.formsize': '폼 초기 크기',
+        'props.section.grid': '그리드',
+        'props.title_name': '제목',
+        'props.font_size': '글자 크기 (px)',
+        'props.theme': '테마',
+        'props.theme.light': '라이트', 'props.theme.dark': '다크', 'props.theme.auto': '자동',
+        'props.size_mode': '모드',
+        'props.size_mode.auto': '자동 맞춤', 'props.size_mode.set': '직접 설정',
+        'props.cols': '열', 'props.rows': '행',
+        'props.label': '레이블', 'props.field_id': '필드 ID',
+        'props.font': '글꼴',
+        'props.variant': '스타일',
+        'props.variant.primary': '기본', 'props.variant.secondary': '보조', 'props.variant.danger': '위험',
+        'props.required': '필수', 'props.readonly': '읽기 전용',
+        'props.placeholder': '힌트 텍스트', 'props.default': '기본값',
+        'props.min': '최솟값', 'props.max': '최댓값', 'props.step': '간격',
+        'props.options': '선택지 (한 줄에 하나)',
+        'props.inline': '가로 배열',
+        'props.dir_only': '디렉토리만',
+        'props.filter': '확장자 (예: *.py *.txt)',
+        'props.sep_type': '종류',
+        'props.sep_type.horizontal': '가로선', 'props.sep_type.vertical': '세로선', 'props.sep_type.box': '박스',
+        'props.sep_align': '정렬',
+        'props.sep_align.center': '가운데', 'props.sep_align.edge': '끝',
+        'props.textarea_rows': '행 수',
+        'props.label_size': '크기',
+        'props.grid_col': '열', 'props.grid_row': '행',
+        'props.grid_w': '너비 (열)', 'props.grid_h': '높이 (행)',
+        'props.section.board': '게시판',
+        'props.board_command': '게시판 명령',
+        'props.board_detail_form': '상세 폼 경로',
+        'props.board_list_columns': '목록 열',
+        'props.board_columns_edit': '열 편집...',
+        'props.board_list_columns_dlg': '목록 열 설정',
+        'props.board_col_field': '필드',
+        'props.board_col_width': '폭 (%)',
+        'props.board_col_rest': '나머지',
+        'props.board_add_column': '추가',
+        'props.board_all_added': '모든 필드가 추가됨',
+        'props.board_total_pct': '합계',
+        'props.board_preview': '미리보기',
+        'props.board_sys_row_id': '번호',
+        'props.board_sys_created_at': '생성일시',
+        'props.board_sys_updated_at': '수정일시',
+        'props.board_sys_record_id': '레코드ID',
+        'props.board_sys_author': '작성자',
+        'props.section.info': '정보 필드',
+        'props.info_field': '필드',
+        'palette.group_basic': '기본',
+        'palette.group_advanced': '확장',
+        'palette.group_board': '게시판',
+        'dlg.ok': '확인',
+        'dlg.cancel': '취소',
+        'dlg.delete_field_title': '컴포넌트 삭제',
+        'dlg.delete_field_msg': '"{label}"을(를) 삭제하시겠습니까?',
+        // status messages
+        'status.saved': '저장됨', 'status.save_failed': '저장 실패',
+        'status.opened': '열림', 'status.new_form': '새 폼',
+        'status.open_failed': '열기 실패',
+        'status.no_components': '컴포넌트가 없습니다',
+        'status.runner_opened': '실행 창 열림', 'status.run_failed': '실행 실패',
+    },
+};
+const TOOLBAR_I18N = I18N;  // backward compat
+
+function t(key) {
+    const lang = window._currentLang || 'en';
+    return (I18N[lang] && I18N[lang][key]) || (I18N['en'][key]) || key;
+}
+
+function onLanguageChange(lang) {
+    window._currentLang = lang;
+    // toolbar tooltips
+    document.querySelectorAll('.sfd-icon-btn[data-i18n-key]').forEach(btn => {
+        const key = btn.getAttribute('data-i18n-key');
+        const label = t(key);
+        if (label) btn.setAttribute('aria-label', label);
+    });
+    updateBsTooltips();
+    // properties panel static text
+    const titleEl = document.getElementById('sfd-props-title');
+    if (titleEl) titleEl.textContent = t('props.title');
+    // re-render props with new language
+    renderProps();
+    // re-render palette group headers with new language
+    initPalette();
+}
+
+// ================================================================
+// TOOLTIPS (JS-driven — avoids opacity/z-index issues with CSS ::after)
+// ================================================================
+function initIconTooltips() {
+    const tip = document.createElement('div');
+    tip.className = 'sfd-js-tooltip';
+    document.body.appendChild(tip);
+
+    document.querySelectorAll('.sfd-icon-btn[data-i18n-key]:not([data-bs-toggle="tooltip"])').forEach(btn => {
+        btn.addEventListener('mouseenter', function(e) {
+            const label = btn.getAttribute('aria-label');
+            if (!label) return;
+            tip.textContent = label;
+            tip.style.display = 'block';
+            positionTip(e);
+        });
+        btn.addEventListener('mousemove', positionTip);
+        btn.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+    });
+
+    function positionTip(e) {
+        tip.style.left = e.clientX + 12 + 'px';
+        tip.style.top  = e.clientY + 16 + 'px';
+    }
+}
+
+function initBsTooltips() {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+        new bootstrap.Tooltip(el, { title: () => el.getAttribute('aria-label') });
+    });
+}
+
+function updateBsTooltips() {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+        const instance = bootstrap.Tooltip.getInstance(el);
+        if (instance) instance.dispose();
+        new bootstrap.Tooltip(el, { title: () => el.getAttribute('aria-label') });
+    });
+}
+
+function initFilePathTooltip() {
+    const tip = document.createElement('div');
+    tip.className = 'sfd-js-tooltip';
+    document.body.appendChild(tip);
+
+    const label = document.getElementById('tb-filepath-label');
+    label.addEventListener('mouseenter', function(e) {
+        const path = label.dataset.path;
+        if (!path) return;
+        tip.textContent = path;
+        tip.style.display = 'block';
+        positionTip(e);
+    });
+    label.addEventListener('mousemove', positionTip);
+    label.addEventListener('mouseleave', function() {
+        tip.style.display = 'none';
+    });
+
+    function positionTip(e) {
+        tip.style.left = e.clientX + 12 + 'px';
+        tip.style.top  = e.clientY + 16 + 'px';
+    }
+}
+
+// ================================================================
+// PROPS PANEL RESIZE
+// ================================================================
+function initPropsResizer() {
+    const resizer = document.getElementById('sfd-props-resizer');
+    const props   = document.getElementById('sfd-props');
+
+    resizer.addEventListener('mousedown', function(e) {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        const startX = e.clientX;
+        const startW = props.offsetWidth;
+        document.body.classList.add('sfd-resizing-props');
+
+        function onMove(e) {
+            if (e.buttons === 0) { onUp(); return; }
+            const newW = Math.max(150, Math.min(600, startW - (e.clientX - startX)));
+            props.style.width = newW + 'px';
+        }
+        function onUp() {
+            document.body.classList.remove('sfd-resizing-props');
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    });
+}
+
+// ================================================================
+// INIT
+// ================================================================
+initPalette();
+initCanvas();
+renderCanvas();
+renderProps();
+initPropsResizer();
+initIconTooltips();
+initBsTooltips();
+initFilePathTooltip();
+
+const filePathLabel = document.getElementById('tb-filepath-label');
+filePathLabel.onclick = function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    showRecentFilesMenu(filePathLabel);
+};
+
+// Make title editable
+document.getElementById('tb-title').setAttribute('contenteditable', 'true');
+
+window.addEventListener('resize', () => renderCanvas());
+
+</script>
+</body>
+</html>

@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skillup Desktop</title>
+    <link rel="icon" type="image/x-icon" href="/common/resource/img/favicon.ico">
+    <link rel="icon" type="image/svg+xml" href="/common/resource/img/favicon.svg">
+
+    <!-- Skillup Common Resources -->
+    <link rel="stylesheet" href="/common/bootstrap/5.3.3/bootstrap.min.css">
+
+    <!-- Default theme CSS -->
+    <link rel="stylesheet" href="/common/style/default.css" id="theme-stylesheet">
+
+    <!-- Define callJS handler BEFORE common.js loads -->
+    <script>
+        // Handler for callJS from Python backend
+        // Must be defined early so common.js can call it
+        window.onVerifierStateUpdate = function(status) {
+            try {
+                // Forward to ALL skillverifier iframes via postMessage
+                // This ensures that all views (verify, dashboard, results) get updates
+                // even when they're cached/hidden
+                const statusJson = typeof status === 'string' ? status : JSON.stringify(status);
+
+                // Find all iframes for skillverifier app
+                // Need to find app ID dynamically since it's now hex-based (e.g., 550e8400)
+                const skillverifierApp = apps ? apps.find(a => a.id_name === 'skillverifier') : null;
+                const appId = skillverifierApp ? skillverifierApp.id : null;
+
+                if (appId) {
+                    const allIframes = document.querySelectorAll(`#app-content iframe[data-app-id="${appId}"]`);
+
+                    if (allIframes.length > 0) {
+                        allIframes.forEach(iframe => {
+                            if (iframe.contentWindow) {
+                                iframe.contentWindow.postMessage({
+                                    action: 'callJS',
+                                    functionName: 'onVerifierStateUpdate',
+                                    args: statusJson
+                                }, '*');
+                            }
+                        });
+                    }
+                } else {
+                    console.warn('[Desktop] Skillverifier app not found for state update');
+                }
+            } catch (error) {
+                console.error('[Desktop] Error in onVerifierStateUpdate:', error);
+            }
+        };    </script>
+
+    <!-- Desktop CSS modules -->
+    <link rel="stylesheet" href="/desktop-web-css/layout.css">
+    <link rel="stylesheet" href="/desktop-web-css/sidebar.css">
+    <link rel="stylesheet" href="/desktop-web-css/topbar.css">
+    <link rel="stylesheet" href="/desktop-web-css/desktop-grid.css">
+    <link rel="stylesheet" href="/desktop-web-css/app-content.css">
+    <link rel="stylesheet" href="/desktop-web-css/forms.css">
+    <link rel="stylesheet" href="/desktop-web-css/dashboard.css">
+    <link rel="stylesheet" href="/desktop-web-css/results.css">
+    <link rel="stylesheet" href="/desktop-web-css/code-viewer.css">
+    <link rel="stylesheet" href="/desktop-web-css/filter.css">
+    <link rel="stylesheet" href="/desktop-web-css/settings.css">
+    <link rel="stylesheet" href="/desktop-web-css/empty-state.css">
+    <link rel="stylesheet" href="/desktop-web-css/app-switcher.css">
+</head>
+<body>
+    <!-- Filter Dialog -->
+    <div class="filter-dialog-overlay" id="filter-dialog-overlay" onclick="closeFilterDialogOnOverlay(event)">
+        <div class="filter-dialog" onclick="event.stopPropagation()">
+            <div class="filter-dialog-header">
+                <h3 id="filter-dialog-title">Filter by Type</h3>
+                <button class="filter-dialog-close" onclick="closeFilterDialog()">&times;</button>
+            </div>
+            <div class="filter-dialog-body">
+                <div class="filter-section">
+                    <div class="filter-section-title errors">Errors</div>
+                    <div class="filter-section-actions">
+                        <a class="filter-action-link" onclick="selectAllErrors(true)">Select All</a>
+                        <a class="filter-action-link" onclick="selectAllErrors(false)">Deselect All</a>
+                    </div>
+                    <div id="error-filter-list"></div>
+                </div>
+                <div class="filter-section">
+                    <div class="filter-section-title warnings">Warnings</div>
+                    <div class="filter-section-actions">
+                        <a class="filter-action-link" onclick="selectAllWarnings(true)">Select All</a>
+                        <a class="filter-action-link" onclick="selectAllWarnings(false)">Deselect All</a>
+                    </div>
+                    <div id="warning-filter-list"></div>
+                </div>
+                <div class="filter-section">
+                    <div class="filter-section-title clean">Clean Files</div>
+                    <div class="filter-checkbox-item" onclick="toggleCleanFilesCheckbox(event)">
+                        <input type="checkbox" id="filter-clean-files" checked>
+                        <label>Show files with no errors</label>
+                    </div>
+                </div>
+            </div>
+            <div class="filter-dialog-footer">
+                <button class="btn btn-secondary" onclick="closeFilterDialog()">Cancel</button>
+                <button class="btn btn-primary" onclick="applyFilterDialog()">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <h1>
+                    <img src="/common/resource/img/favicon.svg" alt="Logo" class="sidebar-logo">
+                    <span class="brand-text"><span class="brand-skill">Skill</span><span class="brand-up">UP</span></span>
+                </h1>
+                <p data-i18n="sidebarSubtitle">Desktop</p>
+            </div>
+            <div class="sidebar-menu">
+                <!-- Desktop Menu (always visible) -->
+                <div id="desktop-menu">
+                    <a class="menu-item active" data-page="home" onclick="showPage('home')">
+                        <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="2"/><line x1="6" y1="17" x2="18" y2="17" stroke="currentColor" stroke-width="2"/></svg>
+                        <span data-i18n="menu.home">Home</span>
+                    </a>
+                    <a class="menu-item" data-page="settings" onclick="showPage('settings')">
+                        <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+                        <span data-i18n="menu.settings">Settings</span>
+                    </a>
+                </div>
+
+                <!-- Running Apps Taskbar (always visible, dynamically populated) -->
+                <div id="taskbar-apps" style="display: none;">
+                    <div class="menu-separator"></div>
+                    <div class="menu-section-title" data-i18n="menu.running_apps">Running Apps</div>
+                    <div id="taskbar-app-list"></div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Sidebar Divider -->
+        <div class="sidebar-divider" id="sidebar-divider" onclick="toggleSidebar()"></div>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top Bar -->
+            <header class="top-bar">
+                <div class="top-bar-left">
+                    <button class="hamburger-btn">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+                        </svg>
+                    </button>
+                    <img id="top-bar-icon" src="" alt="" style="width:22px;height:22px;margin-right:8px;display:none;">
+                    <span class="top-bar-title" id="page-title" data-i18n="title.desktop">Desktop</span>
+                </div>
+                <div class="top-bar-right">
+                    <button class="popout-app-btn" id="popout-app-btn" onclick="openInNewWindow()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 19H5V5h7V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
+                        </svg>
+                    </button>
+                    <button class="minimize-app-btn" id="minimize-app-btn" onclick="backToDesktop()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 13H5v-2h14v2z"/>
+                        </svg>
+                    </button>
+                    <button class="close-app-btn" id="close-app-btn" onclick="exitApp()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                        </svg>
+                    </button>
+                    <span class="clock" id="clock">00:00:00</span>
+                    <div id="topbar-avatar" style="width:30px;height:30px;border-radius:50%;overflow:hidden;background:var(--bg-tertiary);display:flex;align-items:center;justify-content:center;margin-left:12px;flex-shrink:0;cursor:default;">
+                        <img id="topbar-avatar-img" src="/common/resource/img/default-avatar.svg" alt="me" style="width:100%;height:100%;object-fit:cover;">
+                    </div>
+                </div>
+            </header>
+
+            <!-- Content Area -->
+            <div class="content-area" id="content-area">
+                <!-- Home Page - Desktop Grid -->
+                <div id="page-home" class="page active">
+                    <div class="desktop-grid" id="app-grid">
+                        <!-- Apps will be loaded here dynamically -->
+                    </div>
+                    <div class="empty-state" id="empty-state" style="display: none;">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/>
+                        </svg>
+                        <h3 data-i18n="empty.no_apps">No Apps Found</h3>
+                        <p data-i18n="empty.no_apps_desc">Add apps to the app folder to get started.</p>
+                    </div>
+                </div>
+
+                <!-- Settings Page -->
+                <div id="page-settings" class="page" style="display: none; outline: none;" tabindex="-1">
+                    <div class="settings-section">
+                        <h3 data-i18n="settings.general">General</h3>
+                        <div class="settings-row">
+                            <span class="settings-label" data-i18n="settings.language">Language</span>
+                            <div class="settings-value">
+                                <select class="settings-select" id="language-select" onchange="changeLanguage(this.value)">
+                                    <option value="en">English</option>
+                                    <option value="ko">한국어</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="settings-row">
+                            <span class="settings-label" data-i18n="settings.theme">Theme</span>
+                            <div class="settings-value">
+                                <select class="settings-select" id="theme-select" onchange="changeTheme(this.value)">
+                                    <option value="default">Default (Dark)</option>
+                                    <option value="white">White (Light)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <h3 data-i18n="settings.account">Account</h3>
+                        <div class="settings-row">
+                            <span class="settings-label" data-i18n="settings.account_photo">Photo</span>
+                            <div class="settings-value">
+                                <div id="account-avatar-preview" style="width:64px;height:64px;border-radius:50%;overflow:hidden;background:var(--bg-tertiary);display:flex;align-items:center;justify-content:center;margin-right:12px;cursor:pointer;flex-shrink:0;" onclick="document.getElementById('account-photo-input').click()">
+                                    <img id="account-avatar-img" src="/common/resource/img/default-avatar.svg" alt="avatar" style="width:100%;height:100%;object-fit:cover;">
+                                </div>
+                                <input type="file" id="account-photo-input" accept="image/*" style="display:none;" onchange="onAccountPhotoSelected(event)">
+                                <div>
+                                    <button class="btn btn-secondary" onclick="document.getElementById('account-photo-input').click()" style="font-size:13px;padding:6px 14px;margin-right:8px;" data-i18n="settings.account_change_photo">Change</button>
+                                    <button class="btn btn-secondary" id="account-remove-photo-btn" onclick="removeAccountPhoto()" style="font-size:13px;padding:6px 14px;display:none;" data-i18n="settings.account_remove_photo">Remove</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="settings-row">
+                            <span class="settings-label" data-i18n="settings.account_name">Name</span>
+                            <div class="settings-value">
+                                <input type="text" id="account-name-input" class="form-control" style="width:220px;padding:6px 10px;font-size:14px;" placeholder="">
+                                <button class="btn btn-primary" onclick="saveAccountName()" style="font-size:13px;padding:6px 14px;margin-left:10px;" data-i18n="settings.account_save">Save</button>
+                            </div>
+                        </div>
+                        <div class="settings-row">
+                            <span class="settings-label" data-i18n="settings.account_id">ID</span>
+                            <div class="settings-value">
+                                <span id="account-id-display" style="font-family:'D2Coding',monospace;color:var(--text-secondary);font-size:14px;"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <h3 data-i18n="settings.global_hotkey">Global Hotkey</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 16px; font-size: 13px;" data-i18n="settings.hotkey_desc">
+                            Register a global hotkey to launch Skillup Desktop from anywhere.
+                        </p>
+                        <div class="settings-row">
+                            <span class="settings-label" data-i18n="settings.hotkey_combination">Hotkey Combination</span>
+                            <div class="settings-value">
+                                <span id="hotkey-display" style="font-family: 'D2Coding', monospace; background: var(--bg-tertiary); padding: 4px 12px; border-radius: 4px;">Ctrl + Alt + S</span>
+                            </div>
+                        </div>
+                        <div class="settings-row">
+                            <span class="settings-label" data-i18n="settings.enable_hotkey">Enable Global Hotkey</span>
+                            <div class="settings-value">
+                                <div class="form-check form-switch" style="margin: 0; margin-right: 12px;">
+                                    <input class="form-check-input" type="checkbox" id="hotkey-toggle" onchange="toggleHotkey(this.checked)" style="width: 48px; height: 24px; cursor: pointer;">
+                                </div>
+                                <span id="hotkey-status-text" style="color: var(--text-secondary); font-size: 13px;">Disabled</span>
+                            </div>
+                        </div>
+                        <div id="hotkey-desktop-info" style="padding: 12px; background: var(--bg-tertiary); border-radius: 6px; margin-top: 12px; display: none;">
+                            <small style="color: var(--text-secondary); font-size: 12px;">
+                                <strong data-i18n="settings.desktop_env">Desktop Environment:</strong> <span id="desktop-env-name">Unknown</span><br>
+                                <strong data-i18n="settings.current_command">Current Command:</strong> <span id="hotkey-command" style="font-family: 'D2Coding', monospace; word-break: break-all;">-</span>
+                            </small>
+                        </div>
+                        <small style="color: var(--text-secondary); margin-top: 12px; display: block; font-size: 12px;" data-i18n="settings.hotkey_note">
+                            Note: This feature works on GNOME desktop environment. For KDE/XFCE, please register the hotkey manually in system settings.
+                        </small>
+                    </div>
+
+                    <div class="settings-section">
+                        <h3 data-i18n="settings.about">About</h3>
+                        <div class="settings-row">
+                            <span class="settings-label" data-i18n="settings.build">Build</span>
+                            <div class="settings-value">
+                                <span id="app-build" style="color: var(--text-secondary); font-size: 13px;">-</span>
+                            </div>
+                        </div>
+                        <div class="settings-row">
+                            <span class="settings-label" data-i18n="settings.version">Version</span>
+                            <div class="settings-value">
+                                <span id="app-version" style="color: var(--text-secondary); font-size: 13px;">-</span>
+                            </div>
+                        </div>
+                        <div class="settings-row">
+                            <span class="settings-label"></span>
+                            <div class="settings-value">
+                                <button class="btn btn-secondary" style="padding:8px 16px;" onclick="openSuggestBoard()" data-i18n="settings.suggest">건의하기</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- App Content Area (for running apps) -->
+                <div id="app-content" class="page" style="display: none;">
+                    <!-- App content will be loaded here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Desktop JS modules -->
+    <script src="/desktop-web-script/state.js"></script>
+    <script src="/desktop-web-script/api.js"></script>
+    <script src="/desktop-web-script/ui.js"></script>
+    <script src="/desktop-web-script/apps.js"></script>
+    <script src="/desktop-web-script/settings.js"></script>
+
+
+    <!-- Skillup Common Scripts -->
+    <script src="/common/script/qwebchannel.js"></script>
+    <script>
+        // Desktop mode - initialize global flags before loading common.js
+        window.skillupInitialized = true;
+        window.isInIframe = false;
+        window.isInWebBrowser = false;
+        // Initialize QWebChannel immediately for desktop
+        if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined') {            new QWebChannel(qt.webChannelTransport, function(channel) {
+                window.qwebchannelBridge = channel.objects.bridge;
+                // Connect callJS signal
+                if (window.qwebchannelBridge && window.qwebchannelBridge.callJS) {
+                    window.qwebchannelBridge.callJS.connect(function(functionName, jsonArgs) {                        try {
+                            const args = JSON.parse(jsonArgs);
+
+                            // First try to call function in desktop window scope
+                            if (typeof window[functionName] === 'function') {
+                                window[functionName](args);
+                            } else {
+                                // If not found in desktop scope, forward to currently visible app iframe
+                                const appContent = document.getElementById('app-content');
+                                const visibleIframe = appContent ? appContent.querySelector('iframe.iframe-visible') : null;
+
+                                if (visibleIframe && visibleIframe.contentWindow) {
+                                    visibleIframe.contentWindow.postMessage({
+                                        action: 'callJS',
+                                        functionName: functionName,
+                                        args: args
+                                    }, '*');
+                                } else {
+                                    console.warn('[Desktop] Function not found:', functionName);
+                                }
+                            }
+                        } catch (error) {
+                            console.error('[Desktop] callJS error:', error);
+                        }
+                    });                }
+            });
+        }
+    </script>
+    <script src="/common/bootstrap/5.3.3/bootstrap.bundle.min.js"></script>
+    <script src="/common/script/common.js"></script>
+
+    <script>
+        // ============================================================================
+        // QWebChannel callJS Forwarding to App Iframes
+        // ============================================================================
+        // Handler is defined in <head> section before common.js loads    </script>
+
+<!-- Startup Fortune Dialog -->
+<div id="startup-fortune-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.55);z-index:10500;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:28px 32px;min-width:340px;max-width:480px;box-shadow:0 8px 40px rgba(0,0,0,0.4);text-align:center;">
+        <div style="width:56px;height:56px;margin:0 auto 12px;"><img src="/app/f0rtune0/icon.svg" alt="clover" style="width:100%;height:100%;"></div>
+        <div id="sfd-date" style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;"></div>
+        <div id="sfd-title" style="font-size:14px;font-weight:600;color:var(--text-secondary);margin-bottom:16px;"></div>
+        <div id="sfd-text" style="font-size:18px;font-weight:600;color:var(--text-primary);line-height:1.7;margin-bottom:24px;"></div>
+        <button onclick="document.getElementById('startup-fortune-overlay').style.display='none';"
+                style="background:var(--accent-color,#4a90e2);color:white;border:none;border-radius:6px;padding:8px 28px;font-size:14px;cursor:pointer;"
+                id="sfd-ok-btn">OK</button>
+    </div>
+</div>
+
+<!-- Wayland IME Warning Dialog -->
+<div id="wayland-ime-dialog" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.55);z-index:10600;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:24px 28px;min-width:360px;max-width:540px;box-shadow:0 8px 40px rgba(0,0,0,0.4);">
+        <div id="wayland-ime-title" style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:14px;"></div>
+        <div id="wayland-ime-desc" style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:14px;"></div>
+        <div style="text-align:center;margin-bottom:16px;">
+            <img src="/common/resource/img/wayland_x11.jpg" alt="login session selection"
+                 style="max-width:100%;border-radius:6px;border:1px solid var(--border-color);">
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+            <label style="display:flex;align-items:center;font-size:13px;color:var(--text-secondary);cursor:pointer;">
+                <input type="checkbox" id="wayland-ime-dismiss-check"
+                       style="margin-right:6px;cursor:pointer;">
+                <span id="wayland-ime-dismiss-label"></span>
+            </label>
+            <button id="wayland-ime-ok-btn"
+                    style="background:var(--accent-color,#4a90e2);color:white;border:none;border-radius:6px;padding:7px 24px;font-size:13px;cursor:pointer;"></button>
+        </div>
+    </div>
+</div>
+
+<!-- Ctrl+Tab App Switcher -->
+<div id="app-switcher">
+    <div id="app-switcher-panel">
+        <div id="app-switcher-label">Switch App</div>
+        <div id="app-switcher-list"></div>
+    </div>
+</div>
+
+<!-- desktopModal: common modal for iframe apps -->
+<div id="desktop-modal-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:10000;pointer-events:none;">
+    <div id="desktop-modal-box" style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;min-width:320px;max-width:90vw;max-height:90vh;display:flex;flex-direction:column;position:absolute;pointer-events:all;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+        <div id="desktop-modal-title" style="font-size:14px;font-weight:600;color:var(--text-primary);flex-shrink:0;"></div>
+        <div id="desktop-modal-body" style="font-size:13px;color:var(--text-secondary);overflow-y:auto;flex:1;"></div>
+        <div id="desktop-modal-footer" style="display:flex;justify-content:flex-end;flex-shrink:0;"></div>
+    </div>
+</div>
+
+<!-- Message Box Dialog -->
+<div id="msgbox-dialog" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:24px;min-width:300px;max-width:420px;">
+        <div id="msgbox-dialog-title" style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:12px;"></div>
+        <div id="msgbox-dialog-text" style="font-size:13px;color:var(--text-secondary);margin-bottom:24px;line-height:1.5;white-space:pre-wrap;"></div>
+        <div style="display:flex;justify-content:flex-end;">
+            <button id="msgbox-dialog-ok" class="btn btn-primary" style="font-size:13px;padding:6px 20px;" data-i18n="dialog.ok">OK</button>
+        </div>
+    </div>
+</div>
+
+<!-- Input Dialog -->
+<div id="input-dialog" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:24px;min-width:300px;max-width:420px;">
+        <div id="input-dialog-title" style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:12px;"></div>
+        <input id="input-dialog-value" type="text" class="form-control" style="font-size:13px;margin-bottom:16px;">
+        <div style="display:flex;justify-content:flex-end;">
+            <button id="input-dialog-cancel" class="btn btn-secondary" style="font-size:13px;padding:6px 16px;margin-right:8px;" data-i18n="dialog.cancel">Cancel</button>
+            <button id="input-dialog-ok" class="btn btn-primary" style="font-size:13px;padding:6px 16px;" data-i18n="dialog.ok">OK</button>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Container -->
+<div id="skillup-toast-container" style="position:fixed;bottom:0;right:0;padding:12px;z-index:99999;display:flex;flex-direction:column;align-items:flex-end;pointer-events:none"></div>
+
+<!-- Confirm Dialog -->
+<div id="confirm-dialog" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10001;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:24px;min-width:300px;max-width:420px;">
+        <div id="confirm-dialog-title" style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:12px;"></div>
+        <div id="confirm-dialog-text" style="font-size:13px;color:var(--text-secondary);margin-bottom:24px;line-height:1.5;white-space:pre-wrap;"></div>
+        <div style="display:flex;justify-content:flex-end;">
+            <button id="confirm-dialog-no" class="btn btn-secondary" style="font-size:13px;padding:6px 16px;margin-right:8px;" data-i18n="dialog.no">No</button>
+            <button id="confirm-dialog-yes" class="btn btn-primary" style="font-size:13px;padding:6px 16px;" data-i18n="dialog.yes">Yes</button>
+        </div>
+    </div>
+</div>
+
+
+    <!-- Desktop JS modules (loaded after bootstrap+common) -->
+    <script src="/desktop-web-script/switcher.js"></script>
+    <script src="/desktop-web-script/toast.js"></script>
+    <script src="/desktop-web-script/dialogs.js"></script>
+    <script src="/desktop-web-script/modal.js"></script>
+    <script src="/desktop-web-script/init.js"></script>
+</body>
+</html>

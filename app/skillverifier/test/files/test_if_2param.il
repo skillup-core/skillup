@@ -1,0 +1,5 @@
+procedure(test(cls)
+  if(symstrp(cls)
+     cls = getValue(cls))
+  printf("done\n")
+)

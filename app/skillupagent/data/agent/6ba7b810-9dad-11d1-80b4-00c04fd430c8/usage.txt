@@ -1,0 +1,23 @@
+## Create Path Agent
+
+An agent that draws paths in Virtuoso layout.
+
+Provide the following three values and the path will be created:
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `layer` | Layer number or name | `101`, `metal` |
+| `points` | Two or more coordinates | `0 0, 5 5` |
+| `width` | Path width | `0.5` |
+
+**Example:**
+```
+Draw a path on metal layer from 0,0 to 10,0 with width 1
+Set the layer to 1.
+Set the width to 3.
+Draw a path through 0:0 10:10 -10:10
+Draw a path through -10:0 -20:10 -30:10
+Add 10 to all x values and proceed.
+```
+
+If any value is missing, the agent will ask for it.

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Revisions - CodeHub</title>
+    <script src="/common/script/appinit.js" onerror="this.onerror=null; this.src='../../../../web/common/script/appinit.js';"></script>
+</head>
+<body>
+    <link rel="stylesheet" href="codehub.css" onerror="this.onerror=null; this.href='/app/codehub/web/codehub.css';">
+    <script src="codehub.js" onerror="this.onerror=null; this.src='/app/codehub/web/codehub.js';"></script>
+
+    <div class="content-container">
+        <div class="ch-page">
+
+            <div class="ch-topbar">
+                <a class="ch-file-link" style="cursor:pointer;font-size:14px;margin-right:10px" id="back-link">
+                    <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:var(--accent-text)"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+                </a>
+                <span class="ch-topbar-title" id="page-title"></span>
+            </div>
+
+            <div id="loading-msg" style="font-size:13px;color:var(--text-secondary);padding:10px 0"></div>
+
+            <table class="ch-log-table" id="log-table" style="display:none">
+                <thead>
+                    <tr>
+                        <th id="th-revision"></th>
+                        <th id="th-author"></th>
+                        <th id="th-date"></th>
+                        <th id="th-message"></th>
+                    </tr>
+                </thead>
+                <tbody id="log-tbody"></tbody>
+            </table>
+
+            <div class="ch-empty" id="empty-msg" style="display:none"></div>
+
+        </div>
+    </div>
+
+    <script>
+    let projectId = null;
+    let viewRevision = null;
+    let langReady = false;
+    let loaded = false;
+
+    function onPageLoad() {
+        const params = new URLSearchParams(window.location.search);
+        projectId    = params.get('id');
+        viewRevision = params.get('rev') || null;
+        document.getElementById('back-link').onclick = () => {
+            let url = 'project.html?id=' + projectId;
+            if (viewRevision) url += '&rev=' + viewRevision;
+            navigateTo(url);
+        };
+        setTimeout(function() {
+            if (!langReady) { langReady = true; applyTexts(); loadLog(); }
+        }, 300);
+    }
+
+    function onLanguageSet(changed) {
+        if (!langReady) {
+            langReady = true;
+            applyTexts();
+            loadLog();
+        } else if (changed) {
+            applyTexts();
+        }
+    }
+
+    function applyTexts() {
+        document.getElementById('page-title').textContent = t('revisions');
+        document.getElementById('loading-msg').textContent = t('loading');
+        document.getElementById('th-revision').textContent = 'Revision';
+        document.getElementById('th-author').textContent = t('colAuthor');
+        document.getElementById('th-date').textContent = t('colDate');
+        document.getElementById('th-message').textContent = t('colMessage');
+        if (!loaded) return;
+        const emptyEl = document.getElementById('empty-msg');
+        if (emptyEl.style.display !== 'none') emptyEl.textContent = t('noRevisions');
+    }
+
+    function loadLog() {
+        apiCall('svn_log', { project_id: projectId, limit: 100 })
+            .then(result => {
+                document.getElementById('loading-msg').style.display = 'none';
+                loaded = true;
+                if (!result.success || !result.entries || result.entries.length === 0) {
+                    const emptyEl = document.getElementById('empty-msg');
+                    emptyEl.textContent = t('noRevisions');
+                    emptyEl.style.display = '';
+                    return;
+                }
+
+                const tbody = document.getElementById('log-tbody');
+                result.entries.forEach(e => {
+                    const tr = document.createElement('tr');
+                    tr.style.cursor = 'pointer';
+                    tr.innerHTML =
+                        '<td style="font-family:monospace;font-size:12px;white-space:nowrap">r' + escHtml(e.revision) + '</td>' +
+                        '<td style="font-size:13px;white-space:nowrap">' + escHtml(e.author || '') + '</td>' +
+                        '<td style="font-size:12px;white-space:nowrap;color:var(--text-secondary)">' + formatDate(e.date) + '</td>' +
+                        '<td style="font-size:13px">' + escHtml(e.message || '') + '</td>';
+                    tr.onclick = (function(rev) {
+                        return function() {
+                            let url = 'revision_detail.html?id=' + projectId + '&rev=' + rev;
+                            if (viewRevision) url += '&from_rev=' + viewRevision;
+                            navigateTo(url);
+                        };
+                    })(e.revision);
+                    tbody.appendChild(tr);
+                });
+                document.getElementById('log-table').style.display = '';
+            });
+    }
+
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function formatDate(iso) {
+        if (!iso) return '';
+        return iso.substring(0, 10);
+    }
+    </script>
+</body>
+</html>

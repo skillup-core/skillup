@@ -1,0 +1,204 @@
+/* Filter: filter row, filter dialog */
+
+.filter-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.filter-row .form-control {
+    flex: 1;
+    margin-right: 10px;
+}
+
+.filter-row .btn {
+    flex-shrink: 0;
+    margin-right: 10px;
+}
+
+.filter-row .btn:last-child {
+    margin-right: 0;
+}
+
+.result-file.hidden {
+    display: none !important;
+}
+
+.result-error.filter-hidden,
+.result-warning.filter-hidden {
+    display: none !important;
+}
+
+mark {
+    background-color: #fff3cd;
+    color: #000;
+    padding: 0;
+    border-radius: 2px;
+    font-weight: 600;
+}
+
+/* Filter Dialog */
+.filter-dialog-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 9998;
+    align-items: center;
+    justify-content: center;
+}
+
+.filter-dialog-overlay.show {
+    display: flex;
+}
+
+.filter-dialog {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0;
+    min-width: 400px;
+    max-width: 500px;
+    max-height: 80vh;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+}
+
+.filter-dialog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.filter-dialog-header h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.filter-dialog-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+}
+
+.filter-dialog-close:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.filter-dialog-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.filter-section {
+    margin-bottom: 20px;
+}
+
+.filter-section:last-child {
+    margin-bottom: 0;
+}
+
+.filter-section-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--text-primary);
+}
+
+.filter-section-title.errors {
+    color: var(--error);
+}
+
+.filter-section-title.warnings {
+    color: var(--warning);
+}
+
+.filter-section-title.clean {
+    color: var(--success);
+}
+
+.filter-section-actions {
+    display: flex;
+    margin-bottom: 8px;
+}
+
+.filter-action-link {
+    font-size: 13px;
+    color: var(--accent-text);
+    cursor: pointer;
+    text-decoration: none;
+    margin-right: 15px;
+}
+
+.filter-action-link:last-child {
+    margin-right: 0;
+}
+
+.filter-action-link:hover {
+    text-decoration: underline;
+    opacity: 0.8;
+}
+
+.filter-checkbox-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 0;
+    cursor: pointer;
+    user-select: none;
+}
+
+.filter-checkbox-item:hover {
+    background: var(--bg-tertiary);
+    margin: 0 -10px;
+    padding: 6px 10px;
+    border-radius: 4px;
+}
+
+.filter-checkbox-item input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin-right: 10px;
+    cursor: pointer;
+}
+
+.filter-checkbox-item label {
+    cursor: pointer;
+    font-size: 13px;
+    margin: 0;
+    flex: 1;
+}
+
+.filter-checkbox-item .filter-count {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-left: 8px;
+}
+
+.filter-dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    padding: 15px 20px;
+    border-top: 1px solid var(--border-color);
+}
+
+.filter-dialog-footer .btn {
+    margin-left: 10px;
+}

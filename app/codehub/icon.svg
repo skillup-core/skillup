@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- background -->
+  <rect width="64" height="64" rx="12" fill="#1d4ed8"/>
+  <!-- folder body -->
+  <path d="M10 24 C10 21.8 11.8 20 14 20 L26 20 L30 24 L50 24 C52.2 24 54 25.8 54 28 L54 46 C54 48.2 52.2 50 50 50 L14 50 C11.8 50 10 48.2 10 46 Z" fill="white" opacity="0.9"/>
+  <!-- folder tab -->
+  <path d="M10 24 L10 22 C10 19.8 11.8 18 14 18 L24 18 L28 22 L10 22 Z" fill="white" opacity="0.6"/>
+  <!-- code: < -->
+  <path d="M24 33 L19 37 L24 41" stroke="#1d4ed8" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- code: > -->
+  <path d="M40 33 L45 37 L40 41" stroke="#1d4ed8" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- code: / -->
+  <line x1="35" y1="31" x2="29" y2="43" stroke="#1d4ed8" stroke-width="2.8" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <!-- Generic document outline with folded corner -->
+  <path d="M3,1.5 L10,1.5 L13.5,5 L13.5,14.5 L3,14.5 Z" fill="none" stroke="#666" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M10,1.5 L10,5 L13.5,5" fill="none" stroke="#666" stroke-width="1" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,15 @@
+# Expected errors for test_comprehensive_features.il
+# Format: line|func|type|var
+#
+9|b|undeclared(function)|funcall
+9|b|undeclared(function)|reducer
+9|b|undeclared(function)|mapcar
+9|b|undeclared(function)|funcall
+16|c|undeclared(function)|abs
+17|c|undeclared(function)|abs
+18|c|undeclared(function)|abs
+19|c|undeclared(function)|abs
+19|c|undeclared(variable)|z
+47|h|undeclared(variable)|l
+53|i|undeclared(variable)|c
+54|i|undeclared(variable)|d

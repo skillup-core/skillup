@@ -1,0 +1,4 @@
+# Expected errors for test_two_funcs.il
+# Format: line|func|type|var
+#
+11|myFunction2|undeclared(function)|myTest

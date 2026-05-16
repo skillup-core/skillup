@@ -1,0 +1,64 @@
+/* Code Viewer */
+
+.code-viewer {
+    display: none;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    margin: 10px 0 0 0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.code-viewer.show {
+    display: block;
+}
+
+.code-header {
+    background-color: #2d2d30;
+    padding: 8px 15px;
+    border-bottom: 1px solid #3e3e42;
+    font-size: 12px;
+    color: #cccccc;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: 'D2Coding', 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+.code-content {
+    overflow-x: auto;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.code-line {
+    display: flex;
+    font-family: 'D2Coding', 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 0 15px;
+}
+
+.code-line:hover {
+    background-color: #2a2a2a;
+}
+
+.code-line.error-line {
+    background-color: #4b1818;
+}
+
+.line-number {
+    color: #858585;
+    text-align: right;
+    padding-right: 15px;
+    min-width: 50px;
+    user-select: none;
+    font-family: 'D2Coding', 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+.line-code {
+    flex: 1;
+    white-space: pre;
+    overflow: visible;
+    font-family: 'D2Coding', 'Consolas', 'Monaco', 'Courier New', monospace;
+}

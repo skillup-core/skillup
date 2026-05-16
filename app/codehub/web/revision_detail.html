@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Revision Detail - CodeHub</title>
+    <script src="/common/script/appinit.js" onerror="this.onerror=null; this.src='../../../../web/common/script/appinit.js';"></script>
+</head>
+<body>
+    <link rel="stylesheet" href="codehub.css" onerror="this.onerror=null; this.href='/app/codehub/web/codehub.css';">
+    <script src="codehub.js" onerror="this.onerror=null; this.src='/app/codehub/web/codehub.js';"></script>
+
+    <div class="content-container">
+        <div class="ch-page">
+
+            <div class="ch-topbar">
+                <a class="ch-file-link" style="cursor:pointer;font-size:14px;margin-right:10px" id="back-link">
+                    <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:var(--accent-text)"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+                </a>
+                <span class="ch-topbar-title" id="page-title"></span>
+            </div>
+
+            <div id="loading-msg" style="font-size:13px;color:var(--text-secondary);padding:10px 0"></div>
+
+            <div id="detail-view" style="display:none">
+
+                <!-- meta info -->
+                <table class="ch-log-table" style="margin-bottom:16px">
+                    <tbody>
+                        <tr>
+                            <th style="width:100px">Revision</th>
+                            <td id="d-revision" style="font-family:monospace;font-size:13px"></td>
+                        </tr>
+                        <tr>
+                            <th id="th-author"></th>
+                            <td id="d-author"></td>
+                        </tr>
+                        <tr>
+                            <th id="th-date"></th>
+                            <td id="d-date" style="color:var(--text-secondary);font-size:12px"></td>
+                        </tr>
+                        <tr>
+                            <th id="th-message"></th>
+                            <td id="d-message" style="white-space:pre-wrap"></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <!-- changed paths -->
+                <div style="font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px" id="lbl-changed-paths"></div>
+                <table class="ch-log-table" id="paths-table" style="margin-bottom:20px">
+                    <tbody id="paths-tbody"></tbody>
+                </table>
+
+                <!-- action buttons -->
+                <div style="display:flex;align-items:center">
+                    <button class="btn btn-primary btn-sm" id="btn-goto" style="margin-right:8px" onclick="gotoRevision()"></button>
+                    <span class="ch-tooltip-wrap" id="rollback-btn-wrap">
+                        <button class="btn btn-danger btn-sm" id="btn-rollback" onclick="doRollback()"></button>
+                        <span class="ch-tooltip" id="rollback-tooltip" style="display:none"></span>
+                    </span>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+    let projectId    = null;
+    let revision     = null;
+    let fromRev      = null;  // rev context inherited from file_log.html
+    let langReady    = false;
+    let detail       = null;
+    let isLatest     = false;
+    let canRollback  = false;
+
+    function onPageLoad() {
+        const params = new URLSearchParams(window.location.search);
+        projectId = params.get('id');
+        revision  = params.get('rev');
+        fromRev   = params.get('from_rev') || null;
+        document.getElementById('back-link').onclick = () => {
+            let url = 'file_log.html?id=' + projectId;
+            if (fromRev) url += '&rev=' + fromRev;
+            navigateTo(url);
+        };
+        setTimeout(function() {
+            if (!langReady) { langReady = true; applyTexts(); loadDetail(); }
+        }, 300);
+    }
+
+    function onLanguageSet(changed) {
+        if (!langReady) {
+            langReady = true;
+            applyTexts();
+            loadDetail();
+        } else if (changed) {
+            applyTexts();
+            if (detail) renderDetail();
+        }
+    }
+
+    function applyTexts() {
+        document.getElementById('page-title').textContent = t('revisionDetail');
+        document.getElementById('loading-msg').textContent = t('loading');
+        document.getElementById('th-author').textContent  = t('colAuthor');
+        document.getElementById('th-date').textContent    = t('colDate');
+        document.getElementById('th-message').textContent = t('colMessage');
+        document.getElementById('lbl-changed-paths').textContent = t('changedPaths');
+        document.getElementById('btn-goto').textContent     = t('goToRevision');
+        document.getElementById('btn-rollback').textContent = t('rollback');
+    }
+
+    async function loadDetail() {
+        const [detailResult, logResult, projectResult] = await Promise.all([
+            apiCall('get_revision_detail', { project_id: projectId, revision: revision }),
+            apiCall('svn_log', { project_id: projectId, limit: 1 }),
+            apiCall('get_project', { project_id: projectId }),
+        ]);
+        document.getElementById('loading-msg').style.display = 'none';
+        if (!detailResult.success) {
+            document.getElementById('loading-msg').style.display = '';
+            document.getElementById('loading-msg').textContent = detailResult.error || t('error');
+            return;
+        }
+        detail = detailResult.detail;
+        if (logResult.success && logResult.entries && logResult.entries.length > 0) {
+            isLatest = (String(logResult.entries[0].revision) === String(revision));
+        }
+        if (projectResult.success && projectResult.project) {
+            const p = projectResult.project;
+            canRollback = !!p.is_master;
+        }
+        renderDetail();
+        document.getElementById('detail-view').style.display = '';
+    }
+
+    function actionLabel(action) {
+        return {A: t('actionAdded'), M: t('actionModified'), D: t('actionDeleted'), R: t('actionReplaced')}[action] || action;
+    }
+
+    function actionColor(action) {
+        return {
+            A: 'var(--success-color, #28a745)',
+            M: 'var(--warning-color, #f0a020)',
+            D: 'var(--danger-color, #dc3545)',
+            R: 'var(--warning-color, #f0a020)',
+        }[action] || 'var(--text-primary)';
+    }
+
+    function renderDetail() {
+        document.getElementById('d-revision').textContent = 'r' + detail.revision;
+        document.getElementById('d-author').textContent   = detail.author || '';
+        document.getElementById('d-date').textContent     = (detail.date || '').substring(0, 10);
+        document.getElementById('d-message').textContent  = detail.message || '';
+
+        const tbody = document.getElementById('paths-tbody');
+        tbody.innerHTML = '';
+        (detail.paths || []).forEach(function(p) {
+            const tr = document.createElement('tr');
+
+            // Only files (no trailing slash, non-empty path) are clickable
+            const isFile = p.path && !p.path.endsWith('/');
+            if (isFile) {
+                tr.style.cssText = 'cursor:pointer';
+                tr.classList.add('ch-file-row');
+                tr.onclick = function() { openFileDiff(p); };
+            }
+
+            const tdAction = document.createElement('td');
+            tdAction.style.cssText = 'width:80px;font-size:12px;white-space:nowrap;color:' + actionColor(p.action);
+            tdAction.textContent = actionLabel(p.action);
+            const tdPath = document.createElement('td');
+            tdPath.style.cssText = 'font-family:monospace;font-size:12px';
+            tdPath.textContent = p.path;
+            tr.appendChild(tdAction);
+            tr.appendChild(tdPath);
+            tbody.appendChild(tr);
+        });
+
+        const rollbackBtn = document.getElementById('btn-rollback');
+        const rollbackTip = document.getElementById('rollback-tooltip');
+        if (!canRollback) {
+            rollbackBtn.disabled = true;
+            rollbackBtn.style.opacity = '0.5';
+            rollbackTip.textContent = t('rollbackNoPermissionTip');
+            rollbackTip.style.display = '';
+        } else if (isLatest) {
+            rollbackBtn.disabled = true;
+            rollbackBtn.style.opacity = '0.5';
+            rollbackTip.textContent = t('rollbackLatestTip');
+            rollbackTip.style.display = '';
+        } else {
+            rollbackBtn.disabled = false;
+            rollbackBtn.style.opacity = '';
+            rollbackTip.style.display = 'none';
+        }
+
+        applyTexts();
+    }
+
+    function gotoRevision() {
+        if (isLatest) {
+            navigateTo('project.html?id=' + projectId);
+        } else {
+            navigateTo('project.html?id=' + projectId + '&rev=' + revision);
+        }
+    }
+
+    async function doRollback() {
+        if (!window.isInIframe) return;
+        if (!canRollback) return;
+        const confirmed = await window.parent.showConfirmDialog(
+            t('rollbackConfirmTitle'), t('rollbackConfirmMsg'), { yesStyle: 'danger' }
+        );
+        if (!confirmed) return;
+
+        const result = await apiCall('rollback', { project_id: projectId, revision: revision });
+        if (result.success) {
+            // Navigate back to project at HEAD after rollback
+            navigateTo('project.html?id=' + projectId);
+        } else {
+            window.parent.showToast(result.error || t('error'), { type: 'err' });
+        }
+    }
+
+    function openFileDiff(p) {
+        // Map SVN action to rev_before / rev_after
+        // A (Added)   : no before version  → rev_before omitted, rev_after = revision
+        // D (Deleted) : no after version   → rev_before = revision-1, rev_after omitted
+        // M / R       : both versions      → rev_before = revision-1, rev_after = revision
+        const rev = parseInt(revision, 10);
+        let revBefore = null;
+        let revAfter  = null;
+
+        if (p.action === 'A') {
+            revAfter = String(rev);
+        } else if (p.action === 'D') {
+            if (rev > 1) revBefore = String(rev - 1);
+        } else {
+            if (rev > 1) revBefore = String(rev - 1);
+            revAfter = String(rev);
+        }
+
+        let url = 'file_view.html?id=' + projectId
+                + '&path=' + encodeURIComponent(p.path);
+
+        if (revBefore !== null) url += '&rev_before=' + revBefore;
+        if (revAfter  !== null) url += '&rev_after='  + revAfter;
+
+        // Back URL returns to this revision detail page
+        const backTarget = 'revision_detail.html?id=' + projectId + '&rev=' + revision
+                         + (fromRev ? '&from_rev=' + fromRev : '');
+        url += '&back_url=' + encodeURIComponent(backTarget);
+
+        navigateTo(url);
+    }
+
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    </script>
+</body>
+</html>

@@ -1,0 +1,95 @@
+/* Desktop Grid: app icons */
+
+.desktop-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 120px));
+    justify-content: start;
+}
+
+.app-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100px;
+    padding: 15px 10px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s, box-shadow 0.2s;
+    text-decoration: none;
+    color: var(--text-primary);
+    margin-right: 20px;
+    margin-bottom: 20px;
+}
+
+.app-icon:nth-child(5n) {
+    margin-right: 0;
+}
+
+.app-icon:hover {
+    background: var(--bg-tertiary);
+}
+
+.app-icon:focus {
+    outline: none !important;
+}
+
+.app-icon:focus-visible {
+    outline: none !important;
+}
+
+.app-icon.custom-focused {
+    box-shadow: 0 0 0 1.5px var(--text-secondary) !important;
+    border-radius: 12px;
+}
+
+.app-icon-image {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 10px;
+    border-radius: 12px;
+    background: var(--bg-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.app-icon-image svg {
+    width: 100%;
+    height: 100%;
+}
+
+.app-icon-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.app-icon-name {
+    font-size: 13px;
+    text-align: center;
+    word-wrap: break-word;
+    word-break: keep-all;
+    max-width: 100px;
+}
+
+/* App icon drag-and-drop */
+.app-icon {
+    cursor: grab;
+}
+
+.app-icon.dragging {
+    opacity: 0.25;
+    pointer-events: none;
+}
+
+/* Drop indicator: subtle vertical accent between icons */
+.drag-drop-indicator {
+    position: fixed;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--text-secondary, #888);
+    pointer-events: none;
+    z-index: 10000;
+    opacity: 0.55;
+}

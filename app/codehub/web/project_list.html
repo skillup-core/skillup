@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeHub</title>
+    <script src="/common/script/appinit.js" onerror="this.onerror=null; this.src='../../../../web/common/script/appinit.js';"></script>
+</head>
+<body>
+    <link rel="stylesheet" href="codehub.css" onerror="this.onerror=null; this.href='/app/codehub/web/codehub.css';">
+    <script src="codehub.js" onerror="this.onerror=null; this.src='/app/codehub/web/codehub.js';"></script>
+
+    <div class="content-container">
+        <div class="ch-page" id="main-page">
+
+            <!-- SVN config banner (shown when not configured) -->
+            <div class="ch-config-banner" id="config-banner" style="display:none">
+                <h4 id="config-title"></h4>
+                <p id="config-desc"></p>
+                <input type="text" id="svn-url-input" placeholder="file:///path/to/repo or svn://host/repo">
+                <button class="btn btn-primary btn-sm" id="config-save-btn" onclick="saveSvnConfig()"></button>
+            </div>
+
+            <!-- Top bar -->
+            <div class="ch-topbar" id="topbar" style="display:none">
+                <span class="ch-topbar-title" id="page-title"></span>
+                <button class="btn btn-primary btn-sm" onclick="goNewProject()" id="new-project-btn" style="margin-left:auto"></button>
+            </div>
+
+            <!-- My Projects (master) -->
+            <div class="ch-section" id="section-master" style="display:none">
+                <div class="ch-section-header">
+                    <span class="ch-section-title" id="section-master-title"></span>
+                    <input type="text" class="ch-search" id="search-master" oninput="onSearch('master')">
+                </div>
+                <div id="list-master"></div>
+                <div id="pager-master" class="ch-pager"></div>
+            </div>
+
+            <!-- Member projects -->
+            <div class="ch-section" id="section-member" style="display:none">
+                <div class="ch-section-header">
+                    <span class="ch-section-title" id="section-member-title"></span>
+                    <input type="text" class="ch-search" id="search-member" oninput="onSearch('member')">
+                </div>
+                <div id="list-member"></div>
+                <div id="pager-member" class="ch-pager"></div>
+            </div>
+
+            <!-- All projects -->
+            <div class="ch-section" id="section-all" style="display:none">
+                <div class="ch-section-header">
+                    <span class="ch-section-title" id="section-all-title"></span>
+                    <input type="text" class="ch-search" id="search-all" oninput="onSearch('all')">
+                </div>
+                <div id="list-all"></div>
+                <div id="pager-all" class="ch-pager"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+    // ── state ──────────────────────────────────────────────────────────────
+    let initState = null;
+    let langReady = false;
+    const PAGE_SIZE = 20;
+    const pages = { master: 1, member: 1, all: 1 };
+
+    // ── init ───────────────────────────────────────────────────────────────
+    function onPageLoad() {
+        // Defer rendering until language arrives; fall back after 300ms.
+        setTimeout(function() {
+            if (!langReady) { langReady = true; applyTexts(); loadInitState(); }
+        }, 300);
+    }
+
+    function onLanguageSet(changed) {
+        if (!langReady) {
+            langReady = true;
+            applyTexts();
+            loadInitState();
+        } else if (changed) {
+            applyTexts();
+            if (initState && initState.svn_configured) {
+                loadMaster();
+                loadMember();
+                loadAll();
+            }
+        }
+    }
+
+    function applyTexts() {
+        document.getElementById('page-title').textContent = t('projects');
+        document.getElementById('new-project-btn').textContent = t('newProject');
+        document.getElementById('section-master-title').textContent = t('myProjects');
+        document.getElementById('section-member-title').textContent = t('memberProjects');
+        document.getElementById('section-all-title').textContent = t('allProjects');
+        document.getElementById('search-master').placeholder = t('search');
+        document.getElementById('search-member').placeholder = t('search');
+        document.getElementById('search-all').placeholder = t('search');
+        document.getElementById('config-title').textContent = t('configTitle');
+        document.getElementById('config-desc').textContent = t('configDesc');
+        document.getElementById('config-save-btn').textContent = t('configSave');
+    }
+
+    async function loadInitState() {
+        const result = await apiCall('get_init_state', {});
+        if (!result.success) return;
+        initState = result;
+
+        if (!result.svn_configured) {
+            document.getElementById('config-banner').style.display = '';
+            return;
+        }
+
+        showMainSections();
+        checkOrphanDirs();
+    }
+
+    async function checkOrphanDirs() {
+        const result = await apiCall('list_orphan_dirs', {});
+        if (!result.success || !result.orphans || result.orphans.length === 0) return;
+        showOrphanModal(result.orphans);
+    }
+
+    function showOrphanModal(orphans) {
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'font-size:14px;';
+
+        const desc = document.createElement('p');
+        desc.style.cssText = 'margin:0 0 10px 0;';
+        desc.textContent = t('orphanDesc');
+        wrap.appendChild(desc);
+
+        const listWrap = document.createElement('div');
+        listWrap.style.cssText = 'max-height:' + (4 * 32) + 'px;overflow-y:auto;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-secondary);';
+
+        orphans.forEach(function(o, i) {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;padding:5px 10px;line-height:22px;' +
+                (i > 0 ? 'border-top:1px solid var(--border-color);' : '');
+
+            const label = document.createElement('span');
+            label.style.cssText = 'font-family:monospace;font-size:13px;flex:1;';
+            label.textContent = o.owner + '/' + o.name;
+            row.appendChild(label);
+
+            if (o.path) {
+                const btn = document.createElement('button');
+                btn.setAttribute('aria-label', 'terminal');
+                btn.style.cssText = 'flex-shrink:0;display:flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:1px solid var(--border-color);border-radius:4px;background:transparent;cursor:pointer;color:var(--text-secondary);outline:none;';
+                btn.innerHTML = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
+                btn.onmouseover = function() { this.style.background = 'var(--bg-tertiary)'; };
+                btn.onmouseout = function() { this.style.background = 'transparent'; };
+                btn.onclick = function() { apiCall('open_terminal', { workdir: o.path }); };
+                row.appendChild(btn);
+            }
+
+            listWrap.appendChild(row);
+        });
+
+        wrap.appendChild(listWrap);
+
+        parent.desktopModal.open({
+            title: t('orphanTitle'),
+            element: wrap,
+            buttons: [
+                {
+                    label: t('orphanCancel'),
+                    onClick: function() {
+                        apiCall('dismiss_orphan_dirs', {});
+                        parent.desktopModal.close();
+                    },
+                },
+                {
+                    label: t('orphanDelete'),
+                    danger: true,
+                    onClick: async function() {
+                        const r = await apiCall('delete_orphan_dirs', {});
+                        parent.desktopModal.close();
+                        if (!r.success) {
+                            parent.showToast(r.error || t('error'), { type: 'err' });
+                            return;
+                        }
+                        const n = r.deleted ? r.deleted.length : 0;
+                        if (r.failed && r.failed.length > 0) {
+                            const names = r.failed.map(function(f) { return f.path; }).join(', ');
+                            parent.showToast(t('orphanFailMsg').replace('{list}', names), { type: 'err' });
+                        }
+                        if (n > 0) {
+                            parent.showToast(t('orphanDoneMsg').replace('{n}', n), { type: 'ok' });
+                        }
+                    },
+                },
+            ],
+        });
+    }
+
+    function showMainSections() {
+        document.getElementById('topbar').style.display = '';
+        document.getElementById('section-master').style.display = '';
+        document.getElementById('section-member').style.display = '';
+        document.getElementById('section-all').style.display = '';
+        loadMaster();
+        loadMember();
+        loadAll();
+    }
+
+    // ── load sections ───────────────────────────────────────────────────────
+    function onSearch(section) {
+        pages[section] = 1;
+        loadSection(section);
+    }
+
+    async function loadMaster(page) {
+        if (page) pages.master = page;
+        await loadSection('master');
+    }
+
+    async function loadMember(page) {
+        if (page) pages.member = page;
+        await loadSection('member');
+    }
+
+    async function loadAll(page) {
+        if (page) pages.all = page;
+        await loadSection('all');
+    }
+
+    async function loadSection(section) {
+        const search = document.getElementById('search-' + section).value;
+        const page = pages[section];
+        const result = await apiCall('list_projects', { section, search, limit: PAGE_SIZE, page });
+        const container = document.getElementById('list-' + section);
+        if (!result.success) {
+            container.innerHTML = '<div class="ch-empty">' + (result.error || t('error')) + '</div>';
+            document.getElementById('pager-' + section).innerHTML = '';
+            return;
+        }
+        renderProjectList(container, result.projects);
+        renderPager(document.getElementById('pager-' + section), result.total, page, PAGE_SIZE,
+            function(p) {
+                if (section === 'master') loadMaster(p);
+                else if (section === 'member') loadMember(p);
+                else loadAll(p);
+            });
+    }
+
+    // ── render ──────────────────────────────────────────────────────────────
+    const HEART_EMPTY = '<svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';
+
+    function renderProjectList(container, projects) {
+        if (!projects || projects.length === 0) {
+            container.innerHTML = '<div class="ch-empty">' + t('noProjects') + '</div>';
+            return;
+        }
+
+        // Favorites on top
+        const sorted = projects.slice().sort(function(a, b) {
+            return (b.favorited ? 1 : 0) - (a.favorited ? 1 : 0);
+        });
+
+        const grid = document.createElement('div');
+        grid.className = 'ch-project-grid';
+
+        sorted.forEach(function(p) {
+            const card = document.createElement('div');
+            card.className = 'ch-project-card';
+            card.onclick = function() { openProject(p.id); };
+
+            const favBadge = document.createElement('span');
+            favBadge.className = 'ch-fav-badge' + (p.favorited ? ' favorited' : '');
+            favBadge.innerHTML = HEART_EMPTY;
+            favBadge.onclick = function(e) {
+                e.stopPropagation();
+                toggleFavorite(p, favBadge);
+            };
+
+            const info = document.createElement('div');
+            info.className = 'ch-project-info';
+            info.innerHTML =
+                '<div class="ch-project-name">' + escHtml(p.owner_account) + ' / ' + escHtml(p.name) + '</div>' +
+                '<div class="ch-project-desc">' + escHtml(p.description || '') + '</div>';
+
+            const meta = document.createElement('div');
+            meta.className = 'ch-project-meta';
+            meta.innerHTML = '<span style="font-size:12px;color:var(--text-secondary)">' + formatDate(p.last_deployed_at) + '</span>';
+
+            card.appendChild(info);
+            card.appendChild(meta);
+            card.appendChild(favBadge);
+            grid.appendChild(card);
+        });
+
+        container.innerHTML = '';
+        container.appendChild(grid);
+    }
+
+    function renderPager(container, total, currentPage, pageSize, onPage) {
+        container.innerHTML = '';
+        const totalPages = Math.ceil(total / pageSize);
+        if (totalPages <= 1) return;
+
+        function btn(label, page, disabled, active) {
+            const b = document.createElement('button');
+            b.className = 'ch-pager-btn' + (active ? ' active' : '');
+            b.textContent = label;
+            b.disabled = disabled;
+            if (!disabled) b.onclick = function() { onPage(page); };
+            return b;
+        }
+
+        container.appendChild(btn('<', currentPage - 1, currentPage === 1, false));
+
+        for (let p = 1; p <= totalPages; p++) {
+            container.appendChild(btn(p, p, false, p === currentPage));
+        }
+
+        container.appendChild(btn('>', currentPage + 1, currentPage === totalPages, false));
+    }
+
+    async function toggleFavorite(p, badgeEl) {
+        const result = await apiCall('toggle_favorite', { project_id: p.id });
+        if (!result.success) return;
+        p.favorited = result.favorited;
+        if (result.favorited) {
+            badgeEl.classList.add('favorited');
+        } else {
+            badgeEl.classList.remove('favorited');
+        }
+    }
+
+    // ── actions ─────────────────────────────────────────────────────────────
+    function openProject(projectId) {
+        navigateTo('project.html?id=' + projectId);
+    }
+
+    function goNewProject() {
+        navigateTo('project_new.html');
+    }
+
+    async function saveSvnConfig() {
+        const url = document.getElementById('svn-url-input').value.trim();
+        if (!url) return;
+
+        const result = await apiCall('save_svn_repo_url', { url });
+        if (result.success) {
+            document.getElementById('config-banner').style.display = 'none';
+            showMainSections();
+        } else {
+            window.parent.showToast(result.error || t('error'), { type: 'err' });
+        }
+    }
+
+    // ── util ─────────────────────────────────────────────────────────────────
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function formatDate(iso) {
+        if (!iso) return '';
+        return iso.substring(0, 10);
+    }
+    </script>
+</body>
+</html>

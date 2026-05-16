@@ -1,0 +1,9 @@
+# Expected errors for test_setof_operator.il
+# Format: line|func|type|var
+#
+# This test verifies that setof expressions with binary operators (&&)
+# are correctly parsed as a single expression in if conditions.
+# Previously, this would incorrectly trigger:
+#   "syntax error in if statement: multiple expressions require 'then' or 'else' keyword"
+#
+4|a|undeclared(function)|test1

@@ -1,0 +1,6 @@
+# Expected errors for test_arrow.il
+# Format: line|func|type|var
+#
+2|test|undeclared(variable)|shape
+2|test|undeclared(variable)|x
+3|test|undeclared(variable)|y

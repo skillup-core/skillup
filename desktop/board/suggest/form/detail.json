@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "title": "Feedback",
+  "docProps": {
+    "formName": "Feedback",
+    "fontSize": 14,
+    "formSize": {
+      "mode": "auto",
+      "cols": 0,
+      "rows": 0
+    },
+    "theme": "auto",
+    "formName.ko": "건의하기",
+    "formId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  },
+  "grid": {
+    "rowHeight": 56,
+    "cellW": 56
+  },
+  "fields": [
+    {
+      "id": "title",
+      "type": "text",
+      "label": "Subject",
+      "label.ko": "제목",
+      "col": 0,
+      "row": 0,
+      "w": 12,
+      "h": 1,
+      "required": true,
+      "placeholder": "Enter a subject",
+      "placeholder.ko": "제목을 입력하세요",
+      "default": "",
+      "font": "sans",
+      "readonly": false
+    },
+    {
+      "id": "f12",
+      "type": "info",
+      "col": 0,
+      "row": 1,
+      "w": 2,
+      "h": 1,
+      "required": false,
+      "placeholder": "",
+      "default": "",
+      "font": "mono",
+      "infoField": "@row_id",
+      "multiline": false,
+      "readonly": false
+    },
+    {
+      "id": "f13",
+      "type": "info",
+      "col": 2,
+      "row": 1,
+      "w": 2,
+      "h": 1,
+      "required": false,
+      "placeholder": "",
+      "default": "",
+      "font": "mono",
+      "infoField": "@author",
+      "multiline": false,
+      "readonly": false
+    },
+    {
+      "id": "f14",
+      "type": "info",
+      "col": 4,
+      "row": 1,
+      "w": 2,
+      "h": 1,
+      "required": false,
+      "placeholder": "",
+      "default": "",
+      "font": "mono",
+      "infoField": "@created_at",
+      "multiline": false,
+      "readonly": false
+    },
+    {
+      "id": "f3",
+      "type": "dropdown",
+      "label": "Status",
+      "label.ko": "상태",
+      "col": 6,
+      "row": 1,
+      "w": 2,
+      "h": 1,
+      "required": false,
+      "placeholder": "",
+      "default": "New",
+      "default.ko": "New",
+      "options": [
+        "New",
+        "Review",
+        "Resolved",
+        "Cancelled"
+      ],
+      "options.ko": [
+        "신규",
+        "검토",
+        "해결",
+        "취소"
+      ],
+      "font": "mono",
+      "multiline": false,
+      "readonly": false
+    },
+    {
+      "id": "body",
+      "type": "textarea",
+      "label": "Content",
+      "label.ko": "내용",
+      "col": 0,
+      "row": 2,
+      "w": 12,
+      "h": 4,
+      "placeholder": "Enter your feedback",
+      "placeholder.ko": "건의 내용을 입력하세요",
+      "default": "",
+      "font": "mono",
+      "readonly": false
+    },
+    {
+      "id": "btn_post",
+      "type": "button",
+      "label": "Submit",
+      "label.ko": "등록",
+      "col": 0,
+      "row": 6,
+      "w": 2,
+      "h": 1,
+      "variant": "primary",
+      "boardCommand": "POST"
+    },
+    {
+      "id": "btn_modify",
+      "type": "button",
+      "label": "Edit",
+      "label.ko": "수정",
+      "col": 2,
+      "row": 6,
+      "w": 2,
+      "h": 1,
+      "variant": "primary",
+      "boardCommand": "MODIFY"
+    },
+    {
+      "id": "btn_delete",
+      "type": "button",
+      "label": "Delete",
+      "label.ko": "삭제",
+      "col": 4,
+      "row": 6,
+      "w": 2,
+      "h": 1,
+      "variant": "danger",
+      "boardCommand": "DELETE"
+    },
+    {
+      "id": "f2",
+      "type": "button",
+      "label": "List",
+      "label.ko": "목록",
+      "col": 6,
+      "row": 6,
+      "w": 2,
+      "h": 1,
+      "required": false,
+      "placeholder": "",
+      "default": "",
+      "variant": "primary",
+      "boardCommand": "LIST",
+      "multiline": false,
+      "readonly": false
+    }
+  ]
+}

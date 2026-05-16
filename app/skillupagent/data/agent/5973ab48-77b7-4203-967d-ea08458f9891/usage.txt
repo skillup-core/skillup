@@ -1,0 +1,27 @@
+## Agent Builder
+
+An agent that guides you through creating a new skillupagent template via Q&A.
+
+**What it collects:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| name | Yes | Agent name (no spaces) |
+| desc | Yes | Short description (any language) |
+| require_ciw | Yes | Whether a Cadence CIW window is needed |
+| system prompt | Yes | The system.txt content for the new agent |
+| usage guide | Optional | Markdown usage doc |
+| agent.py | Optional | Plugin skeleton (on_init, on_pre_req, on_post_req, on_exit) |
+
+**Example session:**
+```
+Let's make an agent that queries layer properties.
+name: query_layer
+desc: Queries properties of a specified layer in Virtuoso.
+require_ciw: yes
+system: (paste your system prompt)
+... confirm and create
+```
+
+When you say "만들어봐" or "yes", the agent writes all files to the staging path.
+You can then test it and promote it to the formal agent directory.

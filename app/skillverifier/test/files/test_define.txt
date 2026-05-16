@@ -1,0 +1,16 @@
+# Define file for test_define2.il
+# This file contains func1 and variable1
+# So only func2 and variable2 should be reported as errors
+
+/* Block comment test
+   This should be ignored
+*/
+
+[VARIABLE]
+variable1  # This is defined as a variable
+
+[FUNCTION]
+func1      # This is defined as a function
+
+# func2 and variable2 are NOT in this file
+# so they should still be reported as errors

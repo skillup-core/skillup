@@ -1,0 +1,1702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project - CodeHub</title>
+    <script src="/common/script/appinit.js" onerror="this.onerror=null; this.src='../../../../web/common/script/appinit.js';"></script>
+</head>
+<body>
+    <link rel="stylesheet" href="codehub.css" onerror="this.onerror=null; this.href='/app/codehub/web/codehub.css';">
+    <script src="/common/marked/16.x/marked.min.js" onerror="this.onerror=null; this.src='../../../../web/common/marked/16.x/marked.min.js';"></script>
+    <script src="codehub.js" onerror="this.onerror=null; this.src='/app/codehub/web/codehub.js';"></script>
+    <script src="/common/jsdiff/5.x/diff.min.js" onerror="this.onerror=null; this.src='../../../../web/common/jsdiff/5.x/diff.min.js';"></script>
+
+    <div class="content-container">
+        <div class="ch-page" id="main-page">
+
+            <!-- top bar -->
+            <div class="ch-topbar">
+                <a class="ch-file-link" style="cursor:pointer;font-size:14px;margin-right:10px" onclick="navigateTo('project_list.html')">
+                    <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:var(--accent-text)"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+                </a>
+                <span style="flex:1;display:flex;align-items:baseline;overflow:hidden;min-width:0">
+                    <span class="ch-topbar-title" id="project-title"></span><span class="ch-topbar-subpath" id="topbar-subpath"></span>
+                </span>
+                <span class="ch-tooltip-wrap" id="skillbot-btn-wrap" style="display:none;margin-left:8px">
+                    <button class="ch-icon-btn ch-icon-only" onclick="openInSkillbot()" aria-label="skillbot"><img src="/app/sk1llb0t/icon.svg" style="width:16px;height:16px;border-radius:3px"></button>
+                    <span class="ch-tooltip" id="skillbot-tooltip"></span>
+                </span>
+                <span class="ch-tooltip-wrap" id="terminal-btn-wrap" style="display:none;margin-left:8px">
+                    <button class="ch-icon-btn ch-icon-only" onclick="openTerminal()" aria-label="terminal"><svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></button>
+                    <span class="ch-tooltip" id="terminal-tooltip"></span>
+                </span>
+                <span class="ch-tooltip-wrap" style="margin-left:8px">
+                    <button class="ch-icon-btn ch-icon-only" onclick="refreshProject()" aria-label="refresh"><svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+                    <span class="ch-tooltip" id="refresh-tooltip"></span>
+                </span>
+                <span class="ch-tooltip-wrap" id="rev-badge-wrap" style="display:none;margin-left:8px">
+                    <a id="rev-badge" class="ch-icon-btn"></a>
+                    <span class="ch-tooltip" id="rev-badge-tooltip"></span>
+                </span>
+                <span id="update-indicator" style="display:none;margin-left:6px">
+                    <button class="ch-icon-btn" id="update-indicator-btn" onclick="openUpdateModal()" style="font-size:11px;padding:2px 7px;background:var(--warning-bg,#7a5a00);color:var(--warning-text,#ffd84a);border:1px solid var(--warning-text,#ffd84a);border-radius:4px;white-space:nowrap"></button>
+                </span>
+            </div>
+
+            <!-- loading -->
+            <div id="loading-msg" style="font-size:13px;color:var(--text-secondary);padding:20px 0"></div>
+
+            <!-- main area -->
+            <div class="ch-project-view" id="project-view" style="display:none">
+
+                <!-- file explorer (left) -->
+                <div class="ch-file-explorer">
+
+                    <!-- file table -->
+                    <table class="ch-file-table" id="file-table">
+                        <tbody id="file-tbody"></tbody>
+                    </table>
+
+                    <!-- readme -->
+                    <div class="ch-readme" id="readme-section" style="display:none">
+                        <div class="ch-readme-title">README.md</div>
+                        <div class="ch-readme-body" id="readme-body"></div>
+                    </div>
+                </div>
+
+                <!-- sidebar -->
+                <div class="ch-sidebar">
+
+                    <!-- about / star -->
+                    <div class="ch-sidebar-section">
+                        <div class="ch-sidebar-about-header">
+                            <span class="ch-about-label-wrap" id="about-label-wrap"><span class="ch-about-label" id="lbl-about-section"></span><span id="desc-edit-btn" class="ch-desc-edit-btn" onclick="startEditDescription()"><svg viewBox="0 0 24 24" width="12" height="12"><path d="M12 15.5A3.5 3.5 0 0 1 8.5 12 3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5 3.5 3.5 0 0 1-3.5 3.5m7.43-2.92c.04-.34.07-.69.07-1.08s-.03-.73-.07-1.08l2.32-1.82c.21-.16.27-.46.13-.7l-2.2-3.81c-.14-.24-.42-.32-.66-.24l-2.74 1.1c-.57-.44-1.18-.81-1.86-1.09L14 2.42C13.96 2.18 13.74 2 13.5 2h-4.4c-.24 0-.45.18-.49.42l-.41 2.44c-.68.28-1.29.65-1.86 1.09L3.6 4.85c-.24-.08-.52 0-.66.24L.74 8.9c-.14.24-.08.54.13.7l2.32 1.82C3.15 11.77 3.12 12.1 3.12 12.5s.03.73.07 1.08L.87 15.4c-.21.16-.27.46-.13.7l2.2 3.81c.14.24.42.32.66.24l2.74-1.1c.57.44 1.18.81 1.86 1.09l.41 2.44c.04.24.25.42.49.42h4.4c.24 0 .45-.18.49-.42l.41-2.44c.68-.28 1.29-.65 1.86-1.09l2.74 1.1c.24.08.52 0 .66-.24l2.2-3.81c.14-.24.08-.54-.13-.7l-2.32-1.9z"/></svg></span></span>
+                            <span class="ch-star-inline" id="fav-btn" onclick="toggleFavorite()">
+                                <svg id="fav-heart-filled" viewBox="0 0 24 24" style="display:none"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                                <svg id="fav-heart-empty" viewBox="0 0 24 24"><path d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z"/></svg>
+                                <span id="fav-count"></span>
+                            </span>
+                        </div>
+                        <div id="project-description-wrap" class="ch-desc-wrap">
+                            <span id="project-description" class="ch-project-description"></span>
+                        </div>
+                        <div id="project-description-edit" style="display:none;margin-top:8px">
+                            <input type="text" id="desc-input" class="form-control" style="font-size:13px;padding:3px 6px;height:auto">
+                        </div>
+                    </div>
+
+                    <!-- master info -->
+                    <div class="ch-sidebar-section">
+                        <div class="ch-sidebar-label">
+                            <span class="ch-about-label-wrap" id="master-label-wrap">
+                                <span id="lbl-master-section"></span>
+                                <span id="master-edit-btn" class="ch-desc-edit-btn" onclick="startTransferMaster()"><svg viewBox="0 0 24 24" width="12" height="12"><path d="M12 15.5A3.5 3.5 0 0 1 8.5 12 3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5 3.5 3.5 0 0 1-3.5 3.5m7.43-2.92c.04-.34.07-.69.07-1.08s-.03-.73-.07-1.08l2.32-1.82c.21-.16.27-.46.13-.7l-2.2-3.81c-.14-.24-.42-.32-.66-.24l-2.74 1.1c-.57-.44-1.18-.81-1.86-1.09L14 2.42C13.96 2.18 13.74 2 13.5 2h-4.4c-.24 0-.45.18-.49.42l-.41 2.44c-.68.28-1.29.65-1.86 1.09L3.6 4.85c-.24-.08-.52 0-.66.24L.74 8.9c-.14.24-.08.54.13.7l2.32 1.82C3.15 11.77 3.12 12.1 3.12 12.5s.03.73.07 1.08L.87 15.4c-.21.16-.27.46-.13.7l2.2 3.81c.14.24.42.32.66.24l2.74-1.1c.57.44 1.18.81 1.86 1.09l.41 2.44c.04.24.25.42.49.42h4.4c.24 0 .45-.18.49-.42l.41-2.44c.68-.28 1.29-.65 1.86-1.09l2.74 1.1c.24.08.52 0 .66-.24l2.2-3.81c.14-.24.08-.54-.13-.7l-2.32-1.9z"/></svg></span>
+                            </span>
+                        </div>
+                        <div id="master-info" style="font-size:13px;display:flex;align-items:center">
+                            <span class="ch-member-avatar" id="master-avatar" style="width:20px;height:20px;font-size:9px;margin-right:6px"></span>
+                            <span id="master-name"></span>
+                        </div>
+                    </div>
+
+                    <!-- member list -->
+                    <div class="ch-sidebar-section">
+                        <div class="ch-sidebar-label">
+                            <span class="ch-about-label-wrap" id="members-label-wrap">
+                                <span id="lbl-member-section"></span>
+                                <span id="members-edit-btn" class="ch-desc-edit-btn" onclick="openManageMembers()"><svg viewBox="0 0 24 24" width="12" height="12"><path d="M12 15.5A3.5 3.5 0 0 1 8.5 12 3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5 3.5 3.5 0 0 1-3.5 3.5m7.43-2.92c.04-.34.07-.69.07-1.08s-.03-.73-.07-1.08l2.32-1.82c.21-.16.27-.46.13-.7l-2.2-3.81c-.14-.24-.42-.32-.66-.24l-2.74 1.1c-.57-.44-1.18-.81-1.86-1.09L14 2.42C13.96 2.18 13.74 2 13.5 2h-4.4c-.24 0-.45.18-.49.42l-.41 2.44c-.68.28-1.29.65-1.86 1.09L3.6 4.85c-.24-.08-.52 0-.66.24L.74 8.9c-.14.24-.08.54.13.7l2.32 1.82C3.15 11.77 3.12 12.1 3.12 12.5s.03.73.07 1.08L.87 15.4c-.21.16-.27.46-.13.7l2.2 3.81c.14.24.42.32.66.24l2.74-1.1c.57.44 1.18.81 1.86 1.09l.41 2.44c.04.24.25.42.49.42h4.4c.24 0 .45-.18.49-.42l.41-2.44c.68-.28 1.29-.65 1.86-1.09l2.74 1.1c.24.08.52 0 .66-.24l2.2-3.81c.14-.24.08-.54-.13-.7l-2.32-1.9z"/></svg></span>
+                            </span>
+                        </div>
+                        <div id="member-list" style="font-size:13px"></div>
+                    </div>
+
+                    <!-- actions -->
+                    <div class="ch-sidebar-section">
+                        <button class="btn btn-secondary btn-sm" style="width:100%;margin-bottom:5px;text-align:left"
+                                id="btn-changes" onclick="openChanges()"></button>
+                        <button class="btn btn-secondary btn-sm" style="width:100%;margin-bottom:5px;text-align:left"
+                                id="btn-deploy" onclick="openDeploy()"></button>
+                        <button class="btn btn-secondary btn-sm" style="width:100%;margin-bottom:5px;text-align:left"
+                                id="btn-revisions" onclick="gotoRevisions()"></button>
+                        <button class="btn btn-secondary btn-sm" style="width:100%;display:none;text-align:left"
+                                id="btn-delete" onclick="deleteProject()"></button>
+                    </div>
+
+                </div>
+            </div>
+
+
+        </div>
+    </div>
+
+    <script>
+    // ── state ──────────────────────────────────────────────────────────────
+    let projectId = null;
+    let project = null;
+    let currentPath = '';
+    let viewRevision = null;  // null = HEAD (working copy), string = specific revision
+    let currentWcRevision = null;
+    let currentHeadRevision = null;
+
+    // ── init ───────────────────────────────────────────────────────────────
+    (function() {
+        try {
+            const sel = window.parent.document.getElementById('theme-select');
+            if (sel) _iconTheme = sel.value === 'white' ? 'light' : 'dark';
+        } catch(e) {}
+    })();
+
+    let langReady = false;
+
+    function onPageLoad() {
+        const params = new URLSearchParams(window.location.search);
+        projectId = params.get('id');
+        viewRevision = params.get('rev') || null;
+        currentPath = params.get('path') || '';
+        if (!projectId) { navigateTo('project_list.html'); return; }
+        // Defer loadProject until language arrives; fall back after 300ms.
+        setTimeout(function() {
+            if (!langReady) { langReady = true; applyTexts(); loadProject(); }
+        }, 300);
+    }
+
+    function onLanguageSet(changed) {
+        if (!langReady) {
+            langReady = true;
+            applyTexts();
+            loadProject();
+        } else if (changed) {
+            applyTexts();
+            if (project) loadFiles(currentPath);
+        }
+    }
+
+    function applyTexts() {
+        document.getElementById('lbl-about-section').textContent = t('about');
+        document.getElementById('lbl-master-section').textContent = t('master');
+        document.getElementById('lbl-member-section').textContent = t('members');
+        var _svgBase = 'width:14px;height:14px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle;margin-right:6px;position:relative;top:-1px';
+        var _svgBlue = 'style="' + _svgBase + ';stroke:var(--accent-primary)"';
+        var _svgRed  = 'style="' + _svgBase + ';stroke:var(--error)"';
+        document.getElementById('btn-changes').innerHTML  = '<svg viewBox="0 0 24 24" ' + _svgBlue + '><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>' + t('viewChanges');
+        document.getElementById('btn-deploy').innerHTML   = '<svg viewBox="0 0 24 24" ' + _svgBlue + '><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>' + t('deploy');
+        document.getElementById('btn-revisions').innerHTML = '<svg viewBox="0 0 24 24" ' + _svgBlue + '><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' + t('revisions');
+        document.getElementById('btn-delete').innerHTML   = '<svg viewBox="0 0 24 24" ' + _svgRed  + '><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' + t('deleteProject');
+        document.getElementById('loading-msg').textContent = t('loading');
+    }
+
+    async function loadProject() {
+        const result = await apiCall('get_project', { project_id: projectId });
+        if (!result.success) {
+            document.getElementById('loading-msg').textContent = result.error || t('error');
+            return;
+        }
+        project = result.project;
+        document.getElementById('loading-msg').style.display = 'none';
+        document.getElementById('project-view').style.display = '';
+
+        document.getElementById('project-title').textContent =
+            project.owner_account + ' / ' + project.name;
+
+        updateFavUI();
+        document.getElementById('project-description').textContent = project.description || '';
+        setupDescriptionHover();
+
+        // Skillbot / Terminal buttons (only when workdir exists)
+        if (project.workdir) {
+            document.getElementById('skillbot-btn-wrap').style.display = '';
+            document.getElementById('skillbot-tooltip').textContent = t('openInSkillbot');
+            document.getElementById('terminal-btn-wrap').style.display = '';
+            document.getElementById('terminal-tooltip').textContent = t('openTerminal');
+        }
+        document.getElementById('refresh-tooltip').textContent = t('refresh');
+
+        renderAccountAvatar(document.getElementById('master-avatar'), project.owner_info || { id: project.owner_account, display_name: project.owner_account, avatar_small: null });
+        document.getElementById('master-name').textContent = (project.owner_info && project.owner_info.display_name) || project.owner_account;
+
+        renderMembers();
+        setupMasterHover();
+
+        if (project.is_master) {
+            document.getElementById('members-label-wrap').classList.add('ch-about-label-wrap--editable');
+            document.getElementById('btn-delete').style.display = '';
+        }
+
+        // Revision badge
+        const badge = document.getElementById('rev-badge');
+        const badgeWrap = document.getElementById('rev-badge-wrap');
+        document.getElementById('rev-badge-tooltip').textContent = t('currentRevision');
+        if (viewRevision) {
+            badge.textContent = 'r' + viewRevision;
+            badgeWrap.style.display = '';
+            badge.onclick = function() { navigateTo('file_log.html?id=' + projectId + '&rev=' + viewRevision); };
+            // Disable deploy in rev-mode
+            document.getElementById('btn-deploy').disabled = true;
+            document.getElementById('btn-deploy').style.opacity = '0.5';
+        } else {
+            badge.textContent = 'r?';
+            badgeWrap.style.display = '';
+            badge.onclick = function() { navigateTo('file_log.html?id=' + projectId); };
+            apiCall('get_revision_state', { project_id: projectId }).then(function(revResult) {
+                if (revResult.success) {
+                    badge.textContent = 'r' + revResult.wc_revision;
+                    currentWcRevision = revResult.wc_revision;
+                    currentHeadRevision = revResult.head_revision;
+                    if (revResult.wc_revision < revResult.head_revision) {
+                        showUpdateIndicator(revResult.wc_revision, revResult.head_revision);
+                    }
+                } else {
+                    badgeWrap.style.display = 'none';
+                }
+            });
+        }
+
+        if (viewRevision) {
+            document.getElementById('btn-changes').style.display = 'none';
+        }
+
+        if (!project.is_master && !project.is_member) {
+            document.getElementById('btn-deploy').style.display = 'none';
+            document.getElementById('btn-changes').style.display = 'none';
+        }
+
+        loadFiles(currentPath);
+    }
+
+    // ── file browsing ───────────────────────────────────────────────────────
+    async function loadFiles(path) {
+        currentPath = path;
+        updateBreadcrumb(path);
+
+        const tbody = document.getElementById('file-tbody');
+        document.getElementById('readme-section').style.display = 'none';
+
+        let result;
+        if (viewRevision) {
+            result = await apiCall('list_at_revision', {
+                project_id: projectId,
+                path: path,
+                revision: viewRevision,
+            });
+        } else {
+            result = await apiCall('get_workdir_tree', {
+                project_id: projectId,
+                path: path,
+            });
+        }
+
+        if (!result.success) {
+            tbody.innerHTML = '<tr><td colspan="2" style="color:var(--danger-color,#dc3545);font-size:13px;padding:12px">' +
+                escHtml(result.error || t('error')) + '</td></tr>';
+            return;
+        }
+
+        const entries = result.entries || [];
+
+        if (entries.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="2" style="color:var(--text-secondary);font-size:13px;padding:12px">' + t('noFiles') + '</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        let readmeName = null;
+
+        // ".." row for non-root paths
+        if (path) {
+            const parentPath = path.includes('/') ? path.substring(0, path.lastIndexOf('/')) : '';
+            tbody.appendChild(makeParentRow(parentPath));
+        }
+
+        entries.forEach(e => {
+            tbody.appendChild(makeFileRow(e, path));
+            if (e.kind === 'file' && e.name.toLowerCase() === 'readme.md') readmeName = e.name;
+        });
+
+        if (readmeName) {
+            const readmePath = path ? path + '/' + readmeName : readmeName;
+            loadReadme(readmePath);
+        }
+    }
+
+    const _iconThemeOverrides = { dark: new Set(['md']), light: new Set(['md']) };
+    let _iconTheme = 'dark';
+
+    function _fileIcon(name) {
+        const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+        const iconName = {
+            'il': 'il', 'ils': 'il',
+            'py': 'py',
+            'txt': 'txt',
+            'md': 'md',
+            'ini': 'ini',
+            'html': 'html', 'htm': 'html',
+            'css': 'css',
+            'js': 'js',
+            'json': 'json',
+            'sh': 'sh', 'bash': 'sh',
+            'jpg': 'img', 'jpeg': 'img', 'png': 'img', 'gif': 'img',
+            'svg': 'img', 'webp': 'img', 'bmp': 'img', 'ico': 'img',
+        }[ext] || 'file';
+        const folder = _iconThemeOverrides[_iconTheme] && _iconThemeOverrides[_iconTheme].has(iconName)
+            ? _iconTheme : 'default';
+        return `<img src="/common/resource/fileicon/${folder}/${iconName}.svg" alt="">`;
+    }
+
+    function statusLabel(status) {
+        const key = {
+            'modified':     'statusModified',
+            'added':        'statusAdded',
+            'deleted':      'statusDeleted',
+            'untracked':    'statusUntracked',
+            'missing':      'statusMissing',
+            'unregistered': 'statusUnregistered',
+        }[status];
+        return key ? t(key) : '';
+    }
+
+    function statusColor(status) {
+        return {
+            'modified':     'var(--warning-color, #f0a020)',
+            'added':        'var(--success-color, #28a745)',
+            'deleted':      'var(--danger-color, #dc3545)',
+            'untracked':    'var(--success-color, #28a745)',
+            'missing':      'var(--danger-color, #dc3545)',
+            'unregistered': 'var(--text-secondary)',
+        }[status] || '';
+    }
+
+    function makeParentRow(parentPath) {
+        const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.onclick = () => loadFiles(parentPath);
+        const td1 = document.createElement('td');
+        const link = document.createElement('span');
+        link.className = 'ch-file-link dir';
+        link.innerHTML = '<svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>..';
+        td1.appendChild(link);
+        tr.appendChild(td1);
+        tr.appendChild(document.createElement('td'));
+        return tr;
+    }
+
+    function makeFileRow(entry, basePath) {
+        const tr = document.createElement('tr');
+        const fullPath = basePath ? basePath + '/' + entry.name : entry.name;
+        const isDir = entry.kind === 'dir';
+
+        tr.style.cursor = 'pointer';
+        if (isDir) {
+            tr.onclick = () => loadFiles(fullPath);
+        } else {
+            tr.onclick = () => {
+                let url = 'file_view.html?id=' + projectId + '&path=' + encodeURIComponent(fullPath);
+                if (viewRevision) {
+                    url += '&rev=' + encodeURIComponent(viewRevision);
+                } else if (entry.status) {
+                    url += '&status=' + encodeURIComponent(entry.status);
+                }
+                navigateTo(url);
+            };
+        }
+
+        const td1 = document.createElement('td');
+        const link = document.createElement('span');
+        link.className = 'ch-file-link' + (isDir ? ' dir' : '');
+        if (entry.status === 'unregistered') link.style.color = 'var(--text-secondary)';
+
+        if (isDir) {
+            link.innerHTML = '<svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>' + escHtml(entry.name);
+        } else {
+            const iconHtml = entry.status === 'unregistered'
+                ? _fileIcon(entry.name).replace('<img ', '<img style="opacity:0.5" ')
+                : _fileIcon(entry.name);
+            link.innerHTML = iconHtml + escHtml(entry.name);
+        }
+        td1.appendChild(link);
+
+        const td2 = document.createElement('td');
+        td2.style.cssText = 'font-size:11px;white-space:nowrap;text-align:right';
+
+        const label = statusLabel(entry.status);
+        const canRevert = !viewRevision && (entry.status === 'modified' || entry.status === 'deleted' || entry.status === 'missing');
+        const canAdd    = !viewRevision && entry.status === 'unregistered';
+
+        if (canRevert) {
+            const wrap = document.createElement('span');
+            wrap.style.cssText = 'display:inline-flex;align-items:center';
+
+            const btn = document.createElement('button');
+            btn.textContent = t('revertFile');
+            btn.className = 'ch-revert-btn';
+            btn.onclick = function(e) {
+                e.stopPropagation();
+                revertFile(fullPath, entry.name);
+            };
+            wrap.appendChild(btn);
+
+            const labelSpan = document.createElement('span');
+            labelSpan.textContent = label;
+            labelSpan.style.color = statusColor(entry.status);
+            wrap.appendChild(labelSpan);
+            td2.appendChild(wrap);
+        } else if (canAdd) {
+            const wrap = document.createElement('span');
+            wrap.style.cssText = 'display:inline-flex;align-items:center';
+
+            const btn = document.createElement('button');
+            btn.textContent = t('addFile');
+            btn.className = 'ch-revert-btn';
+            btn.onclick = function(e) {
+                e.stopPropagation();
+                addFile(fullPath, entry.name);
+            };
+            wrap.appendChild(btn);
+
+            const labelSpan = document.createElement('span');
+            labelSpan.textContent = label;
+            labelSpan.style.color = statusColor(entry.status);
+            wrap.appendChild(labelSpan);
+            td2.appendChild(wrap);
+        } else if (label) {
+            td2.textContent = label;
+            td2.style.color = statusColor(entry.status);
+        }
+
+        tr.appendChild(td1);
+        tr.appendChild(td2);
+        return tr;
+    }
+
+    async function revertFile(relPath, fileName) {
+        if (!window.isInIframe) return;
+        const confirmed = await window.parent.showConfirmDialog(
+            t('revertFileConfirmTitle'),
+            t('revertFileConfirmMsg'),
+            { yesStyle: 'danger' }
+        );
+        if (!confirmed) return;
+        const result = await apiCall('revert_file', { project_id: projectId, path: relPath });
+        if (result.success) {
+            loadFiles(currentPath);
+        } else {
+            window.parent.showToast(result.error || t('error'), { type: 'err' });
+        }
+    }
+
+    async function addFile(relPath, fileName) {
+        if (!window.isInIframe) return;
+        const confirmed = await window.parent.showConfirmDialog(
+            t('addFileConfirmTitle'),
+            t('addFileConfirmMsg'),
+            {}
+        );
+        if (!confirmed) return;
+        const result = await apiCall('add_file', { project_id: projectId, path: relPath });
+        if (result.success) {
+            loadFiles(currentPath);
+        } else {
+            window.parent.showToast(result.error || t('error'), { type: 'err' });
+        }
+    }
+
+    async function loadReadme(path) {
+        let content = null;
+        if (viewRevision) {
+            const result = await apiCall('svn_cat', { project_id: projectId, path: path, revision: viewRevision });
+            if (result.success && result.encoding === 'utf8') content = result.content;
+        } else {
+            const localResult = await apiCall('read_local_file', { project_id: projectId, path: path });
+            if (localResult.success && localResult.encoding === 'utf8') {
+                content = localResult.content;
+            } else {
+                const catResult = await apiCall('svn_cat', { project_id: projectId, path: path, revision: 'HEAD' });
+                if (catResult.success && catResult.encoding === 'utf8') content = catResult.content;
+            }
+        }
+        if (content === null) return;
+        const body = document.getElementById('readme-body');
+        if (typeof marked !== 'undefined') {
+            body.innerHTML = marked.parse(content);
+        } else {
+            body.textContent = content;
+        }
+        document.getElementById('readme-section').style.display = '';
+    }
+
+    // ── topbar sub path ─────────────────────────────────────────────────────
+    function updateBreadcrumb(path) {
+        const el = document.getElementById('topbar-subpath');
+        el.innerHTML = '';
+
+        const titleEl = document.getElementById('project-title');
+        if (path) {
+            titleEl.style.cursor = 'pointer';
+            titleEl.onclick = function() { loadFiles(''); };
+        } else {
+            titleEl.style.cursor = '';
+            titleEl.onclick = null;
+        }
+
+        if (!path) return;
+
+        // Build collapsed path: show first segment, ellipsis if needed, last segment
+        // Format: / seg1 / ... / last   (all clickable except last)
+        const parts = path.split('/');
+
+        // Render all parts as: / part1 / part2 / ... / partN
+        // If more than 3 parts, collapse middle ones as "..."
+        const MAX_SHOW = 3; // first + last + one middle max before collapsing
+        let renderedParts; // array of {label, path|null} where path=null means non-clickable (current)
+        if (parts.length <= MAX_SHOW) {
+            renderedParts = parts.map(function(p, i) {
+                return { label: p, path: i < parts.length - 1 ? parts.slice(0, i + 1).join('/') : null };
+            });
+        } else {
+            // Show first, ellipsis, last
+            renderedParts = [
+                { label: parts[0], path: parts[0] },
+                { label: '...', path: null, ellipsis: true },
+                { label: parts[parts.length - 1], path: null },
+            ];
+        }
+
+        renderedParts.forEach(function(item) {
+            const sep = document.createElement('span');
+            sep.className = 'ch-topbar-subpath-sep';
+            sep.textContent = '/';
+            el.appendChild(sep);
+
+            if (item.ellipsis || item.path === null) {
+                const span = document.createElement('span');
+                span.textContent = item.label;
+                span.className = item.ellipsis ? 'ch-topbar-subpath-ellipsis' : 'ch-topbar-subpath-current';
+                el.appendChild(span);
+            } else {
+                const a = document.createElement('a');
+                a.textContent = item.label;
+                a.className = 'ch-topbar-subpath-link';
+                a.onclick = function() { loadFiles(item.path); };
+                el.appendChild(a);
+            }
+        });
+    }
+
+    // ── description inline edit ──────────────────────────────────────────────
+    function setupDescriptionHover() {
+        if (!project.is_master) return;
+        document.getElementById('about-label-wrap').classList.add('ch-about-label-wrap--editable');
+    }
+
+    function startEditDescription() {
+        const wrap = document.getElementById('project-description-wrap');
+        const editArea = document.getElementById('project-description-edit');
+        const input = document.getElementById('desc-input');
+        wrap.style.display = 'none';
+        editArea.style.display = '';
+        input.value = project.description || '';
+        input.focus();
+        input.onblur = function() { commitEditDescription(); };
+        input.onkeydown = function(e) {
+            if (e.key === 'Enter') { input.blur(); }
+            else if (e.key === 'Escape') { cancelEditDescription(); }
+        };
+    }
+
+    function cancelEditDescription() {
+        const input = document.getElementById('desc-input');
+        input.onblur = null;
+        document.getElementById('project-description-wrap').style.display = '';
+        document.getElementById('project-description-edit').style.display = 'none';
+    }
+
+    async function commitEditDescription() {
+        const input = document.getElementById('desc-input');
+        input.onblur = null;
+        const newDesc = input.value.trim();
+        if (newDesc === (project.description || '')) {
+            cancelEditDescription();
+            return;
+        }
+        const result = await apiCall('update_description', { project_id: projectId, description: newDesc });
+        if (result.success) {
+            project.description = newDesc;
+            document.getElementById('project-description').textContent = newDesc;
+        }
+        document.getElementById('project-description-wrap').style.display = '';
+        document.getElementById('project-description-edit').style.display = 'none';
+    }
+
+    // ── master transfer ──────────────────────────────────────────────────────
+    function setupMasterHover() {
+        if (!project.is_master) return;
+        document.getElementById('master-label-wrap').classList.add('ch-about-label-wrap--editable');
+    }
+
+    function startTransferMaster() {
+        if (!project.is_master) return;
+        const members = project.members_info || [];
+        if (members.length === 0) return;
+
+        const list = document.createElement('div');
+        list.style.cssText = 'width:280px;max-height:300px;overflow-y:auto';
+
+        members.forEach(function(info) {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;padding:5px 4px;cursor:pointer;border-radius:4px';
+            row.onmouseover = function() { row.style.background = 'var(--bg-tertiary)'; };
+            row.onmouseout = function() { row.style.background = ''; };
+
+            const av = makeAvatarEl(info, 20);
+            av.style.marginRight = '6px';
+            row.appendChild(av);
+
+            const name = document.createElement('span');
+            name.style.cssText = 'font-size:13px';
+            name.textContent = info.display_name || info.id;
+            row.appendChild(name);
+
+            row.onclick = async function() {
+                const displayName = info.display_name || info.id;
+                const msg = t('transferMasterMsg').replace('{name}', displayName);
+                parent.desktopModal.close();
+                const confirmed = await parent.showConfirmDialog(t('transferMasterTitle'), msg);
+                if (!confirmed) return;
+                let result = await apiCall('transfer_owner', { project_id: projectId, new_owner: info.id });
+                if (!result.success && result.error === 'has_changes') {
+                    const ok = await parent.showConfirmDialog(t('transferMasterTitle'), t('transferMasterHasChanges'), { yesStyle: 'danger' });
+                    if (!ok) return;
+                    result = await apiCall('transfer_owner', { project_id: projectId, new_owner: info.id, force: true });
+                }
+                if (result.success) {
+                    navigateTo('project.html?id=' + projectId);
+                }
+            };
+            list.appendChild(row);
+        });
+
+        parent.desktopModal.open({ title: t('transferMasterTitle'), element: list, buttons: [] });
+    }
+
+    // ── star ────────────────────────────────────────────────────────────────
+    function updateFavUI() {
+        const btn = document.getElementById('fav-btn');
+        const starred = project.starred;
+        document.getElementById('fav-heart-filled').style.display = starred ? '' : 'none';
+        document.getElementById('fav-heart-empty').style.display = starred ? 'none' : '';
+        btn.classList.toggle('favorited', starred);
+        document.getElementById('fav-count').textContent = project.star_count != null ? project.star_count : '';
+    }
+
+    async function toggleFavorite() {
+        const result = await apiCall('toggle_favorite', { project_id: projectId });
+        if (result.success) {
+            project.starred = result.starred;
+            project.favorited = result.favorited;
+            project.star_count = result.star_count;
+            updateFavUI();
+        }
+    }
+
+    // ── account avatar helper ────────────────────────────────────────────────
+    function renderAccountAvatar(el, info) {
+        el.innerHTML = '';
+        if (info && info.avatar_small) {
+            const img = document.createElement('img');
+            img.src = 'data:' + (info.avatar_mime || 'image/jpeg') + ';base64,' + info.avatar_small;
+            img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
+            el.appendChild(img);
+        } else {
+            const id = (info && info.id) || '?';
+            el.textContent = id.substring(0, 2).toUpperCase();
+        }
+    }
+
+    // All inline styles so it works both in iframe and inside parent-frame modal
+    function makeAvatarEl(info, size) {
+        const el = document.createElement('span');
+        el.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;' +
+            'width:' + size + 'px;height:' + size + 'px;border-radius:50%;' +
+            'background:var(--accent-primary,var(--accent-color,#4a90d9));color:#fff;' +
+            'font-size:' + Math.floor(size * 0.42) + 'px;font-weight:600;' +
+            'overflow:hidden;flex-shrink:0;margin-right:6px';
+        renderAccountAvatar(el, info);
+        return el;
+    }
+
+    // ── members ─────────────────────────────────────────────────────────────
+    function renderMembers() {
+        const container = document.getElementById('member-list');
+        const infos = project.members_info || [];
+        if (infos.length === 0) {
+            container.textContent = '-';
+            return;
+        }
+        container.innerHTML = '';
+        const SHOW = 3;
+        const visible = infos.slice(0, SHOW);
+        const rest = infos.length - SHOW;
+        visible.forEach(info => {
+            const wrap = document.createElement('span');
+            wrap.style.cssText = 'display:inline-flex;align-items:center;margin:2px 6px 2px 0';
+            wrap.appendChild(makeAvatarEl(info, 18));
+            const name = document.createElement('span');
+            name.className = 'ch-member-tag';
+            name.style.cssText = 'font-size:12px';
+            name.textContent = info.display_name || info.id;
+            wrap.appendChild(name);
+            container.appendChild(wrap);
+        });
+        if (rest > 0) {
+            const more = document.createElement('span');
+            more.style.cssText = 'display:inline-flex;align-items:center;margin:2px 0;font-size:12px;color:var(--text-secondary)';
+            more.textContent = t('membersMore').replace('{n}', rest);
+            container.appendChild(more);
+        }
+    }
+
+    function openManageMembers() {
+        if (!window.isInIframe) return;
+
+        // Modal-local state: mutable copy of current members
+        let modalMembers = (project.members_info || []).map(m => Object.assign({}, m));
+        let allAccounts = [];
+
+        // ── wrapper: fixed width so modal sizes correctly ──
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'width:360px';
+
+        // ── search wrap: position:relative inline so dropdown positions correctly ──
+        const searchWrap = document.createElement('div');
+        searchWrap.style.cssText = 'position:relative;margin-bottom:4px';
+
+        const searchInput = document.createElement('input');
+        searchInput.type = 'text';
+        searchInput.className = 'form-control';
+        searchInput.style.cssText = 'width:100%;font-size:13px;box-sizing:border-box';
+        searchInput.placeholder = t('memberSearchPlaceholder');
+
+        // Dropdown: all inline styles (codehub.css not available in parent frame)
+        const dropdown = document.createElement('div');
+        dropdown.style.cssText = 'display:none;position:absolute;top:100%;left:0;right:0;' +
+            'background:var(--bg-secondary);border:1px solid var(--border-color);' +
+            'border-top:none;border-radius:0 0 4px 4px;max-height:200px;overflow-y:auto;z-index:9999';
+
+        searchWrap.appendChild(searchInput);
+        searchWrap.appendChild(dropdown);
+
+        // ── selected members list ──
+        const selectedLabel = document.createElement('div');
+        selectedLabel.style.cssText = 'font-size:12px;color:var(--text-secondary);font-weight:600;margin:10px 0 4px';
+        selectedLabel.textContent = t('members');
+
+        const selectedList = document.createElement('div');
+        selectedList.style.cssText = 'border:1px solid var(--border-color);border-radius:4px;' +
+            'min-height:48px;max-height:200px;overflow-y:auto;background:var(--bg-primary)';
+
+        wrap.appendChild(searchWrap);
+        wrap.appendChild(selectedLabel);
+        wrap.appendChild(selectedList);
+
+        function getModalMemberIds() {
+            return modalMembers.map(m => m.id);
+        }
+
+        function renderSelected() {
+            selectedList.innerHTML = '';
+            if (modalMembers.length === 0) {
+                const empty = document.createElement('div');
+                empty.style.cssText = 'padding:12px 10px;font-size:12px;color:var(--text-secondary);text-align:center';
+                empty.textContent = '-';
+                selectedList.appendChild(empty);
+                return;
+            }
+            modalMembers.forEach(function(info) {
+                const item = document.createElement('div');
+                item.style.cssText = 'display:flex;align-items:center;padding:6px 10px;' +
+                    'border-bottom:1px solid var(--border-color)';
+                item.appendChild(makeAvatarEl(info, 26));
+
+                const infoDiv = document.createElement('div');
+                infoDiv.style.cssText = 'flex:1;overflow:hidden';
+
+                const nameEl = document.createElement('div');
+                nameEl.style.cssText = 'font-size:13px;color:var(--text-primary);' +
+                    'white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+                nameEl.textContent = info.display_name || info.id;
+                infoDiv.appendChild(nameEl);
+
+                if (info.display_name && info.display_name !== info.id) {
+                    const idEl = document.createElement('div');
+                    idEl.style.cssText = 'font-size:11px;color:var(--text-secondary)';
+                    idEl.textContent = info.id;
+                    infoDiv.appendChild(idEl);
+                }
+                item.appendChild(infoDiv);
+
+                const removeBtn = document.createElement('button');
+                removeBtn.textContent = '×';
+                removeBtn.style.cssText = 'background:none;border:none;cursor:pointer;outline:none;' +
+                    'color:var(--text-secondary);font-size:18px;line-height:1;padding:0 0 0 6px;flex-shrink:0';
+                removeBtn.setAttribute('aria-label', t('memberRemove'));
+                removeBtn.onmouseenter = function() { this.style.color = 'var(--danger-color,#dc3545)'; };
+                removeBtn.onmouseleave = function() { this.style.color = 'var(--text-secondary)'; };
+                removeBtn.onclick = function() {
+                    modalMembers = modalMembers.filter(function(m) { return m.id !== info.id; });
+                    renderSelected();
+                };
+                item.appendChild(removeBtn);
+                selectedList.appendChild(item);
+            });
+            // Remove border-bottom from last item
+            const items = selectedList.children;
+            if (items.length > 0) {
+                items[items.length - 1].style.borderBottom = 'none';
+            }
+        }
+
+        function renderDropdown(query) {
+            dropdown.innerHTML = '';
+            const q = (query || '').trim().toLowerCase();
+            const memberIds = new Set(getModalMemberIds());
+            const ownerAccount = project.owner_account;
+            const candidates = allAccounts.filter(function(a) {
+                if (a.id === ownerAccount) return false;
+                if (!q) return true;
+                return a.id.toLowerCase().includes(q) ||
+                       (a.display_name || '').toLowerCase().includes(q);
+            });
+
+            if (candidates.length === 0) {
+                const empty = document.createElement('div');
+                empty.style.cssText = 'padding:8px 10px;font-size:12px;color:var(--text-secondary)';
+                empty.textContent = allAccounts.length === 0 ? '...' : t('memberNoResults');
+                dropdown.appendChild(empty);
+                return;
+            }
+
+            candidates.forEach(function(a) {
+                const alreadyMember = memberIds.has(a.id);
+                const item = document.createElement('div');
+                item.style.cssText = 'display:flex;align-items:center;padding:6px 10px;cursor:' +
+                    (alreadyMember ? 'default' : 'pointer') + ';opacity:' + (alreadyMember ? '0.45' : '1');
+
+                item.appendChild(makeAvatarEl(a, 26));
+
+                const infoDiv = document.createElement('div');
+                infoDiv.style.cssText = 'flex:1;overflow:hidden';
+
+                const nameEl = document.createElement('div');
+                nameEl.style.cssText = 'font-size:13px;color:var(--text-primary);' +
+                    'white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+                nameEl.textContent = a.display_name || a.id;
+                infoDiv.appendChild(nameEl);
+
+                if (a.display_name && a.display_name !== a.id) {
+                    const idEl = document.createElement('div');
+                    idEl.style.cssText = 'font-size:11px;color:var(--text-secondary)';
+                    idEl.textContent = a.id;
+                    infoDiv.appendChild(idEl);
+                }
+                item.appendChild(infoDiv);
+
+                if (!alreadyMember) {
+                    item.onmouseenter = function() {
+                        this.style.background = 'var(--bg-tertiary)';
+                    };
+                    item.onmouseleave = function() {
+                        this.style.background = '';
+                    };
+                    // mousedown instead of click to fire before blur hides dropdown
+                    item.onmousedown = function(e) {
+                        e.preventDefault();
+                        modalMembers.push(Object.assign({}, a));
+                        searchInput.value = '';
+                        dropdown.style.display = 'none';
+                        renderSelected();
+                    };
+                }
+                dropdown.appendChild(item);
+            });
+        }
+
+        searchInput.addEventListener('input', function() {
+            renderDropdown(this.value);
+            dropdown.style.display = '';
+        });
+        searchInput.addEventListener('focus', function() {
+            renderDropdown(this.value);
+            dropdown.style.display = '';
+        });
+        // blur hides dropdown after mousedown on items has fired
+        searchInput.addEventListener('blur', function() {
+            setTimeout(function() { dropdown.style.display = 'none'; }, 150);
+        });
+
+        renderSelected();
+
+        apiCall('list_accounts', {}).then(function(result) {
+            allAccounts = (result.success && result.accounts) ? result.accounts : [];
+            // Refresh dropdown if it's currently visible
+            if (dropdown.style.display !== 'none') {
+                renderDropdown(searchInput.value);
+            }
+        });
+
+        window.parent.desktopModal.open({
+            title: t('manageMembersTitle'),
+            element: wrap,
+            buttons: [
+                {
+                    label: t('save'),
+                    primary: true,
+                    onClick: function() {
+                        const members = getModalMemberIds();
+                        apiCall('set_members', { project_id: projectId, members }).then(function(r) {
+                            if (r.success) {
+                                project.members = members;
+                                project.members_info = modalMembers.map(m => Object.assign({}, m));
+                                renderMembers();
+                                window.parent.desktopModal.close();
+                            }
+                        });
+                    }
+                },
+                { label: t('cancel') }
+            ],
+        });
+    }
+
+    function gotoRevisions() {
+        let url = 'file_log.html?id=' + projectId;
+        if (viewRevision) url += '&rev=' + viewRevision;
+        navigateTo(url);
+    }
+
+    // ── changes modal ────────────────────────────────────────────────────────
+    function openChanges() {
+        if (!window.isInIframe) return;
+        _ensureParentStyles();
+
+        // ── container holds both list-view and diff-view (toggle visibility) ──
+        const outer = document.createElement('div');
+
+        // ── list view ──
+        const listView = document.createElement('div');
+
+        const filesList = document.createElement('div');
+        filesList.style.cssText = 'font-size:13px;font-family:monospace;min-height:40px';
+        filesList.textContent = '...';
+
+        listView.appendChild(filesList);
+
+        // ── diff view (hidden initially) ──
+        const diffView = document.createElement('div');
+        diffView.style.display = 'none';
+
+        const diffTopbar = document.createElement('div');
+        diffTopbar.style.cssText = 'display:flex;align-items:center;margin-bottom:8px';
+
+        const diffTitle = document.createElement('span');
+        diffTitle.style.cssText = 'font-size:13px;font-family:monospace;font-weight:600;color:var(--text-primary)';
+
+        diffTopbar.appendChild(diffTitle);
+
+        const diffContent = document.createElement('div');
+        diffContent.style.cssText = 'overflow:auto;max-height:420px';
+
+        diffView.appendChild(diffTopbar);
+        diffView.appendChild(diffContent);
+
+        outer.appendChild(listView);
+        outer.appendChild(diffView);
+
+        // ── state for this modal session ──
+        let changedFiles = [];
+
+        function showListView() {
+            listView.style.display = '';
+            diffView.style.display = 'none';
+            outer.style.minWidth = '';
+            const backBtnEl = window.parent.document.getElementById('changes-back-btn');
+            if (backBtnEl) backBtnEl.style.display = 'none';
+        }
+
+        function showDiffView(filePath, fileStatus) {
+            listView.style.display = 'none';
+            diffView.style.display = '';
+            outer.style.minWidth = '700px';
+            diffTitle.textContent = filePath;
+            diffContent.innerHTML = '<span style="color:var(--text-secondary);font-size:12px">' + t('loading') + '</span>';
+            renderFileDiff(filePath, fileStatus, diffContent);
+            const backBtnEl = window.parent.document.getElementById('changes-back-btn');
+            if (backBtnEl) backBtnEl.style.display = '';
+        }
+
+        function renderFilesList() {
+            filesList.innerHTML = '';
+            if (changedFiles.length === 0) {
+                filesList.style.color = 'var(--text-secondary)';
+                filesList.textContent = t('noChanges');
+                return;
+            }
+            filesList.style.color = '';
+            changedFiles.forEach(function(f) {
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex;align-items:center;padding:4px 2px;cursor:pointer;border-radius:3px';
+
+                const revertBtn = document.createElement('button');
+                revertBtn.textContent = t('revertFile');
+                revertBtn.className = 'ch-revert-btn';
+                revertBtn.style.cssText = 'visibility:hidden';
+                const isRevertable = (f.status === 'modified' || f.status === 'deleted' || f.status === 'missing');
+                const isAddable    = (f.status === 'unregistered');
+
+                revertBtn.style.display = isRevertable ? '' : 'none';
+
+                const addBtn = document.createElement('button');
+                addBtn.textContent = t('addFile');
+                addBtn.className = 'ch-revert-btn';
+                addBtn.style.display = isAddable ? '' : 'none';
+                addBtn.style.visibility = 'hidden';
+
+                row.onmouseenter = function() {
+                    row.style.background = 'var(--bg-tertiary)';
+                    if (isRevertable) revertBtn.style.visibility = 'visible';
+                    if (isAddable)    addBtn.style.visibility = 'visible';
+                };
+                row.onmouseleave = function() {
+                    row.style.background = '';
+                    revertBtn.style.visibility = 'hidden';
+                    addBtn.style.visibility = 'hidden';
+                };
+                revertBtn.onclick = function(e) {
+                    e.stopPropagation();
+                    revertFileInModal(f.path, revertBtn);
+                };
+                addBtn.onclick = function(e) {
+                    e.stopPropagation();
+                    addFileInModal(f.path, addBtn);
+                };
+
+                const badge = document.createElement('span');
+                badge.style.cssText = 'width:60px;flex-shrink:0;font-size:11px;color:' + statusColor(f.status);
+                badge.textContent = statusLabel(f.status);
+
+                const name = document.createElement('span');
+                name.style.cssText = 'flex:1;color:' + (isAddable ? 'var(--text-secondary)' : 'var(--text-primary)') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+                name.textContent = f.path;
+
+                row.appendChild(revertBtn);
+                row.appendChild(addBtn);
+                row.appendChild(badge);
+                row.appendChild(name);
+
+                // Only clickable (to show diff) for non-binary-only statuses
+                const canView = (f.status === 'added' || f.status === 'untracked' ||
+                                 f.status === 'deleted' || f.status === 'missing' || f.status === 'modified');
+                if (canView) {
+                    row.onclick = function() { showDiffView(f.path, f.status); };
+                } else {
+                    row.style.cursor = 'default';
+                }
+
+                filesList.appendChild(row);
+            });
+        }
+
+        async function revertFileInModal(relPath, btn) {
+            const confirmed = await window.parent.showConfirmDialog(
+                t('revertFileConfirmTitle'), t('revertFileConfirmMsg'), { yesStyle: 'danger' }
+            );
+            if (!confirmed) return;
+            const result = await apiCall('revert_file', { project_id: projectId, path: relPath });
+            if (result.success) {
+                const res = await apiCall('get_changed_files', { project_id: projectId });
+                changedFiles = (res.success && res.files) ? res.files : [];
+                renderFilesList();
+                loadFiles(currentPath);
+            } else {
+                window.parent.showToast(result.error || t('error'), { type: 'err' });
+            }
+        }
+
+        async function addFileInModal(relPath, btn) {
+            const confirmed = await window.parent.showConfirmDialog(
+                t('addFileConfirmTitle'), t('addFileConfirmMsg'), {}
+            );
+            if (!confirmed) return;
+            const result = await apiCall('add_file', { project_id: projectId, path: relPath });
+            if (result.success) {
+                const res = await apiCall('get_changed_files', { project_id: projectId });
+                changedFiles = (res.success && res.files) ? res.files : [];
+                renderFilesList();
+                loadFiles(currentPath);
+            } else {
+                window.parent.showToast(result.error || t('error'), { type: 'err' });
+            }
+        }
+
+        window.parent.desktopModal.open({
+            title: t('viewChanges'),
+            element: outer,
+            buttons: [
+                {
+                    label: t('backToList'),
+                    id: 'changes-back-btn',
+                    onClick: function() { showListView(); }
+                },
+                {
+                    label: t('revertAll'),
+                    id: 'changes-revert-all-btn',
+                    onClick: async function() {
+                        const confirmed = await window.parent.showConfirmDialog(
+                            t('confirmRevertAll'), t('confirmRevertAllMsg'), { yesStyle: 'danger' }
+                        );
+                        if (!confirmed) return;
+                        const result = await apiCall('revert_all', { project_id: projectId });
+                        if (result.success) {
+                            window.parent.desktopModal.close();
+                            loadFiles(currentPath);
+                        } else {
+                            window.parent.showToast(result.error || t('error'), { type: 'err' });
+                            showListView();
+                        }
+                    }
+                },
+                { label: t('cancel') }
+            ],
+        });
+
+        // "목록으로" 버튼은 diff 화면에서만 표시
+        const backBtnEl = window.parent.document.getElementById('changes-back-btn');
+        if (backBtnEl) backBtnEl.style.display = 'none';
+
+        // Load changed files after dialog opens
+        apiCall('get_changed_files', { project_id: projectId }).then(function(result) {
+            changedFiles = (result.success && result.files) ? result.files : [];
+            renderFilesList();
+            if (changedFiles.length === 0) {
+                const btn = window.parent.document.getElementById('changes-revert-all-btn');
+                if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
+            }
+        });
+    }
+
+    async function renderFileDiff(filePath, fileStatus, container) {
+        const showDeployed = (fileStatus !== 'added' && fileStatus !== 'untracked');
+        const showLocal    = (fileStatus !== 'deleted' && fileStatus !== 'missing');
+
+        let headData = null, localData = null;
+        const calls = [];
+        if (showDeployed) {
+            calls.push(
+                apiCall('svn_cat', { project_id: projectId, path: filePath, revision: 'HEAD' })
+                    .then(function(r) { headData = r.success ? r : null; })
+            );
+        }
+        if (showLocal) {
+            calls.push(
+                apiCall('read_local_file', { project_id: projectId, path: filePath })
+                    .then(function(r) { localData = r.success ? r : null; })
+            );
+        }
+        await Promise.all(calls);
+
+        container.innerHTML = '';
+
+        if (fileStatus === 'modified') {
+            const headText  = (headData  && headData.encoding  === 'utf8') ? headData.content  : null;
+            const localText = (localData && localData.encoding === 'utf8') ? localData.content : null;
+            if (headText === null && localText === null) {
+                container.textContent = t('binaryFile');
+                return;
+            }
+            chDiffRender(headText || '', localText || '', container);
+        } else if (showLocal) {
+            if (!localData) {
+                window.parent.showToast(t('noLocalVersion'), { type: 'err' });
+                return;
+            }
+            const pre = document.createElement('pre');
+            pre.className = 'ch-code-block';
+            pre.style.cssText = 'margin:0;max-height:400px;overflow:auto';
+            pre.textContent = localData.encoding === 'utf8' ? localData.content : t('binaryFile');
+            container.appendChild(pre);
+        } else {
+            if (!headData) {
+                window.parent.showToast(t('noHeadVersion'), { type: 'err' });
+                return;
+            }
+            const pre = document.createElement('pre');
+            pre.className = 'ch-code-block';
+            pre.style.cssText = 'margin:0;max-height:400px;overflow:auto';
+            pre.textContent = headData.encoding === 'utf8' ? headData.content : t('binaryFile');
+            container.appendChild(pre);
+        }
+    }
+
+    // ── update indicator ─────────────────────────────────────────────────────
+    function showUpdateIndicator(wcRev, headRev) {
+        var ind = document.getElementById('update-indicator');
+        var btn = document.getElementById('update-indicator-btn');
+        btn.textContent = t('updateAvailable') + ' (r' + wcRev + ' → r' + headRev + ')';
+        ind.style.display = '';
+        var deployBtn = document.getElementById('btn-deploy');
+        if (deployBtn) { deployBtn.disabled = true; deployBtn.style.opacity = '0.5'; }
+    }
+
+    function hideUpdateIndicator() {
+        document.getElementById('update-indicator').style.display = 'none';
+        var deployBtn = document.getElementById('btn-deploy');
+        if (deployBtn) { deployBtn.disabled = false; deployBtn.style.opacity = ''; }
+    }
+
+    function openUpdateModal() {
+        if (!window.isInIframe) return;
+        _openUpdateModalWith(null, {});
+    }
+
+    function _ensureParentStyles() {
+        var pd = window.parent.document;
+        if (pd.getElementById('ch-modal-styles')) return;
+        var s = pd.createElement('style');
+        s.id = 'ch-modal-styles';
+        s.textContent = [
+            '.ch-modal-icon-btn{display:inline-flex;align-items:center;justify-content:center;',
+            'width:28px;height:28px;padding:0;border:1px solid var(--border-color);border-radius:4px;',
+            'background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;flex-shrink:0;',
+            '-webkit-appearance:none;appearance:none;box-shadow:none;box-sizing:border-box;}',
+            '.ch-modal-icon-btn:hover{background:var(--bg-tertiary);}',
+            '.ch-diff-wrap{overflow-x:auto;border:1px solid var(--border-color);border-radius:6px;',
+            'font-family:monospace;font-size:12px;line-height:1.6;position:relative;}',
+            '.ch-diff-table{width:100%;border-collapse:collapse;table-layout:fixed;}',
+            '.ch-diff-table td{padding:1px 8px;white-space:pre;overflow:hidden;text-overflow:ellipsis;',
+            'vertical-align:top;border-right:1px solid var(--border-color);}',
+            '.ch-diff-table td:last-child{border-right:none;}',
+            '.ch-diff-table tr.removed td:first-child{background:rgba(220,53,69,0.15);color:var(--danger-color,#dc3545);}',
+            '.ch-diff-table tr.removed td:last-child{background:var(--bg-secondary);}',
+            '.ch-diff-table tr.added td:first-child{background:var(--bg-secondary);}',
+            '.ch-diff-table tr.added td:last-child{background:rgba(40,167,69,0.15);color:var(--success-color,#28a745);}',
+            '.ch-diff-table tr.changed td:first-child{background:rgba(220,53,69,0.1);}',
+            '.ch-diff-table tr.changed td:last-child{background:rgba(40,167,69,0.1);}',
+            '.ch-diff-table tr.equal td{color:var(--text-primary);}',
+            '.ch-diff-linenum{display:inline-block;min-width:32px;color:var(--text-secondary);',
+            'user-select:none;margin-right:8px;font-size:11px;}',
+            '.ch-diff-table tr.changed td:first-child .ch-diff-hl{background:rgba(220,53,69,0.4);border-radius:2px;}',
+            '.ch-diff-table tr.changed td:last-child .ch-diff-hl{background:rgba(40,167,69,0.4);border-radius:2px;}',
+            '.ch-diff-resizer{position:absolute;top:0;bottom:0;width:8px;transform:translateX(-50%);cursor:col-resize;z-index:10;}',
+            '.ch-diff-resizer::after{content:"";position:absolute;top:0;bottom:0;left:50%;width:2px;',
+            'transform:translateX(-50%);background:var(--accent-color,#0d6efd);opacity:0;transition:opacity 0.15s;}',
+            '.ch-diff-resizer:hover::after,.ch-diff-resizer:active::after{opacity:0.5;}',
+            '.ch-revert-btn{margin-right:8px;padding:1px 7px;font-size:11px;border:1px solid transparent;',
+            'border-radius:3px;background:var(--bg-tertiary);color:var(--text-primary);cursor:pointer;white-space:nowrap;}',
+            '.ch-revert-btn:hover{background:var(--bg-primary);color:var(--text-primary);border-color:var(--text-secondary);}',
+        ].join('');
+        pd.head.appendChild(s);
+    }
+
+    function _openUpdateModalWith(previewResult, savedSelections) {
+        _ensureParentStyles();
+        var loadingEl = document.createElement('div');
+        loadingEl.style.cssText = 'font-size:13px;color:var(--text-secondary);padding:8px 0';
+        loadingEl.textContent = t('loading');
+
+        var container = document.createElement('div');
+        container.style.cssText = 'min-width:320px';
+        if (!previewResult) container.appendChild(loadingEl);
+
+        var selections = savedSelections ? JSON.parse(JSON.stringify(savedSelections)) : {};
+        var bodyTooltips = [];
+
+        function cleanupTooltips() {
+            bodyTooltips.forEach(function(el) { if (el.parentNode) el.parentNode.removeChild(el); });
+            bodyTooltips = [];
+        }
+
+        function renderPreview(pr) {
+            var wcRev = pr.wc_revision;
+            var headRev = pr.head_revision;
+            var conflicts = pr.potential_conflicts || [];
+
+            var desc = document.createElement('div');
+            desc.style.cssText = 'font-size:13px;margin-bottom:12px;color:var(--text-primary)';
+            desc.textContent = t('updateDesc').replace('{wc}', wcRev).replace('{head}', headRev);
+            container.appendChild(desc);
+
+            if (conflicts.length === 0) return;
+
+            var note = document.createElement('div');
+            note.style.cssText = 'font-size:12px;margin-bottom:8px;color:var(--warning,#f59e0b)';
+            note.textContent = t('conflictsFound');
+            container.appendChild(note);
+
+            var listWrap = document.createElement('div');
+            listWrap.style.cssText = 'max-height:240px;overflow-y:auto;border:1px solid var(--border-color);border-radius:4px;margin-bottom:10px';
+            var list = document.createElement('div');
+            listWrap.appendChild(list);
+            container.appendChild(listWrap);
+
+            conflicts.forEach(function(cf) {
+                var filename = cf.path.split('/').pop();
+                if (!(cf.path in selections)) selections[cf.path] = 'keep';
+
+                var row = document.createElement('div');
+                row.style.cssText = 'display:flex;align-items:center;padding:5px 8px;border-bottom:1px solid var(--border-color)';
+
+                var nameEl = document.createElement('span');
+                nameEl.style.cssText = 'flex:1;min-width:0;font-size:12px;font-family:monospace;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px;cursor:default';
+                nameEl.textContent = filename;
+
+                if (cf.path !== filename) {
+                    var tip = document.createElement('span');
+                    tip.style.cssText = 'display:none;position:fixed;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:3px;padding:2px 6px;font-size:11px;white-space:nowrap;z-index:9999;color:var(--text-primary)';
+                    tip.textContent = cf.path;
+                    document.body.appendChild(tip);
+                    bodyTooltips.push(tip);
+                    nameEl.onmouseenter = function(e) { tip.style.left = e.clientX + 'px'; tip.style.top = (e.clientY + 16) + 'px'; tip.style.display = ''; };
+                    nameEl.onmousemove  = function(e) { tip.style.left = e.clientX + 'px'; tip.style.top = (e.clientY + 16) + 'px'; };
+                    nameEl.onmouseleave = function()  { tip.style.display = 'none'; };
+                }
+
+                var sel = document.createElement('select');
+                sel.style.cssText = 'font-size:11px;width:140px;min-width:140px;margin-right:6px;flex-shrink:0;background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:2px 4px;height:24px';
+                [
+                    ['keep',        t('conflictKeep')],
+                    ['mine-full',   t('conflictMine')],
+                    ['theirs-full', t('conflictTheirs')],
+                ].forEach(function(opt) {
+                    var o = document.createElement('option');
+                    o.value = opt[0]; o.textContent = opt[1];
+                    sel.appendChild(o);
+                });
+                sel.value = selections[cf.path];
+                sel.onchange = function() { selections[cf.path] = sel.value; };
+
+                var diffBtn = document.createElement('button');
+                diffBtn.className = 'ch-modal-icon-btn';
+                diffBtn.innerHTML = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><polyline points="17 4 21 8 17 12"/><line x1="3" y1="8" x2="21" y2="8"/><polyline points="7 20 3 16 7 12"/><line x1="21" y1="16" x2="3" y2="16"/></svg>';
+                diffBtn.onclick = function() {
+                    cleanupTooltips();
+                    openConflictDiff(cf, filename, pr, selections);
+                };
+
+                row.appendChild(nameEl);
+                row.appendChild(sel);
+                row.appendChild(diffBtn);
+                list.appendChild(row);
+            });
+
+            var applyBtn = window.parent.document.getElementById('update-modal-btn');
+            if (applyBtn) applyBtn.textContent = t('conflictApply');
+        }
+
+        window.parent.desktopModal.open({
+            title: t('updateTitle'),
+            element: container,
+            buttons: [
+                {
+                    label: t('updateBtn'),
+                    primary: true,
+                    id: 'update-modal-btn',
+                    onClick: function() {
+                        var applyBtn = window.parent.document.getElementById('update-modal-btn');
+                        if (applyBtn) { applyBtn.disabled = true; applyBtn.style.opacity = '0.5'; }
+                        apiCall('apply_update', { project_id: projectId, resolutions: selections }).then(function(result) {
+                            cleanupTooltips();
+                            if (!result.success) {
+                                window.parent.showToast(result.error || t('error'), { type: 'err' });
+                                if (applyBtn) { applyBtn.disabled = false; applyBtn.style.opacity = ''; }
+                                return;
+                            }
+                            var newRev = result.new_revision;
+                            currentWcRevision = newRev;
+                            currentHeadRevision = newRev;
+                            var badge = document.getElementById('rev-badge');
+                            if (badge) badge.textContent = 'r' + newRev;
+                            hideUpdateIndicator();
+                            window.parent.desktopModal.close();
+                            loadFiles(currentPath);
+                        });
+                    }
+                },
+                {
+                    label: t('cancel'),
+                    onClick: function() { cleanupTooltips(); window.parent.desktopModal.close(); }
+                }
+            ],
+        });
+
+        if (previewResult) {
+            renderPreview(previewResult);
+            currentWcRevision = previewResult.wc_revision;
+            currentHeadRevision = previewResult.head_revision;
+        } else {
+            apiCall('preview_update', { project_id: projectId }).then(function(result) {
+                if (!result.success) {
+                    loadingEl.style.color = 'var(--error,#ef4444)';
+                    loadingEl.textContent = result.error || t('error');
+                    return;
+                }
+                container.removeChild(loadingEl);
+                renderPreview(result);
+                currentWcRevision = result.wc_revision;
+                currentHeadRevision = result.head_revision;
+            });
+        }
+    }
+
+    function openConflictDiff(cf, filename, previewResult, selections) {
+        if (!window.isInIframe) return;
+
+        var mineContent   = cf.mine   !== null ? cf.mine   : t('binaryFile');
+        var theirsContent = cf.theirs !== null ? cf.theirs : t('binaryFile');
+
+        var diffContainer = document.createElement('div');
+        diffContainer.style.cssText = 'min-width:400px';
+
+        if (typeof Diff !== 'undefined') {
+            var header = document.createElement('div');
+            header.style.cssText = 'display:flex;font-size:11px;font-family:monospace;margin-bottom:4px';
+            var hMine = document.createElement('span');
+            hMine.style.cssText = 'flex:1;color:var(--text-secondary);padding-left:4px';
+            hMine.textContent = '--- ' + t('conflictDiffMine');
+            var hTheirs = document.createElement('span');
+            hTheirs.style.cssText = 'flex:1;color:var(--text-secondary);padding-left:4px';
+            hTheirs.textContent = '+++ ' + t('conflictDiffTheirs');
+            header.appendChild(hMine);
+            header.appendChild(hTheirs);
+            diffContainer.appendChild(header);
+
+            var pre = document.createElement('pre');
+            pre.style.cssText = 'font-size:11px;font-family:monospace;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:4px;padding:6px 8px;max-height:360px;overflow:auto;margin:0;white-space:pre';
+            var diff = Diff.createTwoFilesPatch(
+                t('conflictDiffMine'), t('conflictDiffTheirs'),
+                mineContent, theirsContent, '', '', { context: 3 }
+            );
+            diff.split('\n').forEach(function(line) {
+                var span = document.createElement('span');
+                if (line.startsWith('+') && !line.startsWith('+++'))      span.style.color = 'var(--success-text,#4ec94e)';
+                else if (line.startsWith('-') && !line.startsWith('---')) span.style.color = 'var(--danger-text,#e06c75)';
+                else if (line.startsWith('@@'))                            span.style.color = 'var(--accent-text,#6ab0f5)';
+                else                                                       span.style.color = 'var(--text-secondary)';
+                span.textContent = line + '\n';
+                pre.appendChild(span);
+            });
+            diffContainer.appendChild(pre);
+        } else {
+            diffContainer.textContent = 'diff library not loaded';
+        }
+
+        window.parent.desktopModal.open({
+            title: t('conflictDiffTitle').replace('{file}', filename),
+            element: diffContainer,
+            buttons: [{
+                label: t('cancel'),
+                onClick: function() { _openUpdateModalWith(previewResult, selections); }
+            }],
+        });
+    }
+
+    // ── deploy ───────────────────────────────────────────────────────────────
+    const DEPLOY_COLLAPSE_COUNT = 4;
+
+    function openDeploy() {
+        if (!window.isInIframe) return;
+
+        // ── changed files section ──
+        const filesLabel = document.createElement('div');
+        filesLabel.style.cssText = 'font-size:12px;color:var(--text-secondary);margin-bottom:4px';
+        filesLabel.textContent = t('changedFiles');
+
+        const filesList = document.createElement('div');
+        filesList.style.cssText = 'font-size:12px;font-family:monospace;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:4px;padding:4px 6px;margin-bottom:4px;max-height:160px;overflow-y:auto';
+        filesList.textContent = '...';
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'btn btn-secondary';
+        toggleBtn.style.cssText = 'font-size:11px;padding:2px 8px;margin-bottom:8px;display:none';
+
+        let allFiles = [];
+        let expanded = false;
+
+        function renderFiles() {
+            filesList.innerHTML = '';
+            const shown = expanded ? allFiles : allFiles.slice(0, DEPLOY_COLLAPSE_COUNT);
+            shown.forEach(function(f) {
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex;align-items:center;padding:1px 0';
+                const badge = document.createElement('span');
+                badge.style.cssText = 'width:60px;flex-shrink:0;font-size:11px;color:' + statusColor(f.status);
+                badge.textContent = statusLabel(f.status);
+                const name = document.createElement('span');
+                name.style.cssText = 'color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+                name.textContent = f.path;
+                row.appendChild(badge);
+                row.appendChild(name);
+                filesList.appendChild(row);
+            });
+            if (allFiles.length > DEPLOY_COLLAPSE_COUNT) {
+                toggleBtn.style.display = '';
+                toggleBtn.textContent = expanded
+                    ? t('collapse')
+                    : t('showAll') + ' (' + allFiles.length + ')';
+            } else {
+                toggleBtn.style.display = 'none';
+            }
+        }
+
+        toggleBtn.onclick = function() {
+            expanded = !expanded;
+            renderFiles();
+        };
+
+        // ── commit message ──
+        const textarea = document.createElement('textarea');
+        textarea.className = 'form-control';
+        textarea.style.cssText = 'width:100%;height:52px;font-size:13px;resize:vertical;box-sizing:border-box';
+        textarea.placeholder = t('deployMessage');
+
+        const container = document.createElement('div');
+        container.appendChild(filesLabel);
+        container.appendChild(filesList);
+        container.appendChild(toggleBtn);
+        container.appendChild(textarea);
+
+        window.parent.desktopModal.open({
+            title: t('deployTitle'),
+            element: container,
+            buttons: [
+                {
+                    label: t('deploy'),
+                    primary: true,
+                    id: 'deploy-modal-btn',
+                    onClick: function() {
+                        const message = textarea.value.trim() || 'deploy';
+
+                        apiCall('deploy', { project_id: projectId, message }).then(function(result) {
+                            if (result.success) {
+                                window.parent.desktopModal.close();
+                                loadFiles(currentPath);
+                                if (result.revision) {
+                                    const badge = document.getElementById('rev-badge');
+                                    if (badge) badge.textContent = 'r' + result.revision;
+                                    currentWcRevision = result.revision;
+                                    currentHeadRevision = result.revision;
+                                    hideUpdateIndicator();
+                                    window.parent.showToast(t('deploySuccess').replace('{rev}', 'r' + result.revision));
+                                }
+                            } else if (result.error === 'behind_head') {
+                                currentWcRevision = result.wc_revision;
+                                currentHeadRevision = result.head_revision;
+                                showUpdateIndicator(result.wc_revision, result.head_revision);
+                                var msg = t('behindHeadError')
+                                    .replace('{wc}', result.wc_revision)
+                                    .replace('{head}', result.head_revision);
+                                window.parent.showToast(msg, { type: 'err' });
+                                window.parent.desktopModal.close();
+                                openUpdateModal();
+                            } else {
+                                window.parent.showToast(result.error || t('error'), { type: 'err' });
+                            }
+                        });
+                    }
+                },
+                { label: t('cancel') }
+            ],
+        });
+
+        // Load changed files after dialog opens
+        apiCall('get_changed_files', { project_id: projectId }).then(function(result) {
+            allFiles = (result.success && result.files)
+                ? result.files.filter(function(f) { return f.status !== 'unregistered'; })
+                : [];
+            if (allFiles.length === 0) {
+                filesList.textContent = t('nothingToDeploy');
+                filesList.style.color = 'var(--text-secondary)';
+                textarea.disabled = true;
+                textarea.style.opacity = '0.5';
+                const deployBtn = window.parent.document.getElementById('deploy-modal-btn');
+                if (deployBtn) {
+                    deployBtn.disabled = true;
+                    deployBtn.style.opacity = '0.5';
+                }
+            } else {
+                renderFiles();
+                setTimeout(function() { textarea.focus(); }, 100);
+            }
+        });
+    }
+
+    // ── delete ───────────────────────────────────────────────────────────────
+    async function deleteProject() {
+        if (!window.isInIframe) return;
+        const confirmed = await window.parent.showConfirmDialog(
+            t('deleteProject'), t('confirmDelete'), { yesStyle: 'danger' }
+        );
+        if (!confirmed) return;
+        const result = await apiCall('delete_project', { project_id: projectId });
+        if (result.success) navigateTo('project_list.html');
+    }
+
+    // ── skillbot ──────────────────────────────────────────────────────────────
+    async function openInSkillbot() {
+        if (!window.isInIframe || !project || !project.workdir) return;
+        const SKILLBOT_APP_ID = 'sk1llb0t';
+        const isRunning = window.parent.runningApps &&
+                          window.parent.runningApps.includes(SKILLBOT_APP_ID);
+        if (isRunning) {
+            const confirmed = await window.parent.showConfirmDialog(
+                t('openInSkillbotTitle'),
+                t('openInSkillbotRunningMsg'),
+                { yesStyle: 'danger' }
+            );
+            if (!confirmed) return;
+            await window.parent.exitAppById(SKILLBOT_APP_ID);
+        }
+        const result = await apiCall('open_in_skillbot', { workdir: project.workdir });
+        if (!result.success) {
+            window.parent.showToast(result.error || t('error'), { type: 'err' });
+            return;
+        }
+        await window.parent.launchApp(SKILLBOT_APP_ID);
+    }
+
+    // ── terminal ─────────────────────────────────────────────────────────────
+    async function openTerminal() {
+        if (!project || !project.workdir) return;
+        const result = await apiCall('open_terminal', { workdir: project.workdir });
+        if (!result.success) {
+            window.parent.showToast(result.error || t('error'), { type: 'err' });
+        }
+    }
+
+    // ── refresh ───────────────────────────────────────────────────────────────
+    function refreshProject() {
+        if (!projectId) return;
+        apiCall('get_revision_state', { project_id: projectId }).then(function(revResult) {
+            if (revResult.success) {
+                const badge = document.getElementById('rev-badge');
+                if (badge) badge.textContent = 'r' + revResult.wc_revision;
+                currentWcRevision = revResult.wc_revision;
+                currentHeadRevision = revResult.head_revision;
+                if (revResult.wc_revision < revResult.head_revision) {
+                    showUpdateIndicator(revResult.wc_revision, revResult.head_revision);
+                } else {
+                    hideUpdateIndicator();
+                }
+            }
+        });
+        loadFiles(currentPath);
+    }
+
+    window.addEventListener('message', function(event) {
+        if (event.data && event.data.action === 'setTheme' && event.data.theme) {
+            _iconTheme = event.data.theme === 'white' ? 'light' : 'dark';
+            if (project) loadFiles(currentPath);
+        }
+    });
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+/* Layout: body, container, main-content, content-area, standalone mode */
+
+body {
+    overflow: hidden;
+}
+
+.container-fluid {
+    display: flex;
+    height: 100vh;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* Standalone app window: hide chrome, fill with app content */
+body.app-standalone nav.sidebar,
+body.app-standalone .sidebar-divider,
+body.app-standalone header.top-bar { display: none !important; }
+body.app-standalone main.main-content { width: 100%; }
+body.app-standalone #app-content {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    display: block !important;
+}
+body.app-standalone #app-content iframe {
+    width: 100% !important; height: 100% !important;
+}
+
+/* Main Content */
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Desktop Content Area */
+.content-area {
+    flex: 1;
+    padding: 15px;
+    overflow-y: auto;
+}

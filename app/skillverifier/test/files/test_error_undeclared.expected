@@ -1,0 +1,12 @@
+# Expected errors for test_error_undeclared.il
+# Format: line|func|type|var
+#
+5|None|undeclared(variable)|undeclaredVar
+10|testUndeclared|undeclared(variable)|missingVariable
+18|loopError|undeclared(variable)|total
+18|loopError|undeclared(variable)|total
+24|conditionalError|undeclared(variable)|threshold
+33|propertyError|undeclared(variable)|unknownObject
+41|multipleErrors|undeclared(variable)|b
+41|multipleErrors|undeclared(variable)|c
+41|multipleErrors|undeclared(variable)|d
