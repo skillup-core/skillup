@@ -9,7 +9,7 @@
       "cols": 0,
       "rows": 0
     },
-    "theme": "auto",
+    "theme": "invert",
     "formName.ko": "건의하기",
     "formId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
   },
@@ -121,6 +121,22 @@
       "placeholder.ko": "건의 내용을 입력하세요",
       "default": "",
       "font": "mono",
+      "readonly": false,
+      "markdown": true
+    },
+    {
+      "id": "f16",
+      "type": "comment",
+      "col": 0,
+      "row": 6,
+      "w": 12,
+      "h": 1,
+      "required": false,
+      "placeholder": "",
+      "default": "",
+      "font": "mono",
+      "commentDetailFormPath": "",
+      "multiline": false,
       "readonly": false
     },
     {
@@ -132,7 +148,7 @@
       "row": 6,
       "w": 2,
       "h": 1,
-      "variant": "primary",
+      "variant": "secondary",
       "boardCommand": "POST"
     },
     {
@@ -144,7 +160,7 @@
       "row": 6,
       "w": 2,
       "h": 1,
-      "variant": "primary",
+      "variant": "secondary",
       "boardCommand": "MODIFY"
     },
     {
@@ -156,7 +172,7 @@
       "row": 6,
       "w": 2,
       "h": 1,
-      "variant": "danger",
+      "variant": "secondary",
       "boardCommand": "DELETE"
     },
     {
@@ -171,7 +187,7 @@
       "required": false,
       "placeholder": "",
       "default": "",
-      "variant": "primary",
+      "variant": "secondary",
       "boardCommand": "LIST",
       "multiline": false,
       "readonly": false

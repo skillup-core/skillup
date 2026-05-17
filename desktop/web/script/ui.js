@@ -62,6 +62,7 @@ function showPage(pageName) {
     if (pageName === 'settings') {
         loadHotkeyStatus();
         loadAccount();
+        loadGroups();
         var settingsPage = document.getElementById('page-settings');
         if (settingsPage) setTimeout(function() { settingsPage.focus({ preventScroll: true }); }, 0);
     }

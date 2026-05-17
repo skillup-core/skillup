@@ -856,6 +856,245 @@
             background: var(--bg-hover);
         }
 
+        /* ── Hashtag section ── */
+        .skb-hashtag-section {
+            margin-top: 24px;
+            border-top: 1px solid var(--border-color);
+            padding-top: 12px;
+        }
+
+        .skb-hashtag-heading {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .skb-hashtag-row {
+            display: flex;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        .skb-hashtag-input {
+            width: 160px;
+            flex-shrink: 0;
+            padding: 3px 7px;
+            font-size: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            box-sizing: border-box;
+            margin-right: 8px;
+        }
+
+        .skb-hashtag-input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .skb-hashtag-chips {
+            display: flex;
+            align-items: center;
+            flex-wrap: nowrap;
+            overflow: hidden;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .skb-hashtag-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 7px;
+            font-size: 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            color: var(--accent-primary);
+            cursor: pointer;
+            margin-right: 5px;
+            white-space: nowrap;
+            flex-shrink: 0;
+            transition: background 0.15s;
+        }
+
+        .skb-hashtag-chip:hover {
+            background: var(--bg-hover);
+        }
+
+        .skb-hashtag-chip-remove {
+            margin-left: 5px;
+            font-size: 10px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0 1px;
+            line-height: 1;
+        }
+
+        .skb-hashtag-chip-remove:hover {
+            color: var(--text-primary);
+        }
+
+        .skb-hashtag-more-btn {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 7px;
+            font-size: 12px;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            margin-right: 5px;
+            white-space: nowrap;
+            flex-shrink: 0;
+            transition: all 0.15s;
+        }
+
+        .skb-hashtag-more-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .skb-hashtag-search-btn {
+            flex-shrink: 0;
+            padding: 3px 8px;
+            font-size: 13px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            margin-left: auto;
+            transition: all 0.15s;
+        }
+
+        .skb-hashtag-search-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .skb-hashtag-overflow-row {
+            display: flex;
+            flex-wrap: wrap;
+            margin-top: 4px;
+        }
+
+        /* ── Hashtag search dialog ── */
+        .skb-hashtag-dialog {
+            outline: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .skb-hashtag-dialog-inner {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            width: 420px;
+            max-width: 90vw;
+            max-height: 70vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .skb-hashtag-dialog-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 10px;
+        }
+
+        .skb-hashtag-dialog-input {
+            width: 100%;
+            padding: 6px 10px;
+            font-size: 13px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            box-sizing: border-box;
+            margin-bottom: 10px;
+        }
+
+        .skb-hashtag-dialog-results {
+            overflow-y: auto;
+            flex: 1;
+            margin-bottom: 10px;
+        }
+
+        .skb-hashtag-dialog-result-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 10px;
+            font-size: 13px;
+            font-family: var(--font-mono);
+            border-radius: 4px;
+            cursor: pointer;
+            color: var(--text-primary);
+            transition: background 0.15s;
+        }
+
+        .skb-hashtag-dialog-result-item:hover {
+            background: var(--accent-primary);
+            color: #fff;
+        }
+
+        .skb-hashtag-dialog-result-tags {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-left: 8px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 160px;
+        }
+
+        .skb-hashtag-dialog-result-item:hover .skb-hashtag-dialog-result-tags {
+            color: rgba(255,255,255,0.7);
+        }
+
+        .skb-hashtag-dialog-empty {
+            font-size: 13px;
+            color: var(--text-secondary);
+            padding: 8px 10px;
+            font-style: italic;
+        }
+
+        .skb-hashtag-dialog-footer {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .skb-hashtag-dialog-close-btn {
+            padding: 5px 14px;
+            font-size: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .skb-hashtag-dialog-close-btn:hover {
+            background: var(--bg-hover);
+        }
+
         /* ── Comments section ── */
         .skb-comments-section {
             margin-top: 24px;
@@ -1444,6 +1683,9 @@
         let historyBtn, historyDialog, historyList, historyCloseBtn;
         let historySelectedIndex = -1;
         let settingsBtn, settingsDialog, settingsLangSelect, settingsSaveBtn, settingsCloseBtn;
+        let hashtagDialog, hashtagDialogInput, hashtagDialogResults, hashtagDialogCloseBtn;
+        let currentHashtagFunc = '';
+        const HASHTAG_MAX_VISIBLE = 5;
 
         // UI text translations
         const uiTexts = {
@@ -1464,7 +1706,18 @@
                 edit: 'Edit',
                 save: 'Save',
                 delete: 'Delete',
-                cancel: 'Cancel'
+                cancel: 'Cancel',
+                hashTags: 'HASH TAGS',
+                hashTagPlaceholder: 'Add tag and press Enter',
+                hashTagHint: 'Press Enter to add',
+                hashTagDup: 'Already registered.',
+                hashTagSearchTitle: '# Hashtag Search',
+                hashTagSearchPlaceholder: 'Search by tag...',
+                hashTagSearchEmpty: 'Enter a tag to search.',
+                hashTagNoResults: 'No results.',
+                hashTagSearchFailed: 'Search failed.',
+                hashTagDeleteConfirmTitle: 'Delete Tag',
+                hashTagDeleteConfirm: 'Delete tag "#TAG"?',
             },
             ko: {
                 settings: '설정',
@@ -1483,7 +1736,18 @@
                 edit: '수정',
                 save: '저장',
                 delete: '삭제',
-                cancel: '취소'
+                cancel: '취소',
+                hashTags: 'HASH TAGS',
+                hashTagPlaceholder: '태그 입력 후 Enter',
+                hashTagHint: 'Enter 키로 추가',
+                hashTagDup: '이미 등록된 태그입니다.',
+                hashTagSearchTitle: '# 해쉬태그 검색',
+                hashTagSearchPlaceholder: '태그로 검색...',
+                hashTagSearchEmpty: '검색할 태그를 입력하세요.',
+                hashTagNoResults: '검색 결과 없음.',
+                hashTagSearchFailed: '검색 실패.',
+                hashTagDeleteConfirmTitle: '태그 삭제',
+                hashTagDeleteConfirm: '"#TAG" 태그를 삭제할까요?',
             }
         };
 
@@ -1569,7 +1833,7 @@
         }
         function _notifyDialogClose() {
             // Only notify if no dialogs remain open
-            const dialogs = [historyDialog, filterDialog, settingsDialog, favoritesDialog];
+            const dialogs = [historyDialog, filterDialog, settingsDialog, favoritesDialog, hashtagDialog];
             const anyOpen = dialogs.some(function(d) { return d && d.style.display !== 'none'; });
             if (!anyOpen && window.parent !== window) {
                 window.parent.postMessage({ action: 'skillbookDialogClose' }, '*');
@@ -1612,6 +1876,10 @@
                 settingsLangSelect = document.getElementById('settingsLangSelect');
                 settingsSaveBtn = document.getElementById('settingsSaveBtn');
                 settingsCloseBtn = document.getElementById('settingsCloseBtn');
+                hashtagDialog = document.getElementById('hashtagDialog');
+                hashtagDialogInput = document.getElementById('hashtagDialogInput');
+                hashtagDialogResults = document.getElementById('hashtagDialogResults');
+                hashtagDialogCloseBtn = document.getElementById('hashtagDialogCloseBtn');
 
                 const result = await callPython('getInfo', {});
 
@@ -1734,7 +2002,8 @@
                     // Update heart icon state
                     updateHeartIcon(result.function_name);
 
-                    // Load comments
+                    // Load hashtag bar (above comments), then comments
+                    await loadHashtagBar(result.function_name);
                     loadComments(result.function_name);
 
                     updateStatus(`Function: ${result.function_name}`);
@@ -2279,7 +2548,7 @@
                 }
 
                 // Let filter/history/settings/favorites dialogs handle their own keys
-                if (filterDialog.style.display !== 'none' || historyDialog.style.display !== 'none' || settingsDialog.style.display !== 'none' || favoritesDialog.style.display !== 'none') {
+                if (filterDialog.style.display !== 'none' || historyDialog.style.display !== 'none' || settingsDialog.style.display !== 'none' || favoritesDialog.style.display !== 'none' || (hashtagDialog && hashtagDialog.style.display !== 'none')) {
                     return;
                 }
 
@@ -2403,6 +2672,9 @@
 
             // Favorites listeners
             setupFavoritesListeners();
+
+            // Hashtag listeners
+            setupHashtagListeners();
         }
 
         // Convert black color (#000000) to readable color in dark mode only
@@ -2753,6 +3025,232 @@
             favoritesSelectedIndex = -1;
             favoritesDialog.focus();
             _notifyDialogOpen();
+        }
+
+        // ─── Hashtag functions ───
+
+        async function loadHashtagBar(funcName) {
+            currentHashtagFunc = funcName;
+            const contentDiv = document.getElementById('content');
+            if (!contentDiv) return;
+
+            // Remove existing hashtag section
+            const existing = contentDiv.querySelector('.skb-hashtag-section');
+            if (existing) existing.remove();
+
+            // Insert into scrollable section, before comments section
+            const scrollable = contentDiv.querySelector('.skb-scrollable-section');
+            if (!scrollable) return;
+
+            let tags = [];
+            try {
+                const res = await callPython('getHashtags', { name: funcName });
+                tags = (res.success && res.tags) ? res.tags : [];
+            } catch (e) { /* ignore */ }
+
+            const section = document.createElement('div');
+            section.className = 'skb-hashtag-section';
+
+            // Insert before comments section if it exists, otherwise append
+            const existingComments = scrollable.querySelector('.skb-comments-section');
+            if (existingComments) {
+                scrollable.insertBefore(section, existingComments);
+            } else {
+                scrollable.appendChild(section);
+            }
+
+            _renderHashtagSection(section, tags, funcName);
+        }
+
+        function _renderHashtagSection(section, tags, funcName) {
+            const texts = uiTexts[uiLanguage] || uiTexts.en;
+            section.innerHTML = '';
+
+            // Heading on its own line
+            const heading = document.createElement('div');
+            heading.className = 'skb-hashtag-heading';
+            heading.textContent = texts.hashTags;
+            section.appendChild(heading);
+
+            // Row: [input] [chips...] [search btn]
+            const row = document.createElement('div');
+            row.className = 'skb-hashtag-row';
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'skb-hashtag-input';
+            input.placeholder = texts.hashTagPlaceholder;
+            row.appendChild(input);
+
+            const chipsDiv = document.createElement('div');
+            chipsDiv.className = 'skb-hashtag-chips';
+            row.appendChild(chipsDiv);
+
+            const searchBtn = document.createElement('button');
+            searchBtn.className = 'skb-hashtag-search-btn';
+            searchBtn.innerHTML = '&#128269;';
+            searchBtn.addEventListener('click', () => openHashtagDialog(''));
+            row.appendChild(searchBtn);
+
+            section.appendChild(row);
+
+            input.addEventListener('keydown', async (e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                const val = input.value.trim();
+                if (!val) return;
+                try {
+                    const res = await callPython('addHashtag', { name: funcName, tag: val });
+                    if (res.success) {
+                        if (!res.added) {
+                            window.parent.showToast(texts.hashTagDup, { type: 'err', delay: 3000 });
+                        } else {
+                            input.value = '';
+                            _updateChips(section, res.tags, funcName);
+                        }
+                    }
+                } catch (err) { /* ignore */ }
+            });
+
+            _updateChips(section, tags, funcName);
+        }
+
+        function _makeChip(tag, funcName, section) {
+            const chip = document.createElement('span');
+            chip.className = 'skb-hashtag-chip';
+            chip.innerHTML = '#' + escapeHtml(tag) +
+                '<span class="skb-hashtag-chip-remove" aria-label="remove tag">&#10005;</span>';
+            chip.querySelector('.skb-hashtag-chip-remove').addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const texts = uiTexts[uiLanguage] || uiTexts.en;
+                const confirmed = await window.parent.showConfirmDialog(
+                    texts.hashTagDeleteConfirmTitle || 'Delete Tag',
+                    (texts.hashTagDeleteConfirm || 'Delete tag "#TAG"?').replace('#TAG', tag)
+                );
+                if (!confirmed) return;
+                try {
+                    const res = await callPython('removeHashtag', { name: funcName, tag });
+                    if (res.success) _updateChips(section, res.tags, funcName);
+                } catch (err) { /* ignore */ }
+            });
+            chip.addEventListener('click', (e) => {
+                if (e.target.classList.contains('skb-hashtag-chip-remove')) return;
+                openHashtagDialog(tag);
+            });
+            return chip;
+        }
+
+        function _updateChips(section, tags, funcName) {
+            const chipsDiv = section.querySelector('.skb-hashtag-chips');
+            if (!chipsDiv) return;
+            // Remove overflow row if present
+            const existingOverflow = section.querySelector('.skb-hashtag-overflow-row');
+            if (existingOverflow) existingOverflow.remove();
+
+            chipsDiv.innerHTML = '';
+            const visible = tags.slice(0, HASHTAG_MAX_VISIBLE);
+            const hidden = tags.slice(HASHTAG_MAX_VISIBLE);
+
+            visible.forEach(tag => chipsDiv.appendChild(_makeChip(tag, funcName, section)));
+
+            if (hidden.length > 0) {
+                const moreBtn = document.createElement('button');
+                moreBtn.className = 'skb-hashtag-more-btn';
+                moreBtn.textContent = `+${hidden.length}`;
+                moreBtn.addEventListener('click', () => {
+                    moreBtn.remove();
+                    const overflowRow = document.createElement('div');
+                    overflowRow.className = 'skb-hashtag-overflow-row';
+                    hidden.forEach(tag => overflowRow.appendChild(_makeChip(tag, funcName, section)));
+                    // Insert after the main row
+                    const row = section.querySelector('.skb-hashtag-row');
+                    row.insertAdjacentElement('afterend', overflowRow);
+                });
+                chipsDiv.appendChild(moreBtn);
+            }
+        }
+
+        let hashtagSearchTimer = null;
+
+        function openHashtagDialog(initialTag) {
+            const texts = uiTexts[uiLanguage] || uiTexts.en;
+            const titleEl = document.getElementById('hashtagDialogTitle');
+            if (titleEl) titleEl.textContent = texts.hashTagSearchTitle;
+            hashtagDialogInput.placeholder = texts.hashTagSearchPlaceholder;
+            hashtagDialogCloseBtn.textContent = texts.close;
+            hashtagDialogInput.value = initialTag || '';
+            hashtagDialogResults.innerHTML = '';
+            hashtagDialog.style.display = 'flex';
+            hashtagDialog.focus();
+            _notifyDialogOpen();
+            if (initialTag) {
+                runHashtagSearch(initialTag);
+            } else {
+                const texts2 = uiTexts[uiLanguage] || uiTexts.en;
+                hashtagDialogResults.innerHTML = `<div class="skb-hashtag-dialog-empty">${escapeHtml(texts2.hashTagSearchEmpty)}</div>`;
+            }
+            hashtagDialogInput.focus();
+        }
+
+        async function runHashtagSearch(tag) {
+            const texts = uiTexts[uiLanguage] || uiTexts.en;
+            const q = tag.trim();
+            if (!q) {
+                hashtagDialogResults.innerHTML = `<div class="skb-hashtag-dialog-empty">${escapeHtml(texts.hashTagSearchEmpty)}</div>`;
+                return;
+            }
+            try {
+                const res = await callPython('searchByHashtag', { tag: q });
+                if (!res.success || !res.results || res.results.length === 0) {
+                    hashtagDialogResults.innerHTML = `<div class="skb-hashtag-dialog-empty">${escapeHtml(texts.hashTagNoResults)}</div>`;
+                    return;
+                }
+                hashtagDialogResults.innerHTML = res.results.map(r => {
+                    const tagsStr = r.tags.map(t => '#' + t).join(' ');
+                    return `<div class="skb-hashtag-dialog-result-item" data-index="${r.index}" data-name="${escapeHtml(r.name)}">
+                        <span>${escapeHtml(r.name)}</span>
+                        <span class="skb-hashtag-dialog-result-tags">${escapeHtml(tagsStr)}</span>
+                    </div>`;
+                }).join('');
+                hashtagDialogResults.querySelectorAll('.skb-hashtag-dialog-result-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        const idx = parseInt(item.dataset.index);
+                        hashtagDialog.style.display = 'none';
+                        _notifyDialogClose();
+                        loadFunction(idx, currentLanguage, true);
+                    });
+                });
+            } catch (e) {
+                hashtagDialogResults.innerHTML = `<div class="skb-hashtag-dialog-empty">${escapeHtml(texts.hashTagSearchFailed)}</div>`;
+            }
+        }
+
+        function setupHashtagListeners() {
+            hashtagDialogCloseBtn.addEventListener('click', () => {
+                hashtagDialog.style.display = 'none';
+                _notifyDialogClose();
+            });
+
+            hashtagDialog.addEventListener('click', (e) => {
+                if (e.target === hashtagDialog) {
+                    hashtagDialog.style.display = 'none';
+                    _notifyDialogClose();
+                }
+            });
+
+            hashtagDialogInput.addEventListener('input', () => {
+                clearTimeout(hashtagSearchTimer);
+                hashtagSearchTimer = setTimeout(() => {
+                    runHashtagSearch(hashtagDialogInput.value);
+                }, 300);
+            });
+
+            hashtagDialog.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && hashtagDialog.style.display !== 'none') {
+                    hashtagDialog.style.display = 'none';
+                    _notifyDialogClose();
+                }
+            });
         }
 
         function setupFavoritesListeners() {
@@ -3112,6 +3610,20 @@
             init();
         }
     </script>
+
+    <!-- Hashtag Search Dialog -->
+    <div id="hashtagDialog" class="skb-hashtag-dialog" style="display:none;" tabindex="-1">
+        <div class="skb-hashtag-dialog-inner">
+            <div class="skb-hashtag-dialog-title" id="hashtagDialogTitle">&#35; Hashtag Search</div>
+            <input type="text" class="skb-hashtag-dialog-input" id="hashtagDialogInput" placeholder="Search by tag..." autocomplete="off">
+            <div class="skb-hashtag-dialog-results" id="hashtagDialogResults">
+                <!-- Populated by JS -->
+            </div>
+            <div class="skb-hashtag-dialog-footer">
+                <button id="hashtagDialogCloseBtn" class="skb-hashtag-dialog-close-btn">Close</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Favorites Dialog -->
     <div id="favoritesDialog" class="skillbook-favorites-dialog" style="display:none;" tabindex="-1">

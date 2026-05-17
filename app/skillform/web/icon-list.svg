@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none">
+  <!-- Rows -->
+  <line x1="3" y1="5"  x2="17" y2="5"  stroke="#000" stroke-width="1.3" stroke-linecap="round"/>
+  <line x1="3" y1="9"  x2="17" y2="9"  stroke="#000" stroke-width="1.3" stroke-linecap="round"/>
+  <line x1="3" y1="13" x2="17" y2="13" stroke="#000" stroke-width="1.3" stroke-linecap="round"/>
+  <line x1="3" y1="17" x2="17" y2="17" stroke="#000" stroke-width="1.3" stroke-linecap="round"/>
+  <!-- Left dots -->
+  <circle cx="3" cy="5"  r="1.2" fill="#000" fill-opacity="0.7"/>
+  <circle cx="3" cy="9"  r="1.2" fill="#000" fill-opacity="0.7"/>
+  <circle cx="3" cy="13" r="1.2" fill="#000" fill-opacity="0.7"/>
+  <circle cx="3" cy="17" r="1.2" fill="#000" fill-opacity="0.7"/>
+</svg>

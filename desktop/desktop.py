@@ -31,6 +31,26 @@ from desktop.account import (
     upsert_account,
     clear_account_photo,
 )
+from desktop.group import (
+    init_group_db,
+    create_group,
+    get_group,
+    list_groups,
+    update_group,
+    delete_group,
+    get_group_members,
+    add_member,
+    remove_member,
+    grant_admin,
+    revoke_admin,
+    request_join,
+    list_join_requests,
+    list_all_pending_join_requests,
+    approve_join_request,
+    reject_join_request,
+    get_group_image,
+    _is_member,
+)
 
 
 # ============================================================================
@@ -766,6 +786,12 @@ class DesktopManager:
             except Exception as e:
                 log("warn", message=f"Failed to initialize account DB: {e}", tag="desktop")
 
+        # Initialize group tables in the same DB
+        try:
+            init_group_db(self.account_db_path)
+        except Exception as e:
+            log("warn", message=f"Failed to initialize group DB: {e}", tag="desktop")
+
         # Determine current user from $USER env
         self.current_user = os.environ.get('USER', os.environ.get('USERNAME', 'user'))
 
@@ -1345,6 +1371,7 @@ class DesktopManager:
             # Read build info from buildinfo.ini
             version = ''
             build = ''
+            build_date = ''
             try:
                 script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                 buildinfo_path = os.path.join(script_dir, 'buildinfo.ini')
@@ -1353,8 +1380,11 @@ class DesktopManager:
                 _ver = _cfg.get('buildinfo', 'version', fallback='')
                 _date = _cfg.get('buildinfo', 'date', fallback='')
                 _build = _cfg.get('buildinfo', 'build', fallback='')
-                if _ver and _date:
-                    version = f'{_ver}.{_date}'
+                version = _ver
+                if _date and len(_date) == 8:
+                    build_date = f'{_date[:4]}/{_date[4:6]}/{_date[6:]}'
+                elif _date:
+                    build_date = _date
                 build = _build
             except Exception:
                 pass
@@ -1372,6 +1402,7 @@ class DesktopManager:
                 'auto_launch_menu': auto_launch_menu,
                 'version': version,
                 'build': build,
+                'build_date': build_date,
                 'show_wayland_ime_warning': show_wayland_ime_warning
             }
 
@@ -1634,6 +1665,186 @@ class DesktopManager:
             ok = clear_account_photo(self.account_db_path, user_id)
             return {'success': ok}
 
+        # ---- Group handlers ------------------------------------------------
+
+        def handle_list_groups(data):
+            user_id = self.current_user
+            groups = list_groups(self.account_db_path, user_id=user_id)
+            return {'success': True, 'groups': groups}
+
+        def handle_browse_groups(data):
+            user_id = self.current_user
+            groups = list_groups(self.account_db_path, user_id=None)
+            from desktop.account import _get_connection
+            from pathlib import Path
+            pending_set = set()
+            if Path(self.account_db_path).exists():
+                try:
+                    conn = _get_connection(self.account_db_path)
+                    try:
+                        rows = conn.execute(
+                            "SELECT group_id FROM group_join_requests WHERE user_id = ?",
+                            (user_id,)
+                        ).fetchall()
+                        pending_set = {r['group_id'] for r in rows}
+                    finally:
+                        conn.close()
+                except Exception:
+                    pass
+            for g in groups:
+                g['is_member'] = _is_member(self.account_db_path, g['id'], user_id)
+                g['request_pending'] = g['id'] in pending_set
+            return {'success': True, 'groups': groups}
+
+        def handle_create_group(data):
+            name = (data.get('name') or '').strip()
+            if not name:
+                return {'success': False, 'error': 'name_required'}
+            description = (data.get('description') or '').strip()[:150]
+            join_policy = data.get('join_policy', 'free')
+            if join_policy == 'all_user':
+                all_user = True
+                join_policy = 'free'
+            else:
+                all_user = bool(data.get('all_user', False))
+                if join_policy not in ('free', 'approve'):
+                    join_policy = 'free'
+            config = {'join_policy': join_policy}
+            group_id = create_group(
+                self.account_db_path, self.current_user, name,
+                description=description, all_user=all_user, config=config
+            )
+            if group_id is None:
+                return {'success': False, 'error': 'create_failed'}
+            return {'success': True, 'group_id': group_id}
+
+        def handle_get_group(data):
+            group_id = data.get('group_id', '')
+            grp = get_group(self.account_db_path, group_id)
+            if grp is None:
+                return {'success': False, 'error': 'not_found'}
+            members = get_group_members(self.account_db_path, group_id)
+            return {'success': True, 'group': grp, 'members': members}
+
+        def handle_update_group(data):
+            group_id = data.get('group_id', '')
+            name = data.get('name')
+            description = data.get('description')
+            if description is not None:
+                description = description.strip()[:150]
+            all_user = data.get('all_user')
+            join_policy = data.get('join_policy')
+
+            config = None
+            if join_policy is not None:
+                if join_policy not in ('free', 'approve'):
+                    return {'success': False, 'error': 'invalid_join_policy'}
+                grp = get_group(self.account_db_path, group_id)
+                if grp is None:
+                    return {'success': False, 'error': 'not_found'}
+                config = grp.get('config', {}) or {}
+                config['join_policy'] = join_policy
+
+            image_bytes = None
+            image_small_bytes = None
+            image_mime = None
+            image_data_uri = data.get('image')
+            if image_data_uri and image_data_uri.startswith('data:'):
+                try:
+                    header, b64data = image_data_uri.split(',', 1)
+                    mime_part = header.split(';')[0]
+                    image_mime = mime_part[5:]
+                    image_bytes = base64.b64decode(b64data)
+                    image_small_bytes = _resize_image(image_bytes, image_mime, 64, 64)
+                except Exception as e:
+                    log("warn", message=f"Failed to parse group image: {e}", tag="desktop")
+
+            ok = update_group(
+                self.account_db_path, group_id, self.current_user,
+                name=name if name is not None else None,
+                description=description,
+                all_user=bool(all_user) if all_user is not None else None,
+                config=config,
+                image=image_bytes,
+                image_small=image_small_bytes,
+                image_mime=image_mime,
+            )
+            return {'success': ok, 'error': None if ok else 'update_failed'}
+
+        def handle_delete_group(data):
+            group_id = data.get('group_id', '')
+            ok = delete_group(self.account_db_path, group_id, self.current_user)
+            return {'success': ok, 'error': None if ok else 'delete_failed'}
+
+        def handle_get_group_image(data):
+            group_id = data.get('group_id', '')
+            size = data.get('size', 'small')
+            img_bytes, mime = get_group_image(self.account_db_path, group_id, size)
+            if img_bytes:
+                b64 = base64.b64encode(img_bytes).decode('ascii')
+                return {'success': True, 'data_uri': f'data:{mime};base64,{b64}'}
+            return {'success': True, 'data_uri': None}
+
+        def handle_search_users(data):
+            query = (data.get('query') or '').strip()
+            if not query:
+                return {'success': True, 'users': []}
+            try:
+                from desktop.account import _get_connection
+                conn = _get_connection(self.account_db_path)
+                try:
+                    like = '%' + query + '%'
+                    rows = conn.execute(
+                        "SELECT id, name FROM accounts WHERE activated=1 "
+                        "AND (id LIKE ? OR name LIKE ?) ORDER BY id LIMIT 20",
+                        (like, like)
+                    ).fetchall()
+                    users = [{'id': r['id'], 'name': r['name']} for r in rows]
+                    return {'success': True, 'users': users}
+                finally:
+                    conn.close()
+            except Exception:
+                return {'success': True, 'users': []}
+
+        def handle_group_add_member(data):
+            group_id = data.get('group_id', '')
+            target = data.get('user_id', '')
+            return add_member(self.account_db_path, group_id, self.current_user, target)
+
+        def handle_group_remove_member(data):
+            group_id = data.get('group_id', '')
+            target = data.get('user_id', self.current_user)
+            return remove_member(self.account_db_path, group_id, self.current_user, target)
+
+        def handle_group_grant_admin(data):
+            group_id = data.get('group_id', '')
+            target = data.get('user_id', '')
+            return grant_admin(self.account_db_path, group_id, self.current_user, target)
+
+        def handle_group_revoke_admin(data):
+            group_id = data.get('group_id', '')
+            target = data.get('user_id', '')
+            return revoke_admin(self.account_db_path, group_id, self.current_user, target)
+
+        def handle_group_request_join(data):
+            group_id = data.get('group_id', '')
+            return request_join(self.account_db_path, group_id, self.current_user)
+
+        def handle_group_list_requests(data):
+            group_id = data.get('group_id', '')
+            reqs = list_join_requests(self.account_db_path, group_id)
+            return {'success': True, 'requests': reqs}
+
+        def handle_group_approve_request(data):
+            group_id = data.get('group_id', '')
+            target = data.get('user_id', '')
+            return approve_join_request(self.account_db_path, group_id, self.current_user, target)
+
+        def handle_group_reject_request(data):
+            group_id = data.get('group_id', '')
+            target = data.get('user_id', '')
+            return reject_join_request(self.account_db_path, group_id, self.current_user, target)
+
         self.engine.register_handler('init_app_guid', handle_init_app_guid)
         self.engine.register_handler('callPython', handle_callpython_route)
         self.engine.register_handler('get_apps', handle_get_apps)
@@ -1720,8 +1931,14 @@ class DesktopManager:
         def handle_desktop_ready(data):
             """
             Called by desktop JavaScript when the UI is fully loaded and ready.
-            Triggers on_skillup_started() on all non-subprocess in-process apps.
+            Checks pending group join requests for the current admin user, then
+            triggers on_skillup_started() on all non-subprocess in-process apps.
             """
+            pending = list_all_pending_join_requests(
+                self.account_db_path, self.current_user
+            )
+            if pending:
+                self.engine.callJS('showGroupJoinRequests', {'requests': pending})
             self._fire_skillup_started()
             return {'success': True}
 
@@ -1734,6 +1951,22 @@ class DesktopManager:
         self.engine.register_handler('save_account', handle_save_account)
         self.engine.register_handler('clear_account_photo', handle_clear_account_photo)
         self.engine.register_handler('desktop_ready', handle_desktop_ready)
+        self.engine.register_handler('list_groups', handle_list_groups)
+        self.engine.register_handler('browse_groups', handle_browse_groups)
+        self.engine.register_handler('create_group', handle_create_group)
+        self.engine.register_handler('get_group', handle_get_group)
+        self.engine.register_handler('update_group', handle_update_group)
+        self.engine.register_handler('delete_group', handle_delete_group)
+        self.engine.register_handler('get_group_image', handle_get_group_image)
+        self.engine.register_handler('group_add_member', handle_group_add_member)
+        self.engine.register_handler('group_remove_member', handle_group_remove_member)
+        self.engine.register_handler('group_grant_admin', handle_group_grant_admin)
+        self.engine.register_handler('group_revoke_admin', handle_group_revoke_admin)
+        self.engine.register_handler('group_request_join', handle_group_request_join)
+        self.engine.register_handler('group_list_requests', handle_group_list_requests)
+        self.engine.register_handler('group_approve_request', handle_group_approve_request)
+        self.engine.register_handler('group_reject_request', handle_group_reject_request)
+        self.engine.register_handler('search_users', handle_search_users)
 
         # Suggest board: expose list.json path so JS can open it in skillform runner
         try:

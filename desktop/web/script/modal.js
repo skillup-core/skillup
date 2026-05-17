@@ -128,6 +128,22 @@ window.desktopModal = (function() {
 
     var _dragCleanup = null;
 
+    function _applyThemeOverride(boxEl, titleEl, forcedTheme) {
+        if (forcedTheme === 'light') {
+            boxEl.style.background    = '#f5f5f7';
+            boxEl.style.borderColor   = '#d2d2d7';
+            titleEl.style.color       = '#1d1d1f';
+        } else if (forcedTheme === 'dark') {
+            boxEl.style.background    = '#20242b';
+            boxEl.style.borderColor   = '#373c47';
+            titleEl.style.color       = '#eceef2';
+        } else {
+            boxEl.style.background    = '';
+            boxEl.style.borderColor   = '';
+            titleEl.style.color       = '';
+        }
+    }
+
     function close() {
         var overlay = document.getElementById('desktop-modal-overlay');
         overlay.style.display = 'none';
@@ -141,6 +157,9 @@ window.desktopModal = (function() {
         }
         if (_dragCleanup) { _dragCleanup(); _dragCleanup = null; }
         _removeIframeKeyBlock();
+        var boxEl   = document.getElementById('desktop-modal-box');
+        var titleEl = document.getElementById('desktop-modal-title');
+        _applyThemeOverride(boxEl, titleEl, null);
         var cb = _config && _config.onClose;
         _config = null;
         if (cb) cb();
@@ -152,6 +171,7 @@ window.desktopModal = (function() {
 
         var titleEl = document.getElementById('desktop-modal-title');
         var boxEl   = document.getElementById('desktop-modal-box');
+        _applyThemeOverride(boxEl, titleEl, config.forcedTheme || null);
 
         if (config.noPadding) {
             boxEl.style.padding = '0';
@@ -279,5 +299,16 @@ window.desktopModal.openBoard = async function(infoApiName, title) {
     }
     iframe.style.cssText = 'width:' + (_maxCol * _cellW + _MARGIN * 2) + 'px;height:' + (_maxRow * _gridRowH + _MARGIN * 2) + 'px;border:none;display:block;';
     iframe.setAttribute('allowtransparency', 'true');
-    window.desktopModal.open({ title: title, element: iframe, buttons: [], noPadding: true });
+    var _theme = _docProps.theme || 'light';
+    var _forcedTheme = null;
+    if (_theme === 'invert') {
+        var _sel = document.getElementById('theme-select');
+        var _cur = (_sel && _sel.value) ? _sel.value : 'default';
+        _forcedTheme = (_cur === 'default') ? 'light' : 'dark';
+    } else if (_theme === 'light') {
+        _forcedTheme = 'light';
+    } else if (_theme === 'dark') {
+        _forcedTheme = 'dark';
+    }
+    window.desktopModal.open({ title: title, element: iframe, buttons: [], noPadding: true, forcedTheme: _forcedTheme });
 };

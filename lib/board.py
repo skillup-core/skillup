@@ -110,6 +110,21 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             row_id     INTEGER
         );
 
+        CREATE TABLE IF NOT EXISTS comments (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            record_id  TEXT NOT NULL,
+            parent_id  INTEGER REFERENCES comments(id) ON DELETE CASCADE,
+            user_id    TEXT NOT NULL,
+            content    TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_comments_record
+            ON comments(record_id);
+
+        CREATE INDEX IF NOT EXISTS idx_comments_parent
+            ON comments(parent_id);
+
         CREATE VIRTUAL TABLE IF NOT EXISTS posts_fts USING fts5(
             form_id UNINDEXED,
             data,
@@ -172,8 +187,9 @@ def modify_record(db_path: str, record_id: str, data: Dict[str, Any]) -> bool:
 
 
 def delete_record(db_path: str, record_id: str) -> bool:
-    """Delete a record; returns True if a row was deleted."""
+    """Delete a record and its comments; returns True if a row was deleted."""
     with _connect(db_path) as conn:
+        conn.execute('DELETE FROM comments WHERE record_id=?', (record_id,))
         cur = conn.execute('DELETE FROM posts WHERE record_id=?', (record_id,))
         return cur.rowcount > 0
 
@@ -185,6 +201,19 @@ def count_records(db_path: str, form_id: str) -> int:
             'SELECT COUNT(*) FROM posts WHERE form_id=?', (form_id,)
         ).fetchone()
     return row[0] if row else 0
+
+
+def count_comments_bulk(db_path: str, record_ids: List[str]) -> Dict[str, int]:
+    """Return a mapping of record_id -> comment count for the given record_ids."""
+    if not record_ids:
+        return {}
+    with _connect(db_path) as conn:
+        placeholders = ','.join('?' * len(record_ids))
+        rows = conn.execute(
+            f'SELECT record_id, COUNT(*) FROM comments WHERE record_id IN ({placeholders}) GROUP BY record_id',
+            record_ids
+        ).fetchall()
+    return {row[0]: row[1] for row in rows}
 
 
 def list_records(db_path: str, form_id: str,
@@ -264,6 +293,53 @@ def read_form_id(form_path: str) -> Optional[str]:
         return (schema.get('docProps') or {}).get('formId')
     except Exception:
         return None
+
+
+def list_comments(db_path: str, record_id: str) -> List[Dict[str, Any]]:
+    """Return all comments for a record as a flat list ordered by created_at."""
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            'SELECT id, parent_id, user_id, content, created_at FROM comments WHERE record_id=? ORDER BY created_at ASC',
+            (record_id,)
+        ).fetchall()
+    return [
+        {'id': r['id'], 'parent_id': r['parent_id'], 'user_id': r['user_id'],
+         'content': r['content'], 'created_at': r['created_at']}
+        for r in rows
+    ]
+
+
+def add_comment(db_path: str, record_id: str, user_id: str,
+                content: str, parent_id: Optional[int] = None) -> Dict[str, Any]:
+    """Add a comment to a record. Returns the new comment dict."""
+    now = _now_iso()
+    with _connect(db_path) as conn:
+        cur = conn.execute(
+            'INSERT INTO comments (record_id, parent_id, user_id, content, created_at) VALUES (?,?,?,?,?)',
+            (record_id, parent_id, user_id, content, now)
+        )
+        new_id = cur.lastrowid
+    return {'id': new_id, 'parent_id': parent_id, 'user_id': user_id, 'content': content, 'created_at': now}
+
+
+def update_comment(db_path: str, comment_id: int, user_id: str, content: str) -> bool:
+    """Update a comment's content (only if owned by user_id). Returns True if updated."""
+    with _connect(db_path) as conn:
+        cur = conn.execute(
+            'UPDATE comments SET content=? WHERE id=? AND user_id=?',
+            (content, comment_id, user_id)
+        )
+        return cur.rowcount > 0
+
+
+def delete_comment(db_path: str, comment_id: int, user_id: str) -> bool:
+    """Delete a comment (only if owned by user_id). Returns True if deleted."""
+    with _connect(db_path) as conn:
+        cur = conn.execute(
+            'DELETE FROM comments WHERE id=? AND user_id=?',
+            (comment_id, user_id)
+        )
+        return cur.rowcount > 0
 
 
 def make_board_info(list_form_path: str) -> Dict[str, Any]:

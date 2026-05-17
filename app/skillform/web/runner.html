@@ -17,6 +17,7 @@
     })();
     </script>
     <script src="/common/script/appinit.js" onerror="this.onerror=null;this.src='../../../../web/common/script/appinit.js';"></script>
+    <script src="/common/marked/16.x/marked.min.js" onerror="this.onerror=null;this.src='../../../../desktop/common/marked/16.x/marked.min.js';"></script>
 </head>
 <body>
 <link rel="stylesheet" href="skillform.css" onerror="this.onerror=null;this.href='/app/skillform/skillform.css';">
@@ -58,6 +59,8 @@ function renderForm(schema) {
     _boardFields.forEach(b => { if (b._resizeObserver) b._resizeObserver.disconnect(); });
     _boardFields  = [];
     _infoFields   = [];
+    _commentLayouts.forEach(c => { if (c.observer) c.observer.disconnect(); });
+    _commentLayouts = [];
 
     // Set window title from docProps
     const formName = _loc(schema.docProps || {}, 'formName') || _loc(schema, 'title') || '';
@@ -76,7 +79,21 @@ function renderForm(schema) {
     // Apply theme override from docProps (default: light)
     const theme = (schema.docProps && schema.docProps.theme) || 'light';
     if (theme !== 'auto') {
-        const isLight = theme !== 'dark';
+        let isLight;
+        if (theme === 'invert') {
+            // Read desktop theme from parent's #theme-select (desktop.html).
+            // Cannot use SkillupTheme.current — runner changes it on every renderForm.
+            let desktopTheme = 'default';
+            try {
+                const sel = window.parent !== window
+                    ? window.parent.document.getElementById('theme-select')
+                    : null;
+                if (sel && sel.value) desktopTheme = sel.value;
+            } catch(e) {}
+            isLight = (desktopTheme === 'default');
+        } else {
+            isLight = theme !== 'dark';
+        }
         rootEl.classList.toggle('sfr-light', isLight);
         if (window.SkillupTheme) {
             window.SkillupTheme.setTheme(isLight ? 'white' : 'default');
@@ -106,7 +123,9 @@ function renderForm(schema) {
 
     let maxRow = 0, maxCol = 0;
     fields.forEach(f => {
-        maxRow = Math.max(maxRow, f.row + f.h);
+        // comment h in schema is legacy; treat as 1 since layout expands dynamically
+        const effectiveH = f.type === 'comment' ? 1 : f.h;
+        maxRow = Math.max(maxRow, f.row + effectiveH);
         maxCol = Math.max(maxCol, f.col + f.w);
     });
 
@@ -125,6 +144,14 @@ function renderForm(schema) {
     formEl.style.width  = 'auto';
     formEl.style.minHeight = contentH + 'px';
     formEl.style.minWidth  = contentW + 'px';
+
+    // Reset iframe height to schema-computed size (detail form may have expanded it).
+    try {
+        if (window.parent && window.parent !== window && window.parent.desktopModal) {
+            var _iframeEl = window.parent.document.querySelector('#desktop-modal-body iframe');
+            if (_iframeEl) _iframeEl.style.height = (contentH) + 'px';
+        }
+    } catch(e) {}
 
     // Enforce minimum window size
     const MIN_W = 300, MIN_H = 150;
@@ -145,6 +172,17 @@ function renderForm(schema) {
             el.style.width  = (f.w   * cellW   - ox * 2) + 'px';
             el.style.height = (f.h   * gridRowH - oy * 2) + 'px';
             el.style.padding = '0';
+        } else if (f.type === 'comment') {
+            el.style.left   = MARGIN + 'px';
+            el.style.width  = (maxCol * cellW) + 'px';
+            el.style.top    = (f.row * gridRowH + MARGIN) + 'px';
+            el.style.height = '0px';  // starts at 0; _applyCommentLayout sets real height
+            el.style.padding = '0';
+        } else if (f.type === 'textarea' && f.markdown && !f.readonly) {
+            el.style.left   = (f.col * cellW   + MARGIN) + 'px';
+            el.style.width  = (f.w   * cellW) + 'px';
+            el.style.top    = (f.row * gridRowH + MARGIN) + 'px';
+            el.style.height = (f.h   * gridRowH) + 'px';  // min height; expands with content
         } else {
             el.style.left   = (f.col * cellW   + MARGIN) + 'px';
             el.style.width  = (f.w   * cellW) + 'px';
@@ -152,8 +190,59 @@ function renderForm(schema) {
             el.style.height = (f.h   * gridRowH) + 'px';
         }
 
+        // Store only the schema row; _applyCommentLayout recomputes top from scratch each time.
+        el.dataset.fieldRow  = f.row;
+        el.dataset.schemaH   = f.type === 'comment' ? 1 : (f.h || 1);
+
+        f._cellW = cellW;
         el.appendChild(buildFieldWidget(f, gridRowH));
         formEl.appendChild(el);
+    });
+
+    // Initialize comment layout after all fields are in the DOM
+    const allFieldEls = Array.from(formEl.querySelectorAll('.sfr-field'));
+    fields.filter(f => f.type === 'comment').forEach(f => {
+        const wrapEl = formEl.querySelector('#sfr-comment-' + f.id);
+        if (!wrapEl) return;
+        const layout = { fieldDef: f, wrapEl, gridRowH, formEl, allFieldEls, observer: null };
+        _commentLayouts.push(layout);
+        _applyCommentLayout(layout);
+        layout.observer = new ResizeObserver(() => _applyCommentLayout(layout));
+        layout.observer.observe(wrapEl);  // wrapEl height is never set, so no resize loop
+    });
+
+    // Initialize markdown textarea layout (content-driven height like comment)
+    fields.filter(f => f.type === 'textarea' && f.markdown && !f.readonly).forEach(f => {
+        const wrapEl = formEl.querySelector('#sfr-' + f.id);
+        if (!wrapEl) return;
+        const fieldEl = wrapEl.closest('.sfr-field');
+        if (!fieldEl) return;
+        const minH = f.h * gridRowH;
+        const layout = { fieldDef: f, wrapEl, gridRowH, formEl, allFieldEls, observer: null, minH };
+        _commentLayouts.push(layout);
+        const mdPreviewEl = fieldEl.querySelector('.sfr-md-preview');
+        const syncMarkdownFieldHeight = () => {
+            const labelEl = fieldEl.querySelector('.sfr-label');
+            const labelH = labelEl ? labelEl.offsetHeight : 0;
+            const labelStyle = labelEl ? getComputedStyle(labelEl) : null;
+            const labelMarginTop = labelStyle ? parseFloat(labelStyle.marginTop) || 0 : 0;
+            const labelMarginBottom = labelStyle ? parseFloat(labelStyle.marginBottom) || 0 : 0;
+            const visibleBodyEl = mdPreviewEl.style.display !== 'none'
+                ? mdPreviewEl
+                : wrapEl;
+            const bodyH = visibleBodyEl ? Math.max(visibleBodyEl.offsetHeight || 0, visibleBodyEl.scrollHeight || 0) : 0;
+            // sfr-field has 4px top/bottom padding, and markdown body sits below the label.
+            fieldEl.style.height = Math.max(minH, Math.ceil(labelH + labelMarginTop + labelMarginBottom + bodyH + 8)) + 'px';
+            _commentLayouts.forEach(cl => _applyCommentLayout(cl));
+        };
+        layout.observer = new ResizeObserver(() => {
+            syncMarkdownFieldHeight();
+        });
+        layout.observer.observe(mdPreviewEl);
+        // Initial layout pass so buttons below are pushed down on first render (edit mode).
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            syncMarkdownFieldHeight();
+        }));
     });
 
     document.getElementById('sfr-result').style.display = 'none';
@@ -161,7 +250,7 @@ function renderForm(schema) {
 
     // Standalone mode: resize Qt window to fit form content
     if (_isStandaloneMode) {
-        callPython('resize_window', { w: Math.max(contentW, MIN_W), h: Math.max(contentH, MIN_H) }).catch(() => {});
+        _standaloneResizeWindow(Math.max(contentW, MIN_W), Math.max(contentH, MIN_H));
     }
 }
 
@@ -187,7 +276,7 @@ function buildFieldWidget(f, rowH) {
         }
     }
 
-    const label = f.type !== 'separator' && f.type !== 'label' && f.type !== 'button' && f.type !== 'board';
+    const label = f.type !== 'separator' && f.type !== 'label' && f.type !== 'button' && f.type !== 'board' && f.type !== 'comment';
     const labelText = f.type === 'info'
         ? ((_SYS_COL_LABELS[_currentLang] || _SYS_COL_LABELS.en)[f.infoField] || f.infoField || '')
         : _loc(f, 'label');
@@ -298,6 +387,90 @@ function buildFieldWidget(f, rowH) {
         }
 
         case 'textarea':
+            if (f.markdown && !f.readonly) {
+                const mdWrap = document.createElement('div');
+                mdWrap.className = 'sfr-md-wrap';
+
+                const mdTa = document.createElement('textarea');
+                mdTa.id = 'sfr-' + f.id;
+                mdTa.className = 'sfr-md-textarea';
+                mdTa.style.minHeight = (rowH * (f.h || 1)) + 'px';
+                if (f.placeholder) mdTa.placeholder = _loc(f, 'placeholder');
+                mdTa.value = f.default || '';
+
+                const mdPreview = document.createElement('div');
+                mdPreview.className = 'sfr-md-preview';
+                mdPreview.style.minHeight = (rowH * (f.h || 1)) + 'px';
+                mdPreview.style.display = 'none';
+
+                const mdEditBtn = document.createElement('button');
+                mdEditBtn.type = 'button';
+                mdEditBtn.className = 'sfr-md-edit-btn';
+                mdEditBtn.setAttribute('aria-label', 'Edit');
+                mdEditBtn.setAttribute('data-tooltip', _currentLang === 'ko' ? '편집' : 'Edit');
+                mdEditBtn.style.display = 'none';
+                mdEditBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5a1.414 1.414 0 0 1 2 2L5 13l-3 1 1-3 8.5-8.5z"/></svg>';
+
+                function _switchToEdit() {
+                    // Preserve only the markdown body height; fieldEl also includes the label block.
+                    const fieldEl = wrap.closest('.sfr-field');
+                    if (fieldEl) {
+                        const labelEl = fieldEl.querySelector('.sfr-label');
+                        const labelH = labelEl ? labelEl.offsetHeight : 0;
+                        const labelStyle = labelEl ? getComputedStyle(labelEl) : null;
+                        const labelMarginTop = labelStyle ? parseFloat(labelStyle.marginTop) || 0 : 0;
+                        const labelMarginBottom = labelStyle ? parseFloat(labelStyle.marginBottom) || 0 : 0;
+                        const bodyH = Math.max(mdPreview.offsetHeight || 0, mdPreview.scrollHeight || 0);
+                        const availableH = bodyH > 0
+                            ? bodyH
+                            : Math.max((parseFloat(fieldEl.style.height) || 0) - labelH - labelMarginTop - labelMarginBottom - 8, 0);
+                        mdTa.style.height = Math.max(availableH, 40) + 'px';
+                    }
+                    mdTa.style.display      = '';
+                    mdPreview.style.display = 'none';
+                    mdEditBtn.style.display = 'none';
+                    mdTa.focus({ preventScroll: true });
+                    mdTa.scrollTop = 0;
+                }
+
+                function _switchToView() {
+                    const val = mdTa.value;
+                    mdTa.style.height = '';  // clear height set by _switchToEdit
+                    if (val.trim() === '') {
+                        mdTa.style.display      = '';
+                        mdPreview.style.display = 'none';
+                        mdEditBtn.style.display = 'none';
+                        return;
+                    }
+                    mdPreview.innerHTML     = _cmtRenderMd(val);
+                    mdTa.style.display      = 'none';
+                    mdPreview.style.display = '';
+                    mdEditBtn.style.display = '';
+                }
+
+                mdTa._refreshMdPreview = function() {
+                    _switchToView();
+                };
+
+                mdTa.addEventListener('input', () => { formValues[f.id] = mdTa.value; });
+                mdTa.addEventListener('blur',  () => { _switchToView(); });
+                mdEditBtn.addEventListener('click', () => { _switchToEdit(); });
+
+                formValues[f.id] = f.default || '';
+
+                mdWrap.appendChild(mdPreview);
+                mdWrap.appendChild(mdTa);
+                mdWrap.appendChild(mdEditBtn);
+                wrap.appendChild(mdWrap);
+
+                if ((f.default || '').trim() !== '') {
+                    _switchToView();
+                } else {
+                    _switchToEdit();
+                }
+
+                return wrap;
+            }
             input = document.createElement('textarea');
             input.id = 'sfr-' + f.id;
             input.rows = f.rows || 3;
@@ -413,29 +586,85 @@ function buildFieldWidget(f, rowH) {
             input = document.createElement('button');
             input.type = 'button';
             input.id = 'sfr-' + f.id;
-            input.textContent = _loc(f, 'label') || f.id;
-            const variantMap = { primary: 'sfr-btn-primary', secondary: 'sfr-btn-secondary', danger: 'sfr-btn-danger' };
-            input.className = 'sfr-btn ' + (variantMap[f.variant] || 'sfr-btn-primary');
             input.style.height = 'auto';
             wrap.style.justifyContent = 'flex-end';
+            const _boardCmdIconMap = { POST: 'icon-post.svg', MODIFY: 'icon-modify.svg', DELETE: 'icon-delete.svg', LIST: 'icon-list.svg' };
+            const _boardCmdIcon = f.boardCommand && _boardCmdIconMap[f.boardCommand];
+            if (_boardCmdIcon) {
+                input.className = 'sfr-btn sfr-btn-board';
+                const _icon = document.createElement('img');
+                _icon.src = _boardCmdIcon;
+                _icon.className = 'sfr-board-new-btn-icon';
+                _icon.alt = '';
+                input.appendChild(_icon);
+                input.appendChild(document.createTextNode(' ' + (_loc(f, 'label') || f.id)));
+            } else {
+                const variantMap = { primary: 'sfr-btn-primary', secondary: 'sfr-btn-secondary', danger: 'sfr-btn-danger' };
+                input.className = 'sfr-btn ' + (variantMap[f.variant] || 'sfr-btn-primary');
+                input.textContent = _loc(f, 'label') || f.id;
+            }
             if (f.boardCommand && f.boardCommand !== 'NONE') {
                 input.dataset.boardCommand = f.boardCommand;
             }
-            input.addEventListener('click', () => {
-                const payload = { button_id: f.id, values: Object.assign({}, formValues) };
-                if (f.boardCommand && f.boardCommand !== 'NONE') {
-                    payload.board_command = f.boardCommand;
-                    if (currentRecordId) payload.record_id = currentRecordId;
+            input.addEventListener('click', async () => {
+                const cmd = f.boardCommand;
+                const _confirm = (window.parent !== window && window.parent.showConfirmDialog)
+                    ? window.parent.showConfirmDialog.bind(window.parent)
+                    : (t, m) => Promise.resolve(true);
+
+                if (cmd === 'LIST') {
+                    let isDirty = false;
+                    if (_detailInitialValues) {
+                        for (const k of Object.keys(formValues)) {
+                            if (String(formValues[k]) !== String(_detailInitialValues[k] !== undefined ? _detailInitialValues[k] : '')) {
+                                isDirty = true; break;
+                            }
+                        }
+                    }
+                    if (isDirty) {
+                        const msg = _currentLang === 'ko'
+                            ? '작성 중인 내용이 저장되지 않습니다.\n목록으로 이동하시겠습니까?'
+                            : 'Your changes will not be saved.\nWould you like to go back to the list?';
+                        const ok = await _confirm('', msg);
+                        if (!ok) return;
+                    }
+                    boardNavBack(); return;
                 }
-                if (f.boardCommand === 'LIST') {
-                    boardNavBack();
-                    return;
+
+                if (cmd === 'POST' || cmd === 'MODIFY') {
+                    const requiredFields = (currentSchema && currentSchema.fields || []).filter(f => f.required);
+                    const emptyField = requiredFields.find(f => String(formValues[f.id] || '').trim() === '');
+                    if (emptyField) {
+                        const fieldLabel = _loc(emptyField, 'label') || emptyField.id;
+                        const msg = _currentLang === 'ko'
+                            ? `'${fieldLabel}'을(를) 입력하신 후 다시 시도해 주세요.`
+                            : `Please enter '${fieldLabel}' before proceeding.`;
+                        await _confirm('', msg, { buttons: [{ label: _currentLang === 'ko' ? '확인' : 'OK', primary: true }] });
+                        return;
+                    }
+                }
+
+                const _msgs = {
+                    POST:   _currentLang === 'ko' ? '입력하신 내용으로 등록하시겠습니까?' : 'Would you like to submit with the entered content?',
+                    MODIFY: _currentLang === 'ko' ? '입력하신 내용으로 수정하시겠습니까?' : 'Would you like to save your changes?',
+                    DELETE: _currentLang === 'ko' ? '삭제하시면 복구가 안됩니다.\n정말 삭제하시겠습니까?' : 'Deleted items cannot be recovered.\nAre you sure you want to delete?',
+                };
+                if (_msgs[cmd]) {
+                    const ok = await _confirm('', _msgs[cmd], cmd === 'DELETE' ? { yesStyle: 'danger' } : {});
+                    if (!ok) return;
+                }
+
+                const payload = { button_id: f.id, values: Object.assign({}, formValues) };
+                if (cmd && cmd !== 'NONE') {
+                    payload.board_command = cmd;
+                    if (currentRecordId) payload.record_id = currentRecordId;
+                    if (_currentBoardPermission) payload.permission = _currentBoardPermission;
                 }
                 callPython('runner_button_click', payload).then(res => {
                     if (!res) return;
                     if (res.board_ok) {
-                        if (f.boardCommand === 'POST') currentRecordId = res.record_id || null;
-                        if (f.boardCommand === 'DELETE') currentRecordId = null;
+                        if (cmd === 'POST') { currentRecordId = res.record_id || null; _refreshCommentComponents(); }
+                        if (cmd === 'DELETE') currentRecordId = null;
                         boardNavBack();
                     }
                 });
@@ -475,6 +704,20 @@ function buildFieldWidget(f, rowH) {
             return wrap;
         }
 
+        case 'comment': {
+            const cmtEl = document.createElement('div');
+            cmtEl.id = 'sfr-comment-' + f.id;
+            cmtEl.className = 'sfr-comment-wrap';
+            cmtEl.style.cssText = 'width:100%;display:flex;flex-direction:column;';
+            // sfr-widget has height:100% which clips measurement; override for comment.
+            wrap.style.height = 'auto';
+            // Hide comment field on new record (no rid yet); shown after POST via _refreshCommentComponents.
+            if (!currentRecordId) wrap.style.display = 'none';
+            _renderCommentComponent(f, cmtEl);
+            wrap.appendChild(cmtEl);
+            return wrap;
+        }
+
         case 'board': {
             const boardEl = document.createElement('div');
             boardEl.id = 'sfr-board-' + f.id;
@@ -506,8 +749,27 @@ function setStatus(msg, type) {}
 let _boardFields = [];
 const _avatarCache = {};  // user_id → data_uri | null | 'loading'
 let _infoFields = [];
+let _commentLayouts = []; // { fieldDef, wrapEl, gridRowH, formEl, allFieldEls, observer }
+
+// Initialize marked once
+if (window.marked) {
+    marked.setOptions({ gfm: true, breaks: true });
+}
+
+function _cmtRenderMd(text) {
+    if (window.marked) {
+        return String(text || '')
+            .split('\n')
+            .map(line => marked.parseInline(line || ''))
+            .join('<br>');
+    }
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML.replace(/\n/g, '<br>');
+}
 let _listSchema = null;
 let _savedBoardPages = {};  // fieldDef.id → page number saved before nav to detail
+let _detailInitialValues = null;  // snapshot of formValues on detail entry, for dirty check
 
 function _loadAvatar(uid, imgEl) {
     const DEFAULT = '/common/resource/img/default-avatar.svg';
@@ -617,10 +879,11 @@ function _measureChromeHeight(containerEl) {
 }
 
 // Compute how many data rows fit in containerEl given measured dimensions.
-// Subtracts a 1px safety margin to guard against sub-pixel rounding.
+// Always keep one row of slack so the bottom chrome never gets clipped when
+// the first page is completely full.
 function _computePageSize(containerH, headerH, rowH, chromeH) {
     const avail = containerH - headerH - chromeH - 1;
-    return Math.max(1, Math.floor(avail / rowH));
+    return Math.max(1, Math.floor(avail / rowH) - 1);
 }
 
 // ---- load + render ----
@@ -712,7 +975,13 @@ async function _estimateChromeHeight(containerEl, fieldDef) {
     if (fieldDef.detailFormPath) {
         const btn = document.createElement('button');
         btn.className = 'sfr-board-new-btn';
-        btn.textContent = '+ 새 글';
+        const btnImg = document.createElement('img');
+        btnImg.src = 'icon-new-post.svg';
+        btnImg.className = 'sfr-board-new-btn-icon';
+        btnImg.alt = '';
+        btn.appendChild(btnImg);
+        btn.appendChild(document.createTextNode(' ' + (_currentLang === 'ko' ? '새 글' : 'New Post')));
+        if (fieldDef._cellW) btn.style.width = (fieldDef._cellW * 2) + 'px';
         probe.appendChild(btn);
     }
     containerEl.appendChild(probe);
@@ -730,14 +999,47 @@ async function _fetchAndRender(entry, page) {
         board_id: fieldDef.id,
         offset,
         limit: pageSize,
+        permission: fieldDef.permission || null,
     }).catch(() => null);
+    if (res && res.group_not_found) {
+        entry.total = 0;
+        entry.currentPage = page;
+        entry.permFlags = { can_read: false, can_write: false, can_comment: false, can_modify: false };
+        _renderBoardGroupNotFound(entry, res.group_id, res.group_name);
+        return;
+    }
+    if (res && res.permission_denied) {
+        entry.total = 0;
+        entry.currentPage = page;
+        entry.permFlags = { can_read: false, can_write: false, can_comment: false, can_modify: false };
+        _renderBoardDenied(entry);
+        return;
+    }
     entry.total = (res && res.total != null) ? res.total : 0;
     entry.currentPage = page;
+    entry.permFlags = (res && res.flags) ? res.flags : null;
     _renderBoardTable(entry, res ? res.records : []);
+}
+
+function _renderBoardDenied(entry) {
+    const { containerEl } = entry;
+    const msg = _currentLang === 'ko' ? '권한이 없습니다.' : 'Access denied.';
+    containerEl.innerHTML = `<div style="padding:20px;text-align:center;opacity:0.6;font-size:13px">${msg}</div>`;
+}
+
+function _renderBoardGroupNotFound(entry, groupId, groupName) {
+    const { containerEl } = entry;
+    const label = groupName || groupId || '';
+    const idPart = groupId ? ` (id: ${groupId})` : '';
+    const msg = _currentLang === 'ko'
+        ? `그룹을 찾을 수 없습니다: ${label}${idPart}`
+        : `Group not found: ${label}${idPart}`;
+    containerEl.innerHTML = `<div style="padding:20px;text-align:center;opacity:0.6;font-size:13px">${msg}</div>`;
 }
 
 function _renderBoardTable(entry, records) {
     const { fieldDef, containerEl, fieldLabels, optionMaps, pageSize, currentPage, total } = entry;
+    const permFlags = entry.permFlags || null;
     const cols    = _normalizeListColumns(fieldDef.listColumns);
     const widths  = _resolveWidths(cols);
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -775,7 +1077,9 @@ function _renderBoardTable(entry, records) {
                 return;
             }
             if (optionMaps && optionMaps[c.id] && optionMaps[c.id][v] !== undefined) v = optionMaps[c.id][v];
-            html += `<td>${_escHtml(String(v))}</td>`;
+            const cmtCount = (c.width === 'rest') ? (rec['@comment_count'] || 0) : 0;
+            const cmtBadge = cmtCount > 0 ? ` <span class="sfr-cmt-count">[${cmtCount}]</span>` : '';
+            html += `<td>${_escHtml(String(v))}${cmtBadge}</td>`;
         });
         html += '</tr>';
     });
@@ -821,10 +1125,17 @@ function _renderBoardTable(entry, records) {
         chrome.appendChild(pager);
     }
 
-    if (fieldDef.detailFormPath) {
+    const canWrite = !permFlags || permFlags.can_write;
+    if (fieldDef.detailFormPath && canWrite) {
         const newBtn = document.createElement('button');
         newBtn.className = 'sfr-board-new-btn';
-        newBtn.textContent = '+ 새 글';
+        const newBtnImg = document.createElement('img');
+        newBtnImg.src = 'icon-new-post.svg';
+        newBtnImg.className = 'sfr-board-new-btn-icon';
+        newBtnImg.alt = '';
+        newBtn.appendChild(newBtnImg);
+        newBtn.appendChild(document.createTextNode(' ' + (_currentLang === 'ko' ? '새 글' : 'New Post')));
+        if (fieldDef._cellW) newBtn.style.width = (fieldDef._cellW * 2) + 'px';
         newBtn.addEventListener('click', () => _boardNavToDetail(null, fieldDef));
         chrome.appendChild(newBtn);
     }
@@ -914,30 +1225,41 @@ async function _onBoardResize(entry) {
     }
 }
 
-function _applyDetailButtonState(isMine) {
+function _applyDetailButtonState(isMine, flags) {
     // isMine: true = existing record owned by current user
     //         false = existing record owned by someone else
     //         null = new record (rid was null)
+    // flags: resolved permission flags from server (or null = no restriction)
+    const canWrite   = !flags || flags.can_write;
+    const canModify  = !flags || flags.can_modify;
     document.querySelectorAll('[data-board-command]').forEach(btn => {
         const cmd = btn.dataset.boardCommand;
         let enabled;
         if (isMine === null) {
-            // new record: POST and LIST enabled
-            enabled = (cmd === 'POST' || cmd === 'LIST');
+            // new record: POST only if user can write
+            enabled = (cmd === 'LIST') || (cmd === 'POST' && canWrite);
         } else {
-            // existing record: LIST always, MODIFY/DELETE only if mine
-            enabled = (cmd === 'LIST') || ((cmd === 'MODIFY' || cmd === 'DELETE') && isMine);
+            // existing record: LIST always
+            // MODIFY/DELETE: mine (author) OR admin with canModify
+            const canEdit = isMine || canModify;
+            enabled = (cmd === 'LIST') || ((cmd === 'MODIFY' || cmd === 'DELETE') && canEdit);
         }
         btn.disabled = !enabled;
     });
 }
 
+// Stored permission of the board field currently shown in detail view
+let _currentBoardPermission = null;
+
 async function _boardNavToDetail(rid, fieldDef) {
     const detailPath = fieldDef.detailFormPath || '';
     if (!detailPath) return;
 
+    const permission = fieldDef.permission || null;
+    _currentBoardPermission = permission;
+
     const tasks = [callPython('runner_load_schema', { path: detailPath, is_board_detail: true }).catch(() => null)];
-    if (rid) tasks.push(callPython('board_get', { record_id: rid, detail_form_path: detailPath }).catch(() => null));
+    if (rid) tasks.push(callPython('board_get', { record_id: rid, detail_form_path: detailPath, permission }).catch(() => null));
 
     const results = await Promise.all(tasks);
     const schemaRes = results[0];
@@ -945,8 +1267,29 @@ async function _boardNavToDetail(rid, fieldDef) {
 
     if (!schemaRes || !schemaRes.success || !schemaRes.schema) return;
 
+    if (recordRes && recordRes.group_not_found) {
+        const label = recordRes.group_name || recordRes.group_id || '';
+        const idPart = recordRes.group_id ? ` (id: ${recordRes.group_id})` : '';
+        const msg = _currentLang === 'ko'
+            ? `그룹을 찾을 수 없습니다: ${label}${idPart}`
+            : `Group not found: ${label}${idPart}`;
+        await parent.showConfirmDialog(msg, '', { yesStyle: 'secondary', hideCancelBtn: true }).catch(() => {});
+        return;
+    }
+    if (recordRes && recordRes.permission_denied) {
+        const msg = _currentLang === 'ko' ? '권한이 없습니다.' : 'Access denied.';
+        await parent.showConfirmDialog(msg, '', { yesStyle: 'secondary', hideCancelBtn: true }).catch(() => {});
+        return;
+    }
+
     _listSchema = currentSchema;
     currentRecordId = rid || null;
+
+    // Propagate list form theme to detail form so invert/dark/light is consistent.
+    if (currentSchema && currentSchema.docProps && currentSchema.docProps.theme) {
+        schemaRes.schema.docProps = schemaRes.schema.docProps || {};
+        schemaRes.schema.docProps.theme = currentSchema.docProps.theme;
+    }
 
     // Save current page for each board field so we can restore it on back.
     _savedBoardPages = {};
@@ -956,14 +1299,28 @@ async function _boardNavToDetail(rid, fieldDef) {
     if (rid) {
         const record = recordRes && recordRes.record;
         const isMine = !!(recordRes && recordRes.is_mine);
+        const flags  = (recordRes && recordRes.flags) || null;
         if (record) {
             applySetValues(record);
             _applyInfoRecord(record);
         }
-        _applyDetailButtonState(isMine);
+        _applyDetailButtonState(isMine, flags);
     } else {
-        _applyDetailButtonState(null);
+        _applyDetailButtonState(null, null);
+        callPython('get_current_user_info', {}).then(info => {
+            if (!info) return;
+            _applyInfoRecord({ '@author_id': info.user_id, '@author': info.display_name });
+            if (info.data_uri) {
+                _avatarCache[info.user_id] = info.data_uri;
+                document.querySelectorAll(`.sfr-author-avatar[data-pending-uid="${CSS.escape(info.user_id)}"]`).forEach(el => {
+                    delete el.dataset.pendingUid;
+                    el.src = info.data_uri;
+                    el.style.display = '';
+                });
+            }
+        }).catch(() => {});
     }
+    _detailInitialValues = Object.assign({}, formValues);
 }
 
 function boardNavBack() {
@@ -971,6 +1328,7 @@ function boardNavBack() {
     const schema = _listSchema;
     _listSchema = null;
     currentRecordId = null;
+    _detailInitialValues = null;
     // _savedBoardPages is consumed by _loadBoardData during renderForm; clear after.
     renderForm(schema);
     _savedBoardPages = {};
@@ -1002,6 +1360,7 @@ function applySetValues(values) {
         } else {
             el.value = val;
             formValues[f.id] = val;
+            if (el._refreshMdPreview) el._refreshMdPreview();
         }
     });
 }
@@ -1071,9 +1430,427 @@ async function _pollSetValues() {
 setTimeout(_pollSetValues, 500);
 
 // ================================================================
+// COMMENT COMPONENT
+// ================================================================
+
+const _CMT_I18N = {
+    en: {
+        noComments: 'No comments yet.',
+        placeholder: 'Write a comment...',
+        replyPlaceholder: 'Write a reply...',
+        post: 'Post',
+        reply: 'Reply',
+        edit: 'Edit',
+        delete: 'Delete',
+        save: 'Save',
+        cancel: 'Cancel',
+        newRecord: 'Comments are available after saving the record.',
+        confirmDelete: 'Are you sure you want to delete this comment?',
+    },
+    ko: {
+        noComments: '아직 댓글이 없습니다.',
+        placeholder: '댓글을 입력하세요...',
+        replyPlaceholder: '답글을 입력하세요...',
+        post: '등록',
+        reply: '답글',
+        edit: '수정',
+        delete: '삭제',
+        save: '저장',
+        cancel: '취소',
+        newRecord: '레코드를 저장하면 댓글을 등록할 수 있습니다.',
+        confirmDelete: '이 댓글을 삭제하시겠습니까?',
+    }
+};
+
+function _cmtT(key) {
+    const d = _CMT_I18N[_currentLang] || _CMT_I18N.en;
+    return d[key] || _CMT_I18N.en[key] || key;
+}
+
+function _cmtEsc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function _cmtFormatTime(iso) {
+    try { return new Date(iso + (iso.endsWith('Z') ? '' : 'Z')).toLocaleString(); } catch(e) { return iso; }
+}
+
+function _cmtAutoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+}
+
+function _cmtBuildTree(comments) {
+    const map = {};
+    const roots = [];
+    comments.forEach(c => { map[c.id] = { ...c, children: [] }; });
+    comments.forEach(c => {
+        if (c.parent_id && map[c.parent_id]) {
+            map[c.parent_id].children.push(map[c.id]);
+        } else {
+            roots.push(map[c.id]);
+        }
+    });
+    return roots;
+}
+
+function _cmtRenderComment(c, currentUser) {
+    const displayName = c.display_name || c.user_id;
+    const initials = displayName.substring(0, 2).toUpperCase();
+    const avatarHtml = c.avatar_small && c.avatar_small.length > 0
+        ? `<img src="data:${c.avatar_mime || 'image/jpeg'};base64,${c.avatar_small}" alt="${_cmtEsc(displayName)}" class="sfr-cmt-avatar-img">`
+        : `<span class="sfr-cmt-avatar-initials">${_cmtEsc(initials)}</span>`;
+    const canEdit = c.user_id === currentUser;
+    const _perm = _currentBoardPermission;
+    const canComment = !_perm || !_perm.comment || _perm.comment.member !== false;
+    const repliesHtml = c.children && c.children.length
+        ? `<div class="sfr-cmt-replies">${c.children.map(ch => _cmtRenderComment(ch, currentUser)).join('')}</div>`
+        : '';
+    return `<div class="sfr-cmt-item" data-cmt-id="${c.id}">
+        <div class="sfr-cmt-avatar">${avatarHtml}</div>
+        <div class="sfr-cmt-body">
+            <div class="sfr-cmt-meta">
+                <span class="sfr-cmt-user">${_cmtEsc(displayName)}</span>
+                <span class="sfr-cmt-time">${_cmtEsc(_cmtFormatTime(c.created_at))}</span>
+                <div class="sfr-cmt-actions">
+                    ${canComment ? `<button class="sfr-cmt-btn sfr-cmt-reply-btn">${_cmtEsc(_cmtT('reply'))}</button>` : ''}
+                    ${canEdit ? `<button class="sfr-cmt-btn sfr-cmt-edit-btn">${_cmtEsc(_cmtT('edit'))}</button>` : ''}
+                    ${canEdit ? `<button class="sfr-cmt-btn sfr-cmt-del-btn">${_cmtEsc(_cmtT('delete'))}</button>` : ''}
+                </div>
+            </div>
+            <div class="sfr-cmt-content sfr-cmt-md" data-raw="${_cmtEsc(c.content)}">${_cmtRenderMd(c.content)}</div>
+            <div class="sfr-cmt-edit-area" style="display:none">
+                <textarea class="sfr-cmt-input" rows="2"></textarea>
+                <div class="sfr-cmt-side-btns">
+                    <button class="sfr-cmt-btn sfr-cmt-primary-btn sfr-cmt-edit-save-btn">${_cmtEsc(_cmtT('save'))}</button>
+                    <button class="sfr-cmt-btn sfr-cmt-edit-cancel-btn">${_cmtEsc(_cmtT('cancel'))}</button>
+                </div>
+            </div>
+            <div class="sfr-cmt-reply-area" style="display:none">
+                <textarea class="sfr-cmt-input" rows="2" placeholder="${_cmtEsc(_cmtT('replyPlaceholder'))}"></textarea>
+                <div class="sfr-cmt-side-btns">
+                    <button class="sfr-cmt-btn sfr-cmt-primary-btn sfr-cmt-reply-post-btn">${_cmtEsc(_cmtT('reply'))}</button>
+                    <button class="sfr-cmt-btn sfr-cmt-reply-cancel-btn">${_cmtEsc(_cmtT('cancel'))}</button>
+                </div>
+            </div>
+            ${repliesHtml}
+        </div>
+    </div>`;
+}
+
+async function _renderCommentComponent(fieldDef, containerEl) {
+    containerEl._cmtFieldDef = fieldDef;
+
+    if (!currentRecordId) {
+        containerEl.innerHTML = '';
+        // Trigger layout to hide the wrap and reflow fields below
+        const layout = _commentLayouts.find(l => l.fieldDef.id === fieldDef.id);
+        if (layout) _applyCommentLayout(layout);
+        return;
+    }
+
+    await _loadComments(fieldDef, containerEl);
+    // Trigger layout after content is loaded so height is correct
+    const layout = _commentLayouts.find(l => l.fieldDef.id === fieldDef.id);
+    if (layout) _applyCommentLayout(layout);
+
+}
+
+async function _loadComments(fieldDef, containerEl) {
+    const rid = currentRecordId;
+    const detailFormPath = fieldDef.commentDetailFormPath || '';
+
+    try {
+        const res = await callPython('comment_list', { record_id: rid, detail_form_path: detailFormPath });
+        const comments = (res && res.success && res.comments) ? res.comments : [];
+        const currentUser = (res && res.current_user) ? res.current_user : '';
+
+        const roots = _cmtBuildTree(comments);
+        const listHtml = roots.length
+            ? roots.map(c => _cmtRenderComment(c, currentUser)).join('')
+            : `<div class="sfr-cmt-empty">${_cmtEsc(_cmtT('noComments'))}</div>`;
+
+        const _perm = _currentBoardPermission;
+        const showNewArea = !_perm || !_perm.comment || _perm.comment.member !== false;
+
+        containerEl.innerHTML = `
+            ${roots.length ? `<div class="sfr-cmt-list">${listHtml}</div>` : ''}
+            ${showNewArea ? `<div class="sfr-cmt-new-area${roots.length ? ' sfr-cmt-new-area--has-list' : ''}">
+                <textarea class="sfr-cmt-input" id="sfr-cmt-new-${fieldDef.id}" rows="2" placeholder="${_cmtEsc(_cmtT('placeholder'))}"></textarea>
+                <button class="sfr-cmt-btn sfr-cmt-primary-btn sfr-cmt-new-post-btn">${_cmtEsc(_cmtT('post'))}</button>
+            </div>` : ''}
+        `;
+
+        _setupCommentListeners(fieldDef, containerEl, rid, currentUser, detailFormPath);
+    } catch(e) {
+        containerEl.innerHTML = '';
+    }
+}
+
+function _setupCommentListeners(fieldDef, containerEl, rid, currentUser, detailFormPath) {
+    const _confirm = (window.parent !== window && window.parent.showConfirmDialog)
+        ? window.parent.showConfirmDialog.bind(window.parent)
+        : (_t, m) => Promise.resolve(true);
+
+    // Auto-resize on all textareas
+    containerEl.querySelectorAll('textarea.sfr-cmt-input').forEach(ta => {
+        ta.addEventListener('input', () => _cmtAutoResize(ta));
+        _cmtAutoResize(ta);
+    });
+
+    // New top-level comment
+    const newPostBtn = containerEl.querySelector('.sfr-cmt-new-post-btn');
+    const newInput = containerEl.querySelector(`#sfr-cmt-new-${fieldDef.id}`);
+    if (newPostBtn && newInput) {
+        const doPost = async () => {
+            const content = newInput.value.trim();
+            if (!content) return;
+            await callPython('comment_add', { record_id: rid, detail_form_path: detailFormPath, content, parent_id: null, permission: _currentBoardPermission || null });
+            await _loadComments(fieldDef, containerEl);
+        };
+        newPostBtn.addEventListener('click', doPost);
+        newInput.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doPost(); }
+        });
+    }
+
+    // Per-comment actions
+    containerEl.querySelectorAll('.sfr-cmt-item').forEach(itemEl => {
+        const cid = itemEl.dataset.cmtId;
+
+        // Reply toggle
+        const replyBtn = itemEl.querySelector(':scope > .sfr-cmt-body > .sfr-cmt-meta .sfr-cmt-reply-btn');
+        const replyArea = itemEl.querySelector(':scope > .sfr-cmt-body > .sfr-cmt-reply-area');
+        if (replyBtn && replyArea) {
+            let _replyOutsideHandler = null;
+            function _closeReplyArea() {
+                replyArea.style.display = 'none';
+                if (_replyOutsideHandler) {
+                    document.removeEventListener('mousedown', _replyOutsideHandler, true);
+                    _replyOutsideHandler = null;
+                }
+            }
+            replyBtn.addEventListener('click', () => {
+                const opening = replyArea.style.display === 'none';
+                replyArea.style.display = opening ? '' : 'none';
+                if (opening) {
+                    const ta = replyArea.querySelector('textarea');
+                    if (ta) { ta.focus(); _cmtAutoResize(ta); }
+                    if (_replyOutsideHandler) document.removeEventListener('mousedown', _replyOutsideHandler, true);
+                    _replyOutsideHandler = function(e) {
+                        if (!replyArea.contains(e.target) && e.target !== replyBtn) {
+                            _closeReplyArea();
+                        }
+                    };
+                    setTimeout(() => document.addEventListener('mousedown', _replyOutsideHandler, true), 0);
+                } else {
+                    if (_replyOutsideHandler) {
+                        document.removeEventListener('mousedown', _replyOutsideHandler, true);
+                        _replyOutsideHandler = null;
+                    }
+                }
+            });
+            const replyPostBtn = replyArea.querySelector('.sfr-cmt-reply-post-btn');
+            const replyInput = replyArea.querySelector('textarea');
+            if (replyPostBtn && replyInput) {
+                const doReply = async () => {
+                    const content = replyInput.value.trim();
+                    if (!content) return;
+                    await callPython('comment_add', { record_id: rid, detail_form_path: detailFormPath, content, parent_id: parseInt(cid), permission: _currentBoardPermission || null });
+                    await _loadComments(fieldDef, containerEl);
+                };
+                replyPostBtn.addEventListener('click', doReply);
+                replyInput.addEventListener('keydown', e => {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doReply(); }
+                });
+            }
+            const replyCancelBtn = replyArea.querySelector('.sfr-cmt-reply-cancel-btn');
+            if (replyCancelBtn) replyCancelBtn.addEventListener('click', () => { _closeReplyArea(); });
+        }
+
+        // Edit toggle
+        const editBtn = itemEl.querySelector(':scope > .sfr-cmt-body > .sfr-cmt-meta .sfr-cmt-edit-btn');
+        const editArea = itemEl.querySelector(':scope > .sfr-cmt-body > .sfr-cmt-edit-area');
+        const contentEl = itemEl.querySelector(':scope > .sfr-cmt-body > .sfr-cmt-content');
+        if (editBtn && editArea && contentEl) {
+            const openEdit = () => {
+                contentEl.style.display = 'none';
+                editArea.style.display = '';
+                const ta = editArea.querySelector('textarea');
+                if (ta) {
+                    ta.value = contentEl.dataset.raw || '';
+                    ta.focus();
+                    _cmtAutoResize(ta);
+                }
+            };
+            const closeEdit = () => {
+                editArea.style.display = 'none';
+                contentEl.style.display = '';
+            };
+            editBtn.addEventListener('click', openEdit);
+            const editSaveBtn = editArea.querySelector('.sfr-cmt-edit-save-btn');
+            const editInput = editArea.querySelector('textarea');
+            if (editSaveBtn && editInput) {
+                const doSave = async () => {
+                    const content = editInput.value.trim();
+                    if (!content) return;
+                    await callPython('comment_update', { comment_id: parseInt(cid), detail_form_path: detailFormPath, content });
+                    await _loadComments(fieldDef, containerEl);
+                };
+                editSaveBtn.addEventListener('click', doSave);
+                editInput.addEventListener('keydown', e => {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doSave(); }
+                });
+            }
+            const editCancelBtn = editArea.querySelector('.sfr-cmt-edit-cancel-btn');
+            if (editCancelBtn) editCancelBtn.addEventListener('click', closeEdit);
+        }
+
+        // Delete
+        const delBtn = itemEl.querySelector(':scope > .sfr-cmt-body > .sfr-cmt-meta .sfr-cmt-del-btn');
+        if (delBtn) {
+            delBtn.addEventListener('click', async () => {
+                const ok = await _confirm('', _cmtT('confirmDelete'), { yesStyle: 'danger' });
+                if (!ok) return;
+                await callPython('comment_delete', { comment_id: parseInt(cid), detail_form_path: detailFormPath });
+                await _loadComments(fieldDef, containerEl);
+            });
+        }
+    });
+}
+
+// Apply dynamic height layout for a comment component.
+// Recomputes every field's top from scratch using each comment's current rendered height.
+// Comment fields grow with content and push all fields on the same row or below downward.
+function _applyCommentLayout(layout) {
+    const { fieldDef: f, wrapEl, gridRowH, formEl, allFieldEls } = layout;
+    const fieldEl = wrapEl.closest('.sfr-field');
+    if (!fieldEl) return;
+
+    const isMdField = f.type === 'textarea' && f.markdown;
+
+    if (isMdField) {
+        // markdown textarea: always visible, height driven by preview content (set by ResizeObserver)
+        fieldEl.style.display = '';
+    } else {
+        const hidden = !currentRecordId;
+        if (hidden) {
+            fieldEl.style.display = 'none';
+        } else {
+            fieldEl.style.display = '';
+            fieldEl.style.height = 'auto';  // shrink-wrap to content; offsetHeight used for push calc
+        }
+    }
+
+    // Read the inter-field gap from CSS (--sfr-dynamic-field-gap on .sfr-form).
+    const fieldGap = parseInt(getComputedStyle(formEl).getPropertyValue('--sfr-dynamic-field-gap'), 10) || 0;
+
+    // Build a map of schema row -> rendered comment height.
+    const commentHeights = {}; // row -> rendered px height
+    _commentLayouts.forEach(cl => {
+        const cEl = cl.wrapEl.closest('.sfr-field');
+        if (!cEl || cEl.style.display === 'none') { commentHeights[cl.fieldDef.row] = 0; return; }
+        // Prefer explicit style.height (set by us); fall back to offsetHeight for auto-height elements.
+        const styleH = parseFloat(cEl.style.height);
+        commentHeights[cl.fieldDef.row] = (!isNaN(styleH) && styleH > 0) ? styleH : (cEl.offsetHeight || 0);
+    });
+
+    // Sort dynamic layout rows ascending so gap counting is deterministic.
+    const dynRows = _commentLayouts
+        .map(cl => cl.fieldDef.row)
+        .filter(r => (commentHeights[r] || 0) > 0)
+        .sort((a, b) => a - b);
+
+    // Reposition every field from its schema row.
+    // Each dynamic field at row C with rendered height rendH and schema height allocH:
+    //   - pushes same-row non-dynamic fields (row == C) down by rendH + gap
+    //   - pushes fields strictly below (row > C) down by (rendH - allocH) + gap
+    //   - dynamic field itself: pushed by sum of (extra + gap) of all dynamic fields above it
+    allFieldEls.forEach(el => {
+        const fieldRow  = parseInt(el.dataset.fieldRow, 10);
+        if (isNaN(fieldRow)) return;
+        const isComment = el.querySelector('.sfr-comment-wrap, .sfr-md-wrap') !== null;
+
+        let push = 0;
+        if (isComment) {
+            // Dynamic fields above this one each contribute (extra + gap).
+            _commentLayouts.forEach(cl => {
+                if (cl.fieldDef.row < fieldRow) {
+                    const rendH  = commentHeights[cl.fieldDef.row] || 0;
+                    const allocH = cl.fieldDef.h * gridRowH;
+                    const extra  = Math.max(0, rendH - allocH);
+                    push += extra + (rendH > 0 ? fieldGap : 0);
+                }
+            });
+        } else {
+            _commentLayouts.forEach(cl => {
+                const rendH  = commentHeights[cl.fieldDef.row] || 0;
+                const allocH = cl.fieldDef.h * gridRowH;
+                if (cl.fieldDef.row === fieldRow) {
+                    push += rendH + (rendH > 0 ? fieldGap : 0);
+                } else if (cl.fieldDef.row < fieldRow) {
+                    const extra = Math.max(0, rendH - allocH);
+                    push += extra + (rendH > 0 ? fieldGap : 0);
+                }
+            });
+        }
+
+        const newTop = fieldRow * gridRowH + 16 + push; // 16 = MARGIN
+        el.style.top = newTop + 'px';
+    });
+
+    // Expand formEl to fit all fields.
+    let newMinH = 0;
+    allFieldEls.forEach(el => {
+        const top = parseFloat(el.style.top) || 0;
+        const h   = el.style.height === 'auto' ? el.offsetHeight : (parseFloat(el.style.height) || 0);
+        newMinH = Math.max(newMinH, top + h);
+    });
+    formEl.style.minHeight = (newMinH + 16) + 'px';
+
+    // Resize the iframe in the parent modal to match expanded content.
+    try {
+        if (window.parent && window.parent !== window && window.parent.desktopModal) {
+            var iframeEl = window.parent.document.querySelector('#desktop-modal-body iframe');
+            if (iframeEl) {
+                iframeEl.style.height = (newMinH + 16) + 'px';
+            }
+        }
+    } catch(e) {}
+
+    // Standalone (run) mode: resize Qt window to fit expanded content.
+    if (_isStandaloneMode) {
+        var _expandedW = parseFloat(formEl.style.minWidth) || 300;
+        _standaloneResizeWindow(Math.max(_expandedW, 300), Math.max(newMinH + 16, 150));
+    }
+}
+
+// Refresh all comment components (called after POST to get currentRecordId)
+function _refreshCommentComponents() {
+    document.querySelectorAll('.sfr-comment-wrap').forEach(el => {
+        const fieldEl = el.closest('.sfr-field');
+        if (fieldEl) fieldEl.style.display = '';  // ensure visible after POST
+        const fd = el._cmtFieldDef;
+        if (fd) _renderCommentComponent(fd, el);
+        // Layout is triggered inside _renderCommentComponent via _applyCommentLayout
+    });
+}
+
+// ================================================================
 // STANDALONE MODE
 // ================================================================
 let _isStandaloneMode = false;
+
+function _standaloneResizeWindow(w, h) {
+    var maxH = Math.floor(screen.availHeight * 0.8);
+    var capped = h > maxH;
+    var finalH = capped ? maxH : h;
+    // When content exceeds max height, enable body scroll so content is reachable.
+    document.body.style.overflowY = capped ? 'auto' : '';
+    var rootEl = document.querySelector('.sfr-root');
+    if (rootEl) rootEl.style.overflowY = capped ? 'auto' : '';
+    callPython('resize_window', { w: w, h: finalH }).catch(function() {});
+}
 
 function initStandaloneMode(state) {
     if (!state || !state.auto_run) return;
@@ -1117,6 +1894,7 @@ async function onViewActivated() {
 function onLanguageChange(lang) {
     _currentLang = lang || 'en';
     _refreshAllBoards();
+    _refreshCommentComponents();
 }
 
 

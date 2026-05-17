@@ -4,10 +4,12 @@ SkillBook Custom Database
 Manages user-specific data in skillbook_custom.db:
 - Favorites (bookmarks) per function name
 - Comments (hierarchical) per function name
+- Hashtags per function name
 
 Schema:
     favorites: id, function_name, created_at
     comments:  id, function_name, parent_id, user_id, content, created_at
+    hashtags:  id, function_name, tag, created_at
 """
 
 import sqlite3
@@ -52,6 +54,20 @@ def init_db(db_path: str):
 
         CREATE INDEX IF NOT EXISTS idx_comments_parent
             ON comments(parent_id);
+
+        CREATE TABLE IF NOT EXISTS hashtags (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            function_name TEXT NOT NULL,
+            tag           TEXT NOT NULL,
+            created_at    TEXT NOT NULL,
+            UNIQUE(function_name, tag)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_hashtags_func
+            ON hashtags(function_name);
+
+        CREATE INDEX IF NOT EXISTS idx_hashtags_tag
+            ON hashtags(tag);
     ''')
     conn.commit()
     conn.close()
@@ -180,3 +196,68 @@ def delete_comment(db_path: str, comment_id: int, user_id: str) -> bool:
     deleted = cur.rowcount > 0
     conn.close()
     return deleted
+
+
+# ── Hashtags ───────────────────────────────────────────────────────────────
+
+def get_hashtags(db_path: str, function_name: str) -> list:
+    """Return list of tags for a function, ordered by created_at."""
+    conn = _connect(db_path)
+    rows = conn.execute(
+        'SELECT tag FROM hashtags WHERE function_name = ? ORDER BY created_at ASC',
+        (function_name,)
+    ).fetchall()
+    conn.close()
+    return [r['tag'] for r in rows]
+
+
+def add_hashtag(db_path: str, function_name: str, tag: str) -> bool:
+    """Add a tag to a function. Returns True if added, False if already exists."""
+    tag = tag.strip()
+    if not tag:
+        return False
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            'INSERT INTO hashtags (function_name, tag, created_at) VALUES (?, ?, ?)',
+            (function_name, tag, datetime.utcnow().isoformat())
+        )
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    finally:
+        conn.close()
+
+
+def remove_hashtag(db_path: str, function_name: str, tag: str) -> bool:
+    """Remove a tag from a function. Returns True if removed."""
+    conn = _connect(db_path)
+    cur = conn.execute(
+        'DELETE FROM hashtags WHERE function_name = ? AND tag = ?',
+        (function_name, tag)
+    )
+    conn.commit()
+    removed = cur.rowcount > 0
+    conn.close()
+    return removed
+
+
+def search_by_hashtag(db_path: str, tag: str) -> list:
+    """Return function names whose tags match all space-separated terms (AND, case-insensitive)."""
+    terms = [t for t in tag.lower().split() if t]
+    if not terms:
+        return []
+    conn = _connect(db_path)
+    # Each term must match at least one tag of the function (AND across terms)
+    query = 'SELECT function_name FROM hashtags WHERE LOWER(tag) LIKE ?'
+    base = f'SELECT function_name FROM hashtags WHERE LOWER(tag) LIKE ?'
+    # Build: function_name IN (term1 matches) AND IN (term2 matches) ...
+    subqueries = ' AND '.join(
+        f'function_name IN (SELECT function_name FROM hashtags WHERE LOWER(tag) LIKE ?)'
+        for _ in terms
+    )
+    sql = f'SELECT DISTINCT function_name FROM hashtags WHERE {subqueries} ORDER BY function_name'
+    rows = conn.execute(sql, tuple(f'%{t}%' for t in terms)).fetchall()
+    conn.close()
+    return [r['function_name'] for r in rows]

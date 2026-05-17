@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none">
+  <!-- Paper with slight fill -->
+  <rect x="2.5" y="1.5" width="11" height="14" rx="1.5"
+        fill="#000" fill-opacity="0.08" stroke="#000" stroke-width="1.3"/>
+  <!-- Ruled lines -->
+  <line x1="5.5" y1="6"   x2="10.5" y2="6"   stroke="#000" stroke-width="1.1" stroke-linecap="round"/>
+  <line x1="5.5" y1="8.5" x2="10.5" y2="8.5" stroke="#000" stroke-width="1.1" stroke-linecap="round"/>
+  <line x1="5.5" y1="11"  x2="8.5"  y2="11"  stroke="#000" stroke-width="1.1" stroke-linecap="round"/>
+  <!-- Pencil shaft — rotated rectangle -->
+  <rect x="11" y="8" width="7.5" height="2.4" rx="0.6"
+        fill="#000" fill-opacity="0.82"
+        transform="rotate(-45 11 8)"/>
+  <!-- Pencil tip (wood) -->
+  <polygon points="9.05,15.95 10.35,14.65 11.65,15.95 10.35,17.25"
+           fill="#000" fill-opacity="0.55"/>
+  <!-- Pencil point -->
+  <polygon points="9.9,17.0 10.8,17.0 10.35,17.9"
+           fill="#000" fill-opacity="0.35"/>
+  <!-- Eraser cap -->
+  <rect x="15.5" y="5.8" width="2.2" height="1.8" rx="0.5"
+        fill="#000" fill-opacity="0.45"
+        transform="rotate(-45 15.5 5.8)"/>
+</svg>

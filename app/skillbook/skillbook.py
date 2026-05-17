@@ -783,6 +783,11 @@ class SkillbookApp(BaseApp):
             'addComment': self._handle_add_comment,
             'editComment': self._handle_edit_comment,
             'deleteComment': self._handle_delete_comment,
+            # Hashtags
+            'getHashtags': self._handle_get_hashtags,
+            'addHashtag': self._handle_add_hashtag,
+            'removeHashtag': self._handle_remove_hashtag,
+            'searchByHashtag': self._handle_search_by_hashtag,
         })
 
         return 0
@@ -1206,6 +1211,70 @@ class SkillbookApp(BaseApp):
                 return {'success': False, 'error': 'Comment not found or not owned by you'}
         except Exception as e:
             print(f"[error][SkillBook] Failed to delete comment: {e}", file=sys.stderr)
+            return {'success': False, 'error': str(e)}
+
+    # ── Hashtag handlers ───────────────────────────────────────────────────
+
+    def _handle_get_hashtags(self, data: dict, language: str) -> dict:
+        """Get all hashtags for a function"""
+        try:
+            name = data.get('name', '').strip()
+            if not name:
+                return {'success': False, 'error': 'No function name provided'}
+            tags = custom_db.get_hashtags(self.custom_db_path, name)
+            return {'success': True, 'tags': tags}
+        except Exception as e:
+            print(f"[error][SkillBook] Failed to get hashtags: {e}", file=sys.stderr)
+            return {'success': False, 'error': str(e)}
+
+    def _handle_add_hashtag(self, data: dict, language: str) -> dict:
+        """Add a hashtag to a function"""
+        try:
+            name = data.get('name', '').strip()
+            tag = data.get('tag', '').strip()
+            if not name:
+                return {'success': False, 'error': 'No function name provided'}
+            if not tag:
+                return {'success': False, 'error': 'Tag is empty'}
+            added = custom_db.add_hashtag(self.custom_db_path, name, tag)
+            tags = custom_db.get_hashtags(self.custom_db_path, name)
+            return {'success': True, 'added': added, 'tags': tags}
+        except Exception as e:
+            print(f"[error][SkillBook] Failed to add hashtag: {e}", file=sys.stderr)
+            return {'success': False, 'error': str(e)}
+
+    def _handle_remove_hashtag(self, data: dict, language: str) -> dict:
+        """Remove a hashtag from a function"""
+        try:
+            name = data.get('name', '').strip()
+            tag = data.get('tag', '').strip()
+            if not name:
+                return {'success': False, 'error': 'No function name provided'}
+            if not tag:
+                return {'success': False, 'error': 'Tag is empty'}
+            custom_db.remove_hashtag(self.custom_db_path, name, tag)
+            tags = custom_db.get_hashtags(self.custom_db_path, name)
+            return {'success': True, 'tags': tags}
+        except Exception as e:
+            print(f"[error][SkillBook] Failed to remove hashtag: {e}", file=sys.stderr)
+            return {'success': False, 'error': str(e)}
+
+    def _handle_search_by_hashtag(self, data: dict, language: str) -> dict:
+        """Search functions by hashtag (contains match, case-insensitive)"""
+        try:
+            tag = data.get('tag', '').strip()
+            if not tag:
+                return {'success': True, 'results': []}
+            function_names = custom_db.search_by_hashtag(self.custom_db_path, tag)
+            results = []
+            for func_name in function_names:
+                if func_name in self.function_names_set:
+                    idx = self.function_names.index(func_name)
+                    tags = custom_db.get_hashtags(self.custom_db_path, func_name)
+                    results.append({'name': func_name, 'index': idx, 'tags': tags})
+            return {'success': True, 'results': results, 'tag': tag}
+        except Exception as e:
+            print(f"[error][SkillBook] Failed to search by hashtag: {e}", file=sys.stderr)
             return {'success': False, 'error': str(e)}
 
 

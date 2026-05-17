@@ -9,7 +9,7 @@
       "cols": 0,
       "rows": 0
     },
-    "theme": "auto",
+    "theme": "invert",
     "formName.ko": "건의함 목록",
     "formId": "b2c3d4e5-f6a7-8901-bcde-f12345678901"
   },
@@ -26,7 +26,7 @@
       "col": 0,
       "row": 0,
       "w": 12,
-      "h": 8,
+      "h": 9,
       "detailFormPath": "desktop/board/suggest/form/detail.json",
       "listColumns": [
         {
@@ -49,7 +49,23 @@
           "id": "title",
           "width": "rest"
         }
-      ]
+      ],
+      "permission": {
+        "groupId": "",
+        "groupName": "FEEDBACK",
+        "read": {
+          "nonMember": true
+        },
+        "write": {
+          "member": true
+        },
+        "comment": {
+          "member": true
+        },
+        "modify": {
+          "admin": true
+        }
+      }
     }
   ]
 }

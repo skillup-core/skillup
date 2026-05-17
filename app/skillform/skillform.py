@@ -28,6 +28,7 @@ from lib.appmgr import AppContext, register_app_class
 from lib.baseapp import BaseApp, BaseAppState
 from lib import board as board_lib
 from desktop import account as account_mod
+from desktop import group as group_mod
 from lib.config import get_desktop_config
 
 if TYPE_CHECKING:
@@ -184,6 +185,7 @@ class SkillFormApp(BaseApp):
             'designer_run': self._handle_designer_run,
             'designer_run_standalone': self._handle_designer_run_standalone,
             'designer_prepare_code': self._handle_designer_prepare_code,
+            'designer_open_editor': self._handle_designer_open_editor,
             'runner_poll': self._handle_runner_poll,
             # Standalone mode
             'standalone_close': self._handle_standalone_close,
@@ -191,7 +193,15 @@ class SkillFormApp(BaseApp):
             'board_list': self._handle_board_list,
             'board_get': self._handle_board_get,
             'board_read_detail_fields': self._handle_board_read_detail_fields,
+            'board_list_permission': self._handle_board_list_permission,
+            'board_list_groups_for_perm': self._handle_board_list_groups_for_perm,
             'get_account_photo': self._handle_get_account_photo,
+            'get_current_user_info': self._handle_get_current_user_info,
+            # Comment handlers
+            'comment_list': self._handle_comment_list,
+            'comment_add': self._handle_comment_add,
+            'comment_update': self._handle_comment_update,
+            'comment_delete': self._handle_comment_delete,
         })
 
         # Connect to caller process if port was provided
@@ -256,10 +266,26 @@ class SkillFormApp(BaseApp):
         values = data.get('values', {})
         board_command = data.get('board_command', '')
         record_id = data.get('record_id', '')
+        permission = data.get('permission')
 
         result = {'success': True}
 
         if board_command in ('POST', 'MODIFY', 'DELETE'):
+            flags = self._resolve_board_permission(permission)
+
+            if board_command == 'POST' and not flags['can_write']:
+                return {'success': False, 'board_ok': False, 'error': 'permission_denied'}
+
+            if board_command in ('MODIFY', 'DELETE'):
+                # Author can always edit/delete their own posts.
+                # Admin can only do so when can_modify is True.
+                db_path_check = self._board_db_path(self.state.get('runner_schema_path') or '')
+                record_check = board_lib.get_record(db_path_check, record_id) if record_id else None
+                is_mine = bool(record_check and self._current_user and
+                               record_check.get('@author_id') == self._current_user)
+                if not is_mine and not flags['can_modify']:
+                    return {'success': False, 'board_ok': False, 'error': 'permission_denied'}
+
             try:
                 current_schema = self.state.get('runner_schema')
                 form_id = ((current_schema or {}).get('docProps') or {}).get('formId', '')
@@ -601,6 +627,26 @@ class SkillFormApp(BaseApp):
             'has_executor': has_executor,
         }
 
+    def _handle_designer_open_editor(self, data: dict, language: str) -> dict:
+        import tempfile
+        import subprocess as _subprocess
+        text = data.get('text', '')
+        tab  = data.get('tab', 'command')
+        suffix = {'python': '.py', 'skill': '.il'}.get(tab, '.txt')
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode='w', suffix=suffix, prefix='skillform_',
+                dir='/tmp', delete=False, encoding='utf-8'
+            ) as f:
+                f.write(text)
+                path = f.name
+            _subprocess.Popen(['gedit', path],
+                              stdout=_subprocess.DEVNULL,
+                              stderr=_subprocess.DEVNULL)
+            return {'success': True, 'path': path}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
     def _handle_get_account_photo(self, data: dict, language: str) -> dict:
         user_id = str(data.get('user_id') or self._current_user or '').strip()
         size = data.get('size', 'small')
@@ -609,6 +655,16 @@ class SkillFormApp(BaseApp):
             b64 = base64.b64encode(photo_bytes).decode('ascii')
             return {'success': True, 'data_uri': f'data:{mime};base64,{b64}'}
         return {'success': True, 'data_uri': None}
+
+    def _handle_get_current_user_info(self, data: dict, language: str) -> dict:
+        user_id = self._current_user or ''
+        info = account_mod.enrich_user_info(self._account_db_path, user_id)
+        result = {'user_id': user_id, 'display_name': info.get('display_name') or user_id}
+        if info.get('avatar_small'):
+            result['data_uri'] = f"data:{info.get('avatar_mime','image/jpeg')};base64,{info['avatar_small']}"
+        else:
+            result['data_uri'] = None
+        return result
 
     # -------------------------------------------------------------------------
     # Board handlers
@@ -633,7 +689,115 @@ class SkillFormApp(BaseApp):
         is_sys = board_lib.is_under_system_dir(resolved) if resolved else False
         return board_lib.get_db_path(board_dir, is_sys)
 
+    def _resolve_board_permission(self, permission: Optional[dict]) -> dict:
+        """Resolve a board field's permission config to role flags for the current user.
+
+        Returns:
+            {
+              'can_read':    bool,
+              'can_write':   bool,
+              'can_comment': bool,
+              'can_modify':  bool,  # admin can modify/delete
+            }
+        All True when permission is absent (no restriction configured).
+        """
+        if not permission:
+            return {'can_read': True, 'can_write': True, 'can_comment': True, 'can_modify': True}
+
+        group_id   = permission.get('groupId') or ''
+        group_name = permission.get('groupName') or ''
+        read_cfg    = permission.get('read',    {}) or {}
+        write_cfg   = permission.get('write',   {}) or {}
+        comment_cfg = permission.get('comment', {}) or {}
+        modify_cfg  = permission.get('modify',  {}) or {}
+
+        # Resolve group membership
+        is_member = False
+        is_admin  = False
+        group_not_found = False
+        if group_id:
+            groups = group_mod.list_groups(self._account_db_path)
+            if any(g.get('id') == group_id for g in groups):
+                is_member = group_mod._is_member(self._account_db_path, group_id, self._current_user)
+                is_admin  = group_mod._is_admin(self._account_db_path, group_id, self._current_user)
+            else:
+                group_not_found = True
+        elif group_name:
+            # group_id unknown (manually typed name): fall back to name lookup
+            groups = group_mod.list_groups(self._account_db_path)
+            matched = next((g for g in groups if g.get('name') == group_name), None)
+            if matched:
+                gid = matched.get('id', '')
+                is_member = group_mod._is_member(self._account_db_path, gid, self._current_user)
+                is_admin  = group_mod._is_admin(self._account_db_path, gid, self._current_user)
+            else:
+                group_not_found = True
+
+        # read: nonMember default True; member always True
+        non_member_read = bool(read_cfg.get('nonMember', True))
+        can_read = is_member or non_member_read
+
+        # write: member default True; admin always True
+        member_write = bool(write_cfg.get('member', True))
+        can_write = is_admin or (is_member and member_write)
+
+        # comment: member default True; admin always True
+        member_comment = bool(comment_cfg.get('member', True))
+        can_comment = is_admin or (is_member and member_comment)
+
+        # modify (admin can modify/delete any post): admin default True
+        admin_modify = bool(modify_cfg.get('admin', True))
+        can_modify = is_admin and admin_modify
+
+        return {
+            'can_read':        can_read,
+            'can_write':       can_write,
+            'can_comment':     can_comment,
+            'can_modify':      can_modify,
+            'group_not_found': group_not_found,
+            'group_id':        group_id,
+            'group_name':      group_name,
+        }
+
+    def _get_list_permission(self, detail_form_path: str) -> Optional[dict]:
+        """Read the permission config from the list form that owns this detail form."""
+        try:
+            runner_schema = self.state.get('runner_schema') or {}
+            for fd in runner_schema.get('fields', []):
+                if fd.get('type') == 'board':
+                    dp = board_lib.resolve_form_path(fd.get('detailFormPath', ''))
+                    if dp and os.path.realpath(dp) == os.path.realpath(
+                            board_lib.resolve_form_path(detail_form_path)):
+                        return fd.get('permission')
+                    # Also match when detail_form_path is already this board (list form)
+                    return fd.get('permission')
+        except Exception:
+            pass
+        return None
+
+    def _handle_board_list_permission(self, data: dict, language: str) -> dict:
+        """Return the resolved permission flags for a board field."""
+        permission = data.get('permission')
+        flags = self._resolve_board_permission(permission)
+        return {'success': True, **flags}
+
+    def _handle_board_list_groups_for_perm(self, data: dict, language: str) -> dict:
+        """Return all groups for the permission dialog group picker."""
+        try:
+            groups = group_mod.list_groups(self._account_db_path)
+            return {'success': True, 'groups': [{'id': g['id'], 'name': g['name']} for g in groups]}
+        except Exception as e:
+            return {'success': False, 'groups': [], 'error': str(e)}
+
     def _handle_board_list(self, data: dict, language: str) -> dict:
+        permission = data.get('permission')
+        flags = self._resolve_board_permission(permission)
+        if flags.get('group_not_found'):
+            return {'records': [], 'total': 0, 'group_not_found': True,
+                    'group_id': flags.get('group_id', ''), 'group_name': flags.get('group_name', '')}
+        if not flags['can_read']:
+            return {'records': [], 'total': 0, 'permission_denied': True}
+
         detail_form_path = board_lib.resolve_form_path(data.get('detail_form_path', ''))
         form_id = board_lib.read_form_id(detail_form_path) if detail_form_path else None
         if not form_id:
@@ -649,7 +813,11 @@ class SkillFormApp(BaseApp):
             total   = board_lib.count_records(db_path, form_id)
             records = board_lib.list_records(db_path, form_id, offset=offset, limit=limit)
             self._enrich_records_author(records)
-            return {'records': records, 'total': total}
+            rids = [r['@record_id'] for r in records if r.get('@record_id')]
+            cmt_counts = board_lib.count_comments_bulk(db_path, rids)
+            for r in records:
+                r['@comment_count'] = cmt_counts.get(r.get('@record_id', ''), 0)
+            return {'records': records, 'total': total, 'flags': flags}
         except Exception as e:
             print(f'[error] board_list: {e}', file=sys.stderr)
             return {'records': [], 'total': 0, 'error': str(e)}
@@ -682,7 +850,7 @@ class SkillFormApp(BaseApp):
             fields = [
                 _field_entry(fd)
                 for fd in schema.get('fields', [])
-                if fd.get('type') not in ('button', 'separator', 'board') and fd.get('id')
+                if fd.get('type') not in ('button', 'separator', 'board', 'comment') and fd.get('id')
             ]
             return {'fields': fields, 'system_fields': SYSTEM_FIELDS}
         except Exception as e:
@@ -691,18 +859,103 @@ class SkillFormApp(BaseApp):
     def _handle_board_get(self, data: dict, language: str) -> dict:
         record_id = data.get('record_id', '')
         detail_form_path = board_lib.resolve_form_path(data.get('detail_form_path', ''))
+        permission = data.get('permission')
+        flags = self._resolve_board_permission(permission)
+        if flags.get('group_not_found'):
+            return {'record': None, 'group_not_found': True,
+                    'group_id': flags.get('group_id', ''), 'group_name': flags.get('group_name', '')}
+        if not flags['can_read']:
+            return {'record': None, 'permission_denied': True}
         if not record_id:
-            return {'record': None}
+            return {'record': None, 'flags': flags}
         try:
             db_path = self._board_db_path(detail_form_path)
             record = board_lib.get_record(db_path, record_id)
             if record:
                 self._enrich_records_author([record])
             is_mine = bool(record and self._current_user and record.get('@author_id') == self._current_user)
-            return {'record': record, 'is_mine': is_mine}
+            return {'record': record, 'is_mine': is_mine, 'flags': flags}
         except Exception as e:
             print(f'[error] board_get: {e}', file=sys.stderr)
             return {'record': None, 'error': str(e)}
+
+    # -------------------------------------------------------------------------
+    # Comment handlers
+    # -------------------------------------------------------------------------
+
+    def _handle_comment_list(self, data: dict, language: str) -> dict:
+        record_id = data.get('record_id', '')
+        detail_form_path = data.get('detail_form_path', '') or (self.state.get('runner_schema_path') or '')
+        if not record_id:
+            return {'success': False, 'comments': []}
+        try:
+            db_path = self._board_db_path(detail_form_path)
+            comments = board_lib.list_comments(db_path, record_id)
+            # Enrich with display names and avatars
+            uid_cache: Dict[str, dict] = {}
+            for c in comments:
+                uid = c['user_id']
+                if uid not in uid_cache:
+                    uid_cache[uid] = account_mod.enrich_user_info(self._account_db_path, uid)
+                info = uid_cache[uid]
+                c['display_name'] = info.get('display_name') or uid
+                c['avatar_small'] = info.get('avatar_small') or ''
+                c['avatar_mime'] = info.get('avatar_mime') or 'image/jpeg'
+            return {'success': True, 'comments': comments, 'current_user': self._current_user}
+        except Exception as e:
+            print(f'[error] comment_list: {e}', file=sys.stderr)
+            return {'success': False, 'comments': [], 'error': str(e)}
+
+    def _handle_comment_add(self, data: dict, language: str) -> dict:
+        record_id = data.get('record_id', '')
+        detail_form_path = data.get('detail_form_path', '') or (self.state.get('runner_schema_path') or '')
+        content = (data.get('content') or '').strip()
+        parent_id = data.get('parent_id')
+        permission = data.get('permission')
+        flags = self._resolve_board_permission(permission)
+        if not flags['can_comment']:
+            return {'success': False, 'error': 'permission_denied'}
+        if not record_id or not content:
+            return {'success': False}
+        try:
+            db_path = self._board_db_path(detail_form_path)
+            comment = board_lib.add_comment(db_path, record_id, self._current_user, content,
+                                            parent_id=int(parent_id) if parent_id else None)
+            info = account_mod.enrich_user_info(self._account_db_path, self._current_user)
+            comment['display_name'] = info.get('display_name') or self._current_user
+            comment['avatar_small'] = info.get('avatar_small') or ''
+            comment['avatar_mime'] = info.get('avatar_mime') or 'image/jpeg'
+            return {'success': True, 'comment': comment}
+        except Exception as e:
+            print(f'[error] comment_add: {e}', file=sys.stderr)
+            return {'success': False, 'error': str(e)}
+
+    def _handle_comment_update(self, data: dict, language: str) -> dict:
+        comment_id = data.get('comment_id')
+        detail_form_path = data.get('detail_form_path', '') or (self.state.get('runner_schema_path') or '')
+        content = (data.get('content') or '').strip()
+        if not comment_id or not content:
+            return {'success': False}
+        try:
+            db_path = self._board_db_path(detail_form_path)
+            updated = board_lib.update_comment(db_path, int(comment_id), self._current_user, content)
+            return {'success': updated}
+        except Exception as e:
+            print(f'[error] comment_update: {e}', file=sys.stderr)
+            return {'success': False, 'error': str(e)}
+
+    def _handle_comment_delete(self, data: dict, language: str) -> dict:
+        comment_id = data.get('comment_id')
+        detail_form_path = data.get('detail_form_path', '') or (self.state.get('runner_schema_path') or '')
+        if not comment_id:
+            return {'success': False}
+        try:
+            db_path = self._board_db_path(detail_form_path)
+            deleted = board_lib.delete_comment(db_path, int(comment_id), self._current_user)
+            return {'success': deleted}
+        except Exception as e:
+            print(f'[error] comment_delete: {e}', file=sys.stderr)
+            return {'success': False, 'error': str(e)}
 
     def _handle_standalone_close(self, data: dict, language: str) -> dict:
         """Close the standalone window by terminating the subprocess"""

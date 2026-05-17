@@ -35,6 +35,10 @@ async function init() {
         var versionEl = document.getElementById('app-version');
         if (versionEl) versionEl.textContent = config.version;
     }
+    if (config && config.build_date) {
+        var buildDateEl = document.getElementById('app-build-date');
+        if (buildDateEl) buildDateEl.textContent = config.build_date;
+    }
 
     await loadApps();
     updateClock();

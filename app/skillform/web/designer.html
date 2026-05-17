@@ -95,6 +95,7 @@ const COMPONENT_TYPES = [
     { type:'separator', label:'Separator',  icon:'—',  defaultW:12,defaultH:1 },
     { type:'button',    label:'Button',     icon:'▶',  defaultW:3, defaultH:1 },
     { type:'board',     label:'List',       icon:'☰',  defaultW:12,defaultH:6 },
+    { type:'comment',   label:'Comment',    icon:'≡',  defaultW:12,defaultH:1 },
     { type:'info',      label:'Info',        icon:'ℹ',  defaultW:6, defaultH:1 },
 ];
 
@@ -115,7 +116,7 @@ const COMPONENT_GROUPS = [
         key: 'board',
         labelKey: 'palette.group_board',
         expanded: false,
-        types: ['board','info']
+        types: ['board','comment','info']
     }
 ];
 
@@ -221,8 +222,11 @@ function renderCanvas(pushToRunner = true) {
     if (_dropPlaceholder && !inner.contains(_dropPlaceholder)) _dropPlaceholder = null;
 
     // Render fields into inner
-    // Render separators first so they appear below other components
-    const sorted = [...fields].sort((a, b) => (a.type === 'separator' ? -1 : 0) - (b.type === 'separator' ? -1 : 0));
+    // Render separators first, then normal fields, then comments on top
+    const sorted = [...fields].sort((a, b) => {
+        const rank = t => t === 'separator' ? 0 : t === 'comment' ? 2 : 1;
+        return rank(a.type) - rank(b.type);
+    });
     sorted.forEach(f => {
         const el = createFieldEl(f);
         inner.appendChild(el);
@@ -271,12 +275,21 @@ function createFieldEl(f) {
     }
 
     const el = document.createElement('div');
-    el.className = 'sfd-field' + (f.id === selectedId ? ' sfd-field-selected' : '');
+    const isComment = f.type === 'comment';
+    el.className = 'sfd-field' + (isComment ? ' sfd-field-comment' : '') + (f.id === selectedId ? ' sfd-field-selected' : '');
     el.dataset.id = f.id;
-    el.style.left   = x + 'px';
-    el.style.top    = y + 'px';
-    el.style.width  = w + 'px';
-    el.style.height = h + 'px';
+    // Comment: full-width, visually thin line — hit area is only the visible strip
+    if (isComment) {
+        el.style.left   = '0px';
+        el.style.top    = (f.row * rh) + 'px';
+        el.style.width  = '100%';
+        el.style.height = '12px';
+    } else {
+        el.style.left   = x + 'px';
+        el.style.top    = y + 'px';
+        el.style.width  = w + 'px';
+        el.style.height = h + 'px';
+    }
 
     const meta = COMPONENT_TYPES.find(c => c.type === f.type) || { icon: '?', label: f.type };
 
@@ -310,6 +323,13 @@ function createFieldEl(f) {
                 <button class="sfd-field-del" data-id="${f.id}">✕</button>
             `;
         }
+    } else if (f.type === 'comment') {
+        el.innerHTML = `
+            <div class="sfd-comment-line"></div>
+            <span class="sfd-comment-label">${meta.icon} ${meta.label}</span>
+            <div class="sfd-comment-line"></div>
+            <button class="sfd-field-del" data-id="${f.id}">✕</button>
+        `;
     } else {
         el.innerHTML = `
             <div class="sfd-field-icon">${meta.icon}</div>
@@ -366,12 +386,20 @@ function createFieldEl(f) {
 // ================================================================
 function addField(type, col, row) {
     const meta = COMPONENT_TYPES.find(c => c.type === type);
-    const w = meta.defaultW;
-    const h = meta.defaultH;
+    let w = meta.defaultW;
+    let h = meta.defaultH;
+    // Comment is always full-width, 1-row tall
+    if (type === 'comment') {
+        col = 0;
+        let maxCol = 0;
+        fields.forEach(f => { maxCol = Math.max(maxCol, f.col + f.w); });
+        w = maxCol || meta.defaultW;
+        h = 1;
+    }
     const f = {
         id:    newId(),
         type:  type,
-        label: (type === 'info') ? undefined : meta.label,
+        label: (type === 'info' || type === 'comment') ? undefined : meta.label,
         col:   col,
         row:   row,
         w:     w,
@@ -388,7 +416,9 @@ function addField(type, col, row) {
         boardCommand:(type === 'button') ? 'NONE' : undefined,
         detailFormPath: (type === 'board') ? '' : undefined,
         listColumns: (type === 'board') ? [] : undefined,
+        permission: (type === 'board') ? { groupId: '', groupName: '', read: { nonMember: true }, write: { member: true }, comment: { member: true }, modify: { admin: true } } : undefined,
         infoField: (type === 'info') ? '@author' : undefined,
+        commentDetailFormPath: (type === 'comment') ? '' : undefined,
         dirOnly:     (type === 'file') ? false : undefined,
         filter:      (type === 'file') ? '' : undefined,
         min:         (type === 'number' || type === 'slider') ? '' : undefined,
@@ -570,18 +600,27 @@ function positionGhost(el, cx, cy) {
 
 let _dropPlaceholder = null;
 
-function updateDropPlaceholder(col, row, w, h) {
+function updateDropPlaceholder(col, row, w, h, isComment) {
     const inner = getInner();
-    if (!_dropPlaceholder) {
+    const targetClass = isComment ? 'sfd-drop-placeholder-comment' : 'sfd-drop-placeholder';
+    if (!_dropPlaceholder || _dropPlaceholder.className !== targetClass) {
+        if (_dropPlaceholder) _dropPlaceholder.remove();
         _dropPlaceholder = document.createElement('div');
-        _dropPlaceholder.className = 'sfd-drop-placeholder';
+        _dropPlaceholder.className = targetClass;
         inner.appendChild(_dropPlaceholder);
     }
     const { cw, rh } = cellSize();
-    _dropPlaceholder.style.left   = (col * cw) + 'px';
-    _dropPlaceholder.style.top    = (row * rh) + 'px';
-    _dropPlaceholder.style.width  = (w   * cw) + 'px';
-    _dropPlaceholder.style.height = (h   * rh) + 'px';
+    if (isComment) {
+        _dropPlaceholder.style.left   = '0px';
+        _dropPlaceholder.style.top    = (row * rh) + 'px';
+        _dropPlaceholder.style.width  = '100%';
+        _dropPlaceholder.style.height = '0px';
+    } else {
+        _dropPlaceholder.style.left   = (col * cw) + 'px';
+        _dropPlaceholder.style.top    = (row * rh) + 'px';
+        _dropPlaceholder.style.width  = (w   * cw) + 'px';
+        _dropPlaceholder.style.height = (h   * rh) + 'px';
+    }
 }
 
 function removeDropPlaceholder() {
@@ -623,11 +662,13 @@ function onDragMove(e) {
         const col = Math.floor(px / cw - drag.offsetCol);
         const row = Math.floor(py / rh - drag.offsetRow);
         const f = fields.find(f => f.id === drag.fieldId);
-        if (f) updateDropPlaceholder(
-            Math.max(0, col),
-            Math.max(0, row),
-            f.w, f.h
-        );
+        if (f) {
+            if (f.type === 'comment') {
+                updateDropPlaceholder(0, Math.max(0, row), 0, 1, true);
+            } else {
+                updateDropPlaceholder(Math.max(0, col), Math.max(0, row), f.w, f.h, false);
+            }
+        }
     }
 
     if (drag.mode === 'palette') {
@@ -638,11 +679,13 @@ function onDragMove(e) {
             const { px, py } = canvasRelPos(e.clientX, e.clientY);
             const { col, row } = pxToCell(px, py);
             const meta = COMPONENT_TYPES.find(c => c.type === drag.type);
-            if (meta) updateDropPlaceholder(
-                Math.max(0, col),
-                Math.max(0, row),
-                meta.defaultW, meta.defaultH
-            );
+            if (meta) {
+                if (drag.type === 'comment') {
+                    updateDropPlaceholder(0, Math.max(0, row), 0, 1, true);
+                } else {
+                    updateDropPlaceholder(Math.max(0, col), Math.max(0, row), meta.defaultW, meta.defaultH, false);
+                }
+            }
         } else {
             removeDropPlaceholder();
         }
@@ -654,8 +697,8 @@ function onDragMove(e) {
         const { cw, rh } = cellSize();
         const dw = Math.round((e.clientX - drag.startX) / cw);
         const dh = Math.round((e.clientY - drag.startY) / rh);
-        f.w = Math.max(1, drag.originW + dw);
-        f.h = Math.max(1, drag.originH + dh);
+        if (f.type !== 'comment') f.w = Math.max(1, drag.originW + dw);
+        if (f.type !== 'comment') f.h = Math.max(1, drag.originH + dh);
         // Update only the resizing element's size without rebuilding the whole DOM
         const el = getInner().querySelector('.sfd-field[data-id="' + f.id + '"]');
         if (el) {
@@ -701,7 +744,7 @@ function onDragEnd(e) {
     } else if (endDrag.mode === 'move' && endDrag.dragging) {
         const f = fields.find(f => f.id === endDrag.fieldId);
         if (f) {
-            f.col = Math.max(0, Math.floor(px / cw - endDrag.offsetCol));
+            f.col = f.type === 'comment' ? 0 : Math.max(0, Math.floor(px / cw - endDrag.offsetCol));
             f.row = Math.max(0, Math.floor(py / rh - endDrag.offsetRow));
             renderCanvas();
         }
@@ -738,9 +781,10 @@ function renderDocProps() {
         <div class="sfd-prop-row">
             <label>${t('props.theme')}</label>
             <select onchange="docProps.theme=this.value">
-                <option value="light" ${(docProps.theme||'light')==='light' ? 'selected' : ''}>${t('props.theme.light')}</option>
-                <option value="dark"  ${(docProps.theme||'light')==='dark'  ? 'selected' : ''}>${t('props.theme.dark')}</option>
-                <option value="auto"  ${(docProps.theme||'light')==='auto'  ? 'selected' : ''}>${t('props.theme.auto')}</option>
+                <option value="light"  ${(docProps.theme||'light')==='light'  ? 'selected' : ''}>${t('props.theme.light')}</option>
+                <option value="dark"   ${(docProps.theme||'light')==='dark'   ? 'selected' : ''}>${t('props.theme.dark')}</option>
+                <option value="auto"   ${(docProps.theme||'light')==='auto'   ? 'selected' : ''}>${t('props.theme.auto')}</option>
+                <option value="invert" ${(docProps.theme||'light')==='invert' ? 'selected' : ''}>${t('props.theme.invert')}</option>
             </select>
         </div>
         <div class="sfd-prop-section">${t('props.section.formsize')}</div>
@@ -822,11 +866,13 @@ function renderProps() {
         const infoLabel = t(_INFO_FIELD_LABEL_KEYS[f.infoField]) || f.infoField || '';
         html += '<div class="sfd-prop-row"><label>' + t('props.label') + '</label>' +
             '<span style="padding:2px 4px;color:var(--text-secondary,#6c757d)">' + escHtml(infoLabel) + '</span></div>';
+    } else if (f.type === 'comment') {
+        // no label field for comment
     } else {
         html += propText('label', t('props.label'), f.label || '');
     }
     html += propText('id', t('props.field_id'), f.id);
-    if (f.type !== 'separator' && f.type !== 'button') {
+    if (f.type !== 'separator' && f.type !== 'button' && f.type !== 'comment') {
         html += `<div class="sfd-prop-row"><label>${t('props.font')}</label>
             <select onchange="updateField('${f.id}','font',this.value)">
                 <option value="mono" ${(f.font||'mono')==='mono'?'selected':''}>Mono</option>
@@ -850,14 +896,18 @@ function renderProps() {
                 <option value="LIST"   ${f.boardCommand==='LIST'?'selected':''}>LIST</option>
             </select></div>`;
     }
-    if (f.type !== 'label' && f.type !== 'separator' && f.type !== 'button') {
+    if (f.type === 'comment') {
+        html += `<div class="sfd-prop-section">${t('props.section.comment')}</div>`;
+        html += propText('commentDetailFormPath', t('props.comment_detail_form'), f.commentDetailFormPath || '');
+    }
+    if (f.type !== 'label' && f.type !== 'separator' && f.type !== 'button' && f.type !== 'comment') {
         html += propCheck('required', t('props.required'), f.required);
         html += propCheck('readonly', t('props.readonly'), f.readonly);
     }
     if (f.type === 'text' || f.type === 'textarea' || f.type === 'file') {
         html += propText('placeholder', t('props.placeholder'), f.placeholder || '');
     }
-    if (f.type !== 'label' && f.type !== 'separator' && f.type !== 'button') {
+    if (f.type !== 'label' && f.type !== 'separator' && f.type !== 'button' && f.type !== 'comment') {
         html += propText('default', t('props.default'), f.default !== undefined ? String(f.default) : '');
     }
 
@@ -921,6 +971,18 @@ function renderProps() {
             <label>${t('props.board_list_columns')}</label>
             <button class="sfd-col-edit-btn" id="btn-list-columns-edit">${escHtml(colSummary) || t('props.board_columns_edit')}</button>
         </div>`;
+        // Permission
+        html += `<div class="sfd-prop-section">${t('props.section.board_perm')}</div>`;
+        const perm = f.permission || {};
+        const permGroupDisplay = perm.groupName || perm.groupId || '';
+        html += `<div class="sfd-prop-row">
+            <label>${t('props.board_perm_group')}</label>
+            <div style="display:flex;width:100%">
+                <input type="text" id="inp-perm-group" value="${escHtml(permGroupDisplay)}"
+                       style="flex:1;min-width:0" readonly/>
+                <button id="btn-perm-edit" class="sfd-browse-btn">...</button>
+            </div>
+        </div>`;
     }
 
     if (f.type === 'info') {
@@ -956,6 +1018,8 @@ function renderProps() {
         if (editBtn) editBtn.addEventListener('click', function() { openListColumnsDialog(f.id); });
         const browseBtn = body.querySelector('#btn-detail-form-browse');
         if (browseBtn) browseBtn.addEventListener('click', function() { browseDetailFormPath(f.id); });
+        const permBtn = body.querySelector('#btn-perm-edit');
+        if (permBtn) permBtn.addEventListener('click', function() { openPermissionDialog(f.id); });
     }
 }
 
@@ -1019,6 +1083,356 @@ function _listColumnsSummary(raw) {
         const n = parseFloat(c.width);
         return isNaN(n) ? c.id : `${c.id}(${n}%)`;
     }).join(', ');
+}
+
+// ================================================================
+// PERMISSION DIALOG
+// ================================================================
+async function openPermissionDialog(fieldId) {
+    const field = fields.find(f => f.id === fieldId);
+    if (!field) return;
+
+    const perm = Object.assign(
+        { groupId: '', groupName: '', read: { nonMember: true }, write: { member: true }, comment: { member: true }, modify: { admin: true } },
+        field.permission || {}
+    );
+    perm.read    = Object.assign({ nonMember: true }, perm.read);
+    perm.write   = Object.assign({ member: true },    perm.write);
+    perm.comment = Object.assign({ member: true },    perm.comment);
+    perm.modify  = Object.assign({ admin: true },     perm.modify);
+
+    const _ref = document.getElementById('sfd-root-el') || document.body;
+    const _cs  = window.getComputedStyle(_ref);
+    const _bg       = _cs.getPropertyValue('--bg-secondary').trim()  || '#20242b';
+    const _fg       = _cs.getPropertyValue('--text-primary').trim()  || '#e4e6eb';
+    const _border   = _cs.getPropertyValue('--border-color').trim()  || '#373c47';
+    const _inputBg  = _cs.getPropertyValue('--bg-primary').trim()    || '#1a1d23';
+    const _btnPrim  = _cs.getPropertyValue('--accent-primary').trim()|| '#3b82f6';
+    const _secondary= _cs.getPropertyValue('--text-secondary').trim()|| '#b0b3b8';
+    const _bgHover  = _cs.getPropertyValue('--bg-hover').trim()      || '#2a2d35';
+
+    // State object mutated by toggles
+    const state = {
+        nonMember: perm.read.nonMember,
+        writeMember: perm.write.member,
+        commentMember: perm.comment.member,
+        modifyAdmin: perm.modify.admin,
+    };
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:9000;';
+
+    const panel = document.createElement('div');
+    panel.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:${_bg};color:${_fg};border:1px solid ${_border};border-radius:6px;padding:18px;width:380px;max-height:85vh;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,0.4);z-index:9001;`;
+
+    // ── Toggle switch HTML helper ──────────────────────────────────
+    function toggleSwitch(id, checked, disabled, itemLabel) {
+        const op = disabled ? 'opacity:0.45;' : '';
+        const cur = disabled ? 'default' : 'pointer';
+        return `<label style="${op}cursor:${cur};display:inline-flex;align-items:center">
+            <input type="checkbox" id="${id}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}
+                   style="display:none">
+            <span class="perm-toggle" data-id="${id}" data-label="${escHtml(itemLabel)}"
+                  style="display:inline-block;width:36px;height:20px;border-radius:10px;position:relative;
+                         background:${checked ? _btnPrim : _border};transition:background .15s;outline:none">
+                <span style="position:absolute;top:3px;left:${checked ? '19px' : '3px'};width:14px;height:14px;
+                             border-radius:50%;background:#fff;transition:left .15s"></span>
+            </span>
+        </label>`;
+    }
+
+    // ── Dropdown row HTML helper ───────────────────────────────────
+    // items: [{label, id, checked, disabled, note}]
+    // Menu is rendered into document.body as position:fixed to escape panel overflow clipping.
+    function dropdownRow(labelKey, items) {
+        const summaryParts = items.filter(it => it.checked).map(it => it.label);
+        const summary = summaryParts.length ? summaryParts.join(', ') : '-';
+        return `<div class="perm-dd-row" style="margin-bottom:8px">
+            <button class="perm-dd-trigger" data-key="${labelKey}" tabindex="-1"
+                    style="width:100%;display:flex;align-items:center;justify-content:space-between;
+                           padding:6px 10px;background:${_inputBg};border:1px solid ${_border};border-radius:4px;
+                           cursor:pointer;color:${_fg};font-size:13px;outline:none">
+                <span style="color:${_secondary};font-size:12px;margin-right:8px;white-space:nowrap">${t(labelKey)}</span>
+                <span style="display:flex;align-items:center;min-width:0">
+                    <span class="perm-dd-summary" style="font-size:12px;color:${_fg};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:4px">${escHtml(summary)}</span>
+                    <span class="perm-dd-arrow" style="font-size:10px;color:${_secondary};flex-shrink:0">&#9660;</span>
+                </span>
+            </button>
+        </div>`;
+    }
+
+    // Build floating menus as body-level fixed elements (keyed by labelKey)
+    const _floatMenus = {};
+    ['perm.read','perm.write','perm.comment','perm.modify'].forEach(key => {
+        const el = document.createElement('div');
+        el.className = 'perm-dd-menu';
+        el.dataset.key = key;
+        el.style.cssText = `display:none;position:fixed;width:344px;
+            background:${_bg};border:1px solid ${_border};border-radius:4px;
+            box-shadow:0 4px 12px rgba(0,0,0,0.35);z-index:9200;padding:4px 0`;
+        document.body.appendChild(el);
+        _floatMenus[key] = el;
+    });
+    function _populateFloatMenu(key, items) {
+        const el = _floatMenus[key];
+        el.innerHTML = items.map(it => `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px">
+                <div style="display:flex;align-items:center">
+                    <span style="font-size:13px">${escHtml(it.label)}</span>
+                    ${it.note ? `<span style="font-size:11px;color:${_secondary};margin-left:6px">${escHtml(it.note)}</span>` : ''}
+                </div>
+                ${toggleSwitch(it.id, it.checked, it.disabled, it.label)}
+            </div>`).join('');
+    }
+
+    panel.innerHTML = `
+        <div style="font-weight:600;margin-bottom:14px;font-size:14px">${t('perm.dlg_title')}</div>
+
+        <div style="margin-bottom:14px">
+            <div style="font-size:12px;color:${_secondary};margin-bottom:4px">${t('perm.group')}</div>
+            <div style="display:flex;align-items:center">
+                <input type="text" id="perm-group-name" value="${escHtml(perm.groupName || perm.groupId || '')}"
+                       placeholder="${escHtml(t('perm.group_placeholder'))}"
+                       style="flex:1;padding:5px 8px;font-size:13px;border:1px solid ${_border};border-radius:4px;background:${_inputBg};color:${_fg};outline:none">
+                <button id="perm-group-find" tabindex="-1" style="margin-left:6px;padding:5px 10px;font-size:13px;cursor:pointer;background:none;border:1px solid ${_border};border-radius:4px;color:${_fg};outline:none" aria-label="${escHtml(t('perm.group_find'))}">&#128269;</button>
+            </div>
+        </div>
+
+        <div style="margin-bottom:4px">
+            ${dropdownRow('perm.read', [
+                { id: 'perm-read-admin',     label: t('perm.role_admin'),      checked: true,               disabled: true,  note: t('perm.always_on') },
+                { id: 'perm-read-nonmember', label: t('perm.role_non_member'), checked: state.nonMember,    disabled: false },
+            ])}
+            ${dropdownRow('perm.write', [
+                { id: 'perm-write-admin',  label: t('perm.role_admin'),  checked: true,              disabled: true,  note: t('perm.always_on') },
+                { id: 'perm-write-member', label: t('perm.role_member'), checked: state.writeMember, disabled: false },
+            ])}
+            ${dropdownRow('perm.comment', [
+                { id: 'perm-comment-admin',  label: t('perm.role_admin'),  checked: true,                disabled: true,  note: t('perm.always_on') },
+                { id: 'perm-comment-member', label: t('perm.role_member'), checked: state.commentMember, disabled: false },
+            ])}
+            ${dropdownRow('perm.modify', [
+                { id: 'perm-modify-author', label: t('perm.role_author'), checked: true,             disabled: true,  note: t('perm.always_on') },
+                { id: 'perm-modify-admin',  label: t('perm.role_admin'),  checked: state.modifyAdmin, disabled: false },
+            ])}
+        </div>
+
+        <div style="display:flex;justify-content:flex-end">
+            <button id="perm-cancel" tabindex="-1" style="padding:5px 14px;font-size:13px;cursor:pointer;background:none;border:1px solid ${_border};border-radius:4px;color:${_fg};outline:none">${t('dlg.cancel')}</button>
+            <button id="perm-ok" tabindex="-1" style="margin-left:8px;padding:5px 14px;font-size:13px;cursor:pointer;background:${_btnPrim};color:#fff;border:none;border-radius:4px;outline:none">${t('dlg.ok')}</button>
+        </div>
+    `;
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    // Populate floating menus now that toggleSwitch helpers are defined
+    _populateFloatMenu('perm.read', [
+        { id: 'perm-read-admin',     label: t('perm.role_admin'),      checked: true,                disabled: true,  note: t('perm.always_on') },
+        { id: 'perm-read-nonmember', label: t('perm.role_non_member'), checked: state.nonMember,     disabled: false },
+    ]);
+    _populateFloatMenu('perm.write', [
+        { id: 'perm-write-admin',  label: t('perm.role_admin'),  checked: true,               disabled: true,  note: t('perm.always_on') },
+        { id: 'perm-write-member', label: t('perm.role_member'), checked: state.writeMember,  disabled: false },
+    ]);
+    _populateFloatMenu('perm.comment', [
+        { id: 'perm-comment-admin',  label: t('perm.role_admin'),  checked: true,                 disabled: true,  note: t('perm.always_on') },
+        { id: 'perm-comment-member', label: t('perm.role_member'), checked: state.commentMember,  disabled: false },
+    ]);
+    _populateFloatMenu('perm.modify', [
+        { id: 'perm-modify-author', label: t('perm.role_author'), checked: true,              disabled: true,  note: t('perm.always_on') },
+        { id: 'perm-modify-admin',  label: t('perm.role_admin'),  checked: state.modifyAdmin,  disabled: false },
+    ]);
+
+    // ── Dropdown open/close (fixed-position, body-level menus) ────
+    let _openMenuKey = null;
+    function closeAllMenus() {
+        Object.values(_floatMenus).forEach(m => { m.style.display = 'none'; });
+        panel.querySelectorAll('.perm-dd-arrow').forEach(a => { a.innerHTML = '&#9660;'; });
+        _openMenuKey = null;
+    }
+    panel.querySelectorAll('.perm-dd-trigger').forEach(trigger => {
+        trigger.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const key   = trigger.dataset.key;
+            const menu  = _floatMenus[key];
+            const arrow = trigger.querySelector('.perm-dd-arrow');
+            const isOpen = _openMenuKey === key;
+            closeAllMenus();
+            if (!isOpen) {
+                // Measure trigger position, then decide above/below
+                menu.style.display = '';
+                const tr = trigger.getBoundingClientRect();
+                const menuH = menu.offsetHeight;
+                const spaceBelow = window.innerHeight - tr.bottom;
+                if (spaceBelow < menuH + 4) {
+                    menu.style.top    = (tr.top - menuH - 2) + 'px';
+                } else {
+                    menu.style.top    = (tr.bottom + 2) + 'px';
+                }
+                menu.style.left  = tr.left + 'px';
+                menu.style.width = tr.width + 'px';
+                arrow.innerHTML = '&#9650;';
+                _openMenuKey = key;
+            }
+        });
+    });
+    // Close menus on outside click
+    function _permOutsideClick(e) {
+        if (!e.target.closest('.perm-dd-trigger') && !e.target.closest('.perm-dd-menu')) {
+            closeAllMenus();
+        }
+    }
+    document.addEventListener('click', _permOutsideClick);
+    // Clean up floating menus and listener when dialog closes
+    function _cleanupFloatMenus() {
+        Object.values(_floatMenus).forEach(m => m.remove());
+        document.removeEventListener('click', _permOutsideClick);
+    }
+
+    // ── Toggle interaction ─────────────────────────────────────────
+    function bindToggle(id, onChange) {
+        // Toggles live inside floating body-level menus
+        let label = null, chk = null;
+        for (const m of Object.values(_floatMenus)) {
+            label = m.querySelector(`.perm-toggle[data-id="${id}"]`);
+            chk   = m.querySelector(`#${id}`);
+            if (label) break;
+        }
+        if (!label || !chk || chk.disabled) return;
+        label.style.cursor = 'pointer';
+        label.addEventListener('click', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            chk.checked = !chk.checked;
+            const on = chk.checked;
+            label.style.background = on ? _btnPrim : _border;
+            label.querySelector('span').style.left = on ? '19px' : '3px';
+            // Update summary in the trigger button inside the panel
+            const menu = label.closest('.perm-dd-menu');
+            if (menu) {
+                const key = menu.dataset.key;
+                const trigger = panel.querySelector(`.perm-dd-trigger[data-key="${key}"]`);
+                if (trigger) _updateDropdownSummary(trigger, menu);
+            }
+            if (onChange) onChange(on);
+        });
+    }
+
+    function _updateDropdownSummary(trigger, menu) {
+        const on = Array.from(menu.querySelectorAll('.perm-toggle'))
+            .filter(span => {
+                const chk = menu.querySelector(`#${span.dataset.id}`);
+                return chk && chk.checked;
+            })
+            .map(span => span.dataset.label || '');
+        const sumEl = trigger.querySelector('.perm-dd-summary');
+        if (sumEl) sumEl.textContent = on.filter(Boolean).join(', ') || '-';
+    }
+
+    bindToggle('perm-read-nonmember',  v => { state.nonMember    = v; });
+    bindToggle('perm-write-member',    v => { state.writeMember   = v; });
+    bindToggle('perm-comment-member',  v => { state.commentMember = v; });
+    bindToggle('perm-modify-admin',    v => { state.modifyAdmin   = v; });
+
+    // ── Group picker ───────────────────────────────────────────────
+    let _pickedGroupId   = perm.groupId   || '';
+    let _pickedGroupName = perm.groupName || '';
+    const groupNameEl = panel.querySelector('#perm-group-name');
+    groupNameEl.addEventListener('input', function() {
+        _pickedGroupId = '';
+        _pickedGroupName = '';
+    });
+    panel.querySelector('#perm-group-find').addEventListener('click', async function() {
+        let groups = [];
+        try {
+            const res = await callPython('board_list_groups_for_perm', {});
+            groups = (res && res.groups) ? res.groups : [];
+        } catch (e) { groups = []; }
+        _showGroupPickerDialog(groups, function(g) {
+            _pickedGroupId   = g.id;
+            _pickedGroupName = g.name;
+            groupNameEl.value = g.name;
+        });
+    });
+
+    // ── OK / Cancel ────────────────────────────────────────────────
+    function doClose() { closeAllMenus(); _cleanupFloatMenus(); overlay.remove(); }
+    panel.querySelector('#perm-cancel').addEventListener('click', doClose);
+    overlay.addEventListener('click', e => { if (e.target === overlay) doClose(); });
+
+    panel.querySelector('#perm-ok').addEventListener('click', function() {
+        const typedName = groupNameEl.value.trim();
+        const newPerm = {
+            groupId:   _pickedGroupId || '',
+            groupName: _pickedGroupId ? (_pickedGroupName || typedName) : typedName,
+            read:    { nonMember: state.nonMember    },
+            write:   { member:    state.writeMember  },
+            comment: { member:    state.commentMember },
+            modify:  { admin:     state.modifyAdmin  },
+        };
+        updateField(fieldId, 'permission', newPerm);
+        renderProps();
+        doClose();
+    });
+}
+
+function _showGroupPickerDialog(groups, onPick) {
+    const _ref = document.getElementById('sfd-root-el') || document.body;
+    const _cs  = window.getComputedStyle(_ref);
+    const _bg     = _cs.getPropertyValue('--bg-secondary').trim()  || '#20242b';
+    const _fg     = _cs.getPropertyValue('--text-primary').trim()  || '#e4e6eb';
+    const _border = _cs.getPropertyValue('--border-color').trim()  || '#373c47';
+    const _inputBg= _cs.getPropertyValue('--bg-primary').trim()    || '#1a1d23';
+    const _hover  = _cs.getPropertyValue('--bg-hover').trim()      || '#2a2d35';
+    const _secondary= _cs.getPropertyValue('--text-secondary').trim()|| '#b0b3b8';
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);z-index:9100;';
+
+    const panel = document.createElement('div');
+    panel.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:${_bg};color:${_fg};border:1px solid ${_border};border-radius:6px;padding:16px;width:340px;max-height:70vh;display:flex;flex-direction:column;box-shadow:0 4px 20px rgba(0,0,0,0.5);z-index:9101;`;
+
+    panel.innerHTML = `
+        <div style="font-weight:600;margin-bottom:10px;font-size:14px">${t('perm.group_picker_title')}</div>
+        <input type="text" id="gpick-search" placeholder="${escHtml(t('perm.group_search'))}"
+               style="padding:5px 8px;font-size:13px;border:1px solid ${_border};border-radius:4px;background:${_inputBg};color:${_fg};margin-bottom:8px;outline:none">
+        <div id="gpick-list" style="flex:1;overflow-y:auto;border:1px solid ${_border};border-radius:4px;max-height:280px"></div>
+        <div style="display:flex;justify-content:flex-end;margin-top:10px">
+            <button id="gpick-cancel" style="padding:4px 12px;font-size:13px;cursor:pointer;background:none;border:1px solid ${_border};border-radius:4px;color:${_fg}">${t('dlg.cancel')}</button>
+        </div>
+    `;
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    const listEl   = panel.querySelector('#gpick-list');
+    const searchEl = panel.querySelector('#gpick-search');
+
+    function renderGroups(filter) {
+        const f = (filter || '').toLowerCase();
+        const filtered = f ? groups.filter(g => g.name.toLowerCase().includes(f)) : groups;
+        if (!filtered.length) {
+            listEl.innerHTML = `<div style="padding:10px;color:${_secondary};font-size:13px;text-align:center">${t('perm.group_none')}</div>`;
+            return;
+        }
+        listEl.innerHTML = filtered.map(g =>
+            `<div data-gid="${escHtml(g.id)}" data-gname="${escHtml(g.name)}"
+                  style="padding:8px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid ${_border}"
+                  onmouseover="this.style.background='${_hover}'" onmouseout="this.style.background=''"
+                 >${escHtml(g.name)}</div>`
+        ).join('');
+        listEl.querySelectorAll('[data-gid]').forEach(el => {
+            el.addEventListener('click', function() {
+                onPick({ id: el.dataset.gid, name: el.dataset.gname });
+                overlay.remove();
+            });
+        });
+    }
+
+    renderGroups('');
+    searchEl.addEventListener('input', () => renderGroups(searchEl.value));
+
+    panel.querySelector('#gpick-cancel').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
 
 // ================================================================
@@ -1940,6 +2354,10 @@ async function doShowCode() {
     // footer
     const footer = document.createElement('div');
     footer.style.cssText = 'display:flex;justify-content:flex-end;padding:10px 16px;border-top:1px solid var(--border-color,#373c47);flex-shrink:0';
+    const editBtn = document.createElement('button');
+    editBtn.textContent = t('code.editor');
+    editBtn.className = 'sfd-code-btn';
+    editBtn.style.cssText = 'padding:5px 14px;border-radius:4px;border:1px solid var(--border-color,#555);background:transparent;color:var(--text-primary,#e4e6eb);cursor:pointer;font-size:0.83rem;font-family:inherit;margin-left:8px';
     const copyBtn = document.createElement('button');
     copyBtn.textContent = t('code.copy');
     copyBtn.className = 'sfd-code-btn';
@@ -1948,6 +2366,7 @@ async function doShowCode() {
     closeBtn.textContent = t('code.close');
     closeBtn.className = 'sfd-code-btn';
     closeBtn.style.cssText = 'padding:5px 14px;border-radius:4px;border:none;background:var(--color-primary,#0d6efd);color:#fff;cursor:pointer;font-size:0.83rem;font-family:inherit;margin-left:8px';
+    footer.appendChild(editBtn);
     footer.appendChild(copyBtn);
     footer.appendChild(closeBtn);
 
@@ -2007,6 +2426,12 @@ async function doShowCode() {
     tabCmd.addEventListener('click', () => selectTab('command'));
     tabPy.addEventListener('click', () => selectTab('python'));
     tabSk.addEventListener('click', () => selectTab('skill'));
+
+    editBtn.addEventListener('click', () => {
+        const fallbackMap = { command: cmdCode, python: pyCode, skill: skCode };
+        const text = cm ? cm.getValue() : (fallbackMap[currentTab] || '');
+        callPython('designer_open_editor', { text: text, tab: currentTab });
+    });
 
     copyBtn.addEventListener('click', () => {
         const fallbackMap = { command: cmdCode, python: pyCode, skill: skCode };
@@ -2128,7 +2553,7 @@ const I18N = {
         'New': 'New', 'Open': 'Open', 'Save': 'Save', 'Run': 'Run', 'Code': 'Code',
         // code dialog
         'code.title': 'Code Sample', 'code.tab.command': 'Command', 'code.tab.python': 'Python', 'code.tab.skill': 'Skill',
-        'code.close': 'Close', 'code.copy': 'Copy', 'code.copied': 'Copied!',
+        'code.editor': 'Editor', 'code.close': 'Close', 'code.copy': 'Copy', 'code.copied': 'Copied!',
         'code.no_form': 'No components to generate code for',
         // status messages
         'status.saved': 'Saved', 'status.save_failed': 'Save failed',
@@ -2145,7 +2570,7 @@ const I18N = {
         'props.title_name': 'Title Name',
         'props.font_size': 'Font Size (px)',
         'props.theme': 'Theme',
-        'props.theme.light': 'Light', 'props.theme.dark': 'Dark', 'props.theme.auto': 'Auto',
+        'props.theme.light': 'Light', 'props.theme.dark': 'Dark', 'props.theme.auto': 'Auto', 'props.theme.invert': 'Invert',
         'props.size_mode': 'Mode',
         'props.size_mode.auto': 'Auto Fit', 'props.size_mode.set': 'Set',
         'props.cols': 'Cols', 'props.rows': 'Rows',
@@ -2169,9 +2594,27 @@ const I18N = {
         'props.grid_col': 'Col', 'props.grid_row': 'Row',
         'props.grid_w': 'W (cols)', 'props.grid_h': 'H (rows)',
         'props.section.board': 'Board',
+        'props.section.board_perm': 'Permissions',
+        'props.board_perm_group': 'Group',
         'props.board_command': 'Board Command',
         'props.board_detail_form': 'Detail Form Path',
         'props.board_list_columns': 'List Columns',
+        'perm.dlg_title': 'Board Permissions',
+        'perm.group': 'Group',
+        'perm.group_placeholder': 'Enter group name or pick...',
+        'perm.group_find': 'Find group',
+        'perm.read': 'Read',
+        'perm.write': 'Write',
+        'perm.comment': 'Comment',
+        'perm.modify': 'Edit / Delete',
+        'perm.role_admin': 'Admin',
+        'perm.role_member': 'Member',
+        'perm.role_author': 'Author',
+        'perm.role_non_member': 'Non-member',
+        'perm.always_on': 'Always ON',
+        'perm.group_picker_title': 'Select Group',
+        'perm.group_search': 'Search...',
+        'perm.group_none': 'No groups found',
         'props.board_columns_edit': 'Edit columns...',
         'props.board_list_columns_dlg': 'List Columns',
         'props.board_col_field': 'Field',
@@ -2188,6 +2631,8 @@ const I18N = {
         'props.board_sys_author': 'Author',
         'props.section.info': 'Info Fields',
         'props.info_field': 'Field',
+        'props.section.comment': 'Comment',
+        'props.comment_detail_form': 'Detail Form Path',
         'palette.group_basic': 'Basic',
         'palette.group_advanced': 'Advanced',
         'palette.group_board': 'Board',
@@ -2201,7 +2646,7 @@ const I18N = {
         'New': '새 폼', 'Open': '열기', 'Save': '저장', 'Run': '실행', 'Code': '코드',
         // code dialog
         'code.title': '코드 샘플', 'code.tab.command': 'Command', 'code.tab.python': 'Python', 'code.tab.skill': 'Skill',
-        'code.close': '닫기', 'code.copy': '복사', 'code.copied': '복사됨!',
+        'code.editor': '편집기', 'code.close': '닫기', 'code.copy': '복사', 'code.copied': '복사됨!',
         'code.no_form': '코드를 생성할 컴포넌트가 없습니다',
         // properties panel
         'props.title': '속성',
@@ -2212,7 +2657,7 @@ const I18N = {
         'props.title_name': '제목',
         'props.font_size': '글자 크기 (px)',
         'props.theme': '테마',
-        'props.theme.light': '라이트', 'props.theme.dark': '다크', 'props.theme.auto': '자동',
+        'props.theme.light': '라이트', 'props.theme.dark': '다크', 'props.theme.auto': '자동', 'props.theme.invert': '반전',
         'props.size_mode': '모드',
         'props.size_mode.auto': '자동 맞춤', 'props.size_mode.set': '직접 설정',
         'props.cols': '열', 'props.rows': '행',
@@ -2236,9 +2681,27 @@ const I18N = {
         'props.grid_col': '열', 'props.grid_row': '행',
         'props.grid_w': '너비 (열)', 'props.grid_h': '높이 (행)',
         'props.section.board': '게시판',
+        'props.section.board_perm': '권한 설정',
+        'props.board_perm_group': '그룹',
         'props.board_command': '게시판 명령',
         'props.board_detail_form': '상세 폼 경로',
         'props.board_list_columns': '목록 열',
+        'perm.dlg_title': '게시판 권한 설정',
+        'perm.group': '그룹',
+        'perm.group_placeholder': '그룹명을 입력하거나 검색...',
+        'perm.group_find': '그룹 검색',
+        'perm.read': '읽기',
+        'perm.write': '글쓰기',
+        'perm.comment': '댓글',
+        'perm.modify': '글수정 / 삭제',
+        'perm.role_admin': '관리자',
+        'perm.role_member': '멤버',
+        'perm.role_author': '작성자',
+        'perm.role_non_member': '비멤버',
+        'perm.always_on': '항상 ON',
+        'perm.group_picker_title': '그룹 선택',
+        'perm.group_search': '검색...',
+        'perm.group_none': '그룹이 없습니다',
         'props.board_columns_edit': '열 편집...',
         'props.board_list_columns_dlg': '목록 열 설정',
         'props.board_col_field': '필드',
@@ -2255,6 +2718,8 @@ const I18N = {
         'props.board_sys_author': '작성자',
         'props.section.info': '정보 필드',
         'props.info_field': '필드',
+        'props.section.comment': '댓글',
+        'props.comment_detail_form': '상세 폼 경로',
         'palette.group_basic': '기본',
         'palette.group_advanced': '확장',
         'palette.group_board': '게시판',
