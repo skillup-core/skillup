@@ -94,6 +94,8 @@
          * @param {string} theme - Theme name (e.g., 'default', 'white')
          */
         setTheme(theme) {
+            if (theme === this.current && this.themeLink) return;
+
             // Remove existing theme CSS
             if (this.themeLink) {
                 this.themeLink.remove();

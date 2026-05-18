@@ -566,15 +566,18 @@
             const lang = data.language || 'en';
             const isKo = lang !== 'en';
             const isDir = mode === 'directory';
+            const isSave = mode === 'save';
 
             // Text labels
             const txt = {
                 title: isDir
                     ? (isKo ? '디렉토리 선택' : 'Select Directory')
-                    : (isKo ? '파일 선택' : 'Select File'),
-                select: isKo ? '선택' : 'Select',
+                    : isSave
+                        ? (isKo ? '다른 이름으로 저장' : 'Save As')
+                        : (isKo ? '파일 선택' : 'Select File'),
+                select: isSave ? (isKo ? '저장' : 'Save') : (isKo ? '선택' : 'Select'),
                 cancel: isKo ? '취소' : 'Cancel',
-                name: isKo ? '이름' : 'Name',
+                name: isKo ? '파일 이름' : 'File name',
                 up: isKo ? '상위' : 'Up',
                 home: isKo ? '홈' : 'Home',
                 empty: isKo ? '(비어 있음)' : '(empty)',
@@ -618,20 +621,35 @@
             const listContainer = doc.createElement('div');
             listContainer.style.cssText = 'flex:1;overflow-y:auto;min-height:0;padding:4px 0';
 
-            // Selected file display (file mode only)
+            // Selected file display (file mode) or filename input (save mode)
             let selectedFileBar = null;
             let selectedFileName = '';
+            let saveNameInput = null;
             if (!isDir) {
                 selectedFileBar = doc.createElement('div');
                 selectedFileBar.style.cssText = 'padding:6px 16px;border-top:1px solid var(--border-color, #373c47);display:flex;align-items:center;flex-shrink:0;font-size:12px';
                 const fileLabel = doc.createElement('span');
                 fileLabel.style.cssText = 'color:var(--text-secondary, #b0b3b8);margin-right:8px;white-space:nowrap';
                 fileLabel.textContent = txt.name + ':';
-                const fileNameSpan = doc.createElement('span');
-                fileNameSpan.style.cssText = 'color:var(--text-primary, #e4e6eb);font-family:var(--font-mono, monospace)';
-                fileNameSpan.id = '_wfd_selected_file';
                 selectedFileBar.appendChild(fileLabel);
-                selectedFileBar.appendChild(fileNameSpan);
+                if (isSave) {
+                    saveNameInput = doc.createElement('input');
+                    saveNameInput.type = 'text';
+                    saveNameInput.style.cssText = 'flex:1;background:var(--bg-primary, #1a1d23);color:var(--text-primary, #e4e6eb);border:1px solid var(--border-color, #373c47);border-radius:4px;padding:3px 8px;font-size:12px;font-family:var(--font-mono, monospace);outline:none';
+                    saveNameInput.value = data.initialName || '';
+                    selectedFileName = saveNameInput.value;
+                    saveNameInput.oninput = () => { selectedFileName = saveNameInput.value.trim(); };
+                    saveNameInput.onkeydown = (e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); selectBtn.click(); }
+                        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); }
+                    };
+                    selectedFileBar.appendChild(saveNameInput);
+                } else {
+                    const fileNameSpan = doc.createElement('span');
+                    fileNameSpan.style.cssText = 'color:var(--text-primary, #e4e6eb);font-family:var(--font-mono, monospace)';
+                    fileNameSpan.id = '_wfd_selected_file';
+                    selectedFileBar.appendChild(fileNameSpan);
+                }
             }
 
             // Footer
@@ -686,6 +704,22 @@
             selectBtn.onclick = () => {
                 if (isDir) {
                     finish(currentPath);
+                } else if (isSave) {
+                    const fname = (saveNameInput ? saveNameInput.value.trim() : selectedFileName);
+                    if (!fname) return;
+                    const fullPath = joinPath(currentPath, fname);
+                    // Check overwrite via browsePath
+                    _browsePath({ path: currentPath }).then(res => {
+                        const exists = res && res.entries && res.entries.some(e => !e.is_dir && e.name === fname);
+                        if (exists) {
+                            const msg = isKo
+                                ? fname + ' 이(가) 이미 존재합니다. 덮어쓰시겠습니까?'
+                                : fname + ' already exists. Overwrite?';
+                            parent.showConfirmDialog(msg).then(ok => { if (ok) finish(fullPath); });
+                        } else {
+                            finish(fullPath);
+                        }
+                    }).catch(() => finish(fullPath));
                 } else {
                     if (selectedFileName) {
                         finish(joinPath(currentPath, selectedFileName));
@@ -730,9 +764,11 @@
                     }
                     currentPath = res.path;
                     pathInput.value = currentPath;
-                    selectedFileName = '';
-                    if (!isDir && doc.getElementById('_wfd_selected_file')) {
-                        doc.getElementById('_wfd_selected_file').textContent = '';
+                    if (!isSave) {
+                        selectedFileName = '';
+                        if (!isDir && doc.getElementById('_wfd_selected_file')) {
+                            doc.getElementById('_wfd_selected_file').textContent = '';
+                        }
                     }
 
                     const entries = res.entries || [];
@@ -827,16 +863,23 @@
                         item.el.onclick = () => {
                             overlay.focus();
                             if (item.is_dir) {
-                                item.action();
+                                setCursor(idx);
                             } else {
                                 // File: select
                                 setCursor(idx);
                                 selectedFileName = item.name;
-                                if (doc.getElementById('_wfd_selected_file')) {
+                                if (saveNameInput) {
+                                    saveNameInput.value = item.name;
+                                } else if (doc.getElementById('_wfd_selected_file')) {
                                     doc.getElementById('_wfd_selected_file').textContent = item.name;
                                 }
                             }
                         };
+                        if (item.is_dir) {
+                            item.el.ondblclick = () => {
+                                item.action();
+                            };
+                        }
                     });
 
                 } catch (err) {
@@ -900,16 +943,18 @@
                     else if (e.key === 'Home')      next = 0;
                     else                            next = rows.length - 1;
                     setCursor(next);
-                    // Update file selection for file mode
+                    // Update file selection for file/save mode
                     if (!isDir && rows[cursorIdx]) {
                         if (!rows[cursorIdx].is_dir) {
                             selectedFileName = rows[cursorIdx].name;
-                            if (doc.getElementById('_wfd_selected_file')) {
+                            if (saveNameInput) {
+                                saveNameInput.value = rows[cursorIdx].name;
+                            } else if (doc.getElementById('_wfd_selected_file')) {
                                 doc.getElementById('_wfd_selected_file').textContent = rows[cursorIdx].name;
                             }
                         } else {
                             selectedFileName = '';
-                            if (doc.getElementById('_wfd_selected_file')) {
+                            if (!saveNameInput && doc.getElementById('_wfd_selected_file')) {
                                 doc.getElementById('_wfd_selected_file').textContent = '';
                             }
                         }
@@ -921,6 +966,9 @@
                         const item = rows[cursorIdx];
                         if (item.is_dir) {
                             item.action();
+                        } else if (isSave) {
+                            if (saveNameInput) saveNameInput.value = item.name;
+                            selectedFileName = item.name;
                         } else {
                             finish(joinPath(currentPath, item.name));
                         }

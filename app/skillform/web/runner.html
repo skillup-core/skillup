@@ -135,7 +135,8 @@ function renderForm(schema) {
         if (formSize.rows > 0) maxRow = formSize.rows;
     }
 
-    // Clear previous form content
+    // Clear previous form content; hide during rebuild to avoid empty-frame flash.
+    formEl.style.visibility = 'hidden';
     formEl.innerHTML = '';
     formEl.style.position = 'relative';
     const contentH = maxRow * gridRowH + MARGIN * 2;
@@ -145,11 +146,15 @@ function renderForm(schema) {
     formEl.style.minHeight = contentH + 'px';
     formEl.style.minWidth  = contentW + 'px';
 
-    // Reset iframe height to schema-computed size (detail form may have expanded it).
+    // Sync iframe height: grow freely, but never shrink below the list-view height.
     try {
         if (window.parent && window.parent !== window && window.parent.desktopModal) {
             var _iframeEl = window.parent.document.querySelector('#desktop-modal-body iframe');
-            if (_iframeEl) _iframeEl.style.height = (contentH) + 'px';
+            if (_iframeEl) {
+                // List view (no _listSchema) sets the floor; detail view may only grow.
+                if (!_listSchema) _iframeHeightFloor = contentH;
+                _iframeEl.style.height = Math.max(_iframeHeightFloor, contentH) + 'px';
+            }
         }
     } catch(e) {}
 
@@ -212,7 +217,7 @@ function renderForm(schema) {
     });
 
     // Initialize markdown textarea layout (content-driven height like comment)
-    fields.filter(f => f.type === 'textarea' && f.markdown && !f.readonly).forEach(f => {
+    fields.filter(f => f.type === 'textarea' && f.markdown).forEach(f => {
         const wrapEl = formEl.querySelector('#sfr-' + f.id);
         if (!wrapEl) return;
         const fieldEl = wrapEl.closest('.sfr-field');
@@ -247,6 +252,9 @@ function renderForm(schema) {
 
     document.getElementById('sfr-result').style.display = 'none';
     _applyInfoRecord(null);
+
+    // Reveal after two animation frames so layout is complete before showing.
+    requestAnimationFrame(() => requestAnimationFrame(() => { formEl.style.visibility = ''; }));
 
     // Standalone mode: resize Qt window to fit form content
     if (_isStandaloneMode) {
@@ -387,6 +395,35 @@ function buildFieldWidget(f, rowH) {
         }
 
         case 'textarea':
+            if (f.markdown && f.readonly) {
+                // Readonly markdown: render as preview-only div, no edit controls.
+                const roMdWrap = document.createElement('div');
+                roMdWrap.className = 'sfr-md-wrap';
+                const roMdPreview = document.createElement('div');
+                roMdPreview.className = 'sfr-md-preview';
+                roMdPreview.id = 'sfr-' + f.id;
+                roMdPreview.style.minHeight = (rowH * (f.h || 1)) + 'px';
+                const initVal = f.default || '';
+                if (initVal.trim()) {
+                    roMdPreview.innerHTML = _cmtRenderMd(initVal);
+                    roMdPreview.style.display = '';
+                } else {
+                    roMdPreview.style.display = 'none';
+                }
+                roMdPreview._refreshMdPreview = function() {
+                    const val = formValues[f.id] || '';
+                    if (val.trim()) {
+                        roMdPreview.innerHTML = _cmtRenderMd(val);
+                        roMdPreview.style.display = '';
+                    } else {
+                        roMdPreview.style.display = 'none';
+                    }
+                };
+                formValues[f.id] = initVal;
+                roMdWrap.appendChild(roMdPreview);
+                wrap.appendChild(roMdWrap);
+                return wrap;
+            }
             if (f.markdown && !f.readonly) {
                 const mdWrap = document.createElement('div');
                 mdWrap.className = 'sfr-md-wrap';
@@ -769,6 +806,7 @@ function _cmtRenderMd(text) {
 }
 let _listSchema = null;
 let _savedBoardPages = {};  // fieldDef.id → page number saved before nav to detail
+let _iframeHeightFloor = 0;  // min iframe height set from list view; prevents shrink on detail nav
 let _detailInitialValues = null;  // snapshot of formValues on detail entry, for dirty check
 
 function _loadAvatar(uid, imgEl) {
@@ -850,13 +888,25 @@ async function _measureRowHeight(containerEl, cols, fieldLabels) {
         return `<th${w ? ` style="width:${w}"` : ''}>${_colLabel(c.id, fieldLabels)}</th>`;
     }).join('');
     // Use mixed Latin+Hangul content to get the tallest possible glyph height.
-    const cellContent = 'Mg가';
+    // For @author columns, include the avatar markup too. Otherwise small font
+    // sizes underestimate the real row height because actual rows always have
+    // an 18px avatar there.
+    const cellHtml = cols.map(c => {
+        if (c.id === '@author') {
+            return '<td><span class="sfr-author-cell">'
+                + '<span class="sfr-author-avatar-wrap">'
+                + '<img class="sfr-author-avatar" alt="" aria-hidden="true" '
+                + 'src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">'
+                + '</span>Mg가</span></td>';
+        }
+        return '<td>Mg가</td>';
+    }).join('');
     const probe = document.createElement('div');
     probe.style.cssText = 'visibility:hidden;position:absolute;left:-9999px;top:0;'
         + 'width:' + containerEl.clientWidth + 'px;pointer-events:none;';
     probe.innerHTML = '<table class="sfr-board-table" style="table-layout:fixed;width:100%">'
         + '<thead><tr>' + colHtml + '</tr></thead>'
-        + '<tbody><tr>' + cols.map(() => `<td>${cellContent}</td>`).join('') + '</tr></tbody>'
+        + '<tbody><tr>' + cellHtml + '</tr></tbody>'
         + '</table>';
     containerEl.appendChild(probe);
     const headerH = probe.querySelector('thead').getBoundingClientRect().height;
@@ -879,11 +929,11 @@ function _measureChromeHeight(containerEl) {
 }
 
 // Compute how many data rows fit in containerEl given measured dimensions.
-// Always keep one row of slack so the bottom chrome never gets clipped when
-// the first page is completely full.
+// Keep a small pixel slack for sub-pixel rounding, but do not always drop a
+// whole row. Row height measurement already includes the author avatar now.
 function _computePageSize(containerH, headerH, rowH, chromeH) {
-    const avail = containerH - headerH - chromeH - 1;
-    return Math.max(1, Math.floor(avail / rowH) - 1);
+    const avail = containerH - headerH - chromeH - 2;
+    return Math.max(1, Math.floor(avail / rowH));
 }
 
 // ---- load + render ----
@@ -1295,16 +1345,24 @@ async function _boardNavToDetail(rid, fieldDef) {
     _savedBoardPages = {};
     _boardFields.forEach(b => { _savedBoardPages[b.id] = b.currentPage; });
 
+    // Determine edit permission before rendering so fields can be forced readonly.
+    const _flags  = (recordRes && recordRes.flags) || null;
+    const _isMine = rid ? !!(recordRes && recordRes.is_mine) : null;
+    const _canWrite  = !_flags || _flags.can_write;
+    const _canModify = !_flags || _flags.can_modify;
+    const _canEdit   = _isMine === null ? _canWrite : (_isMine || _canModify);
+    if (!_canEdit) {
+        (schemaRes.schema.fields || []).forEach(f => { f.readonly = true; });
+    }
+
     renderForm(schemaRes.schema);
     if (rid) {
         const record = recordRes && recordRes.record;
-        const isMine = !!(recordRes && recordRes.is_mine);
-        const flags  = (recordRes && recordRes.flags) || null;
         if (record) {
             applySetValues(record);
             _applyInfoRecord(record);
         }
-        _applyDetailButtonState(isMine, flags);
+        _applyDetailButtonState(_isMine, _flags);
     } else {
         _applyDetailButtonState(null, null);
         callPython('get_current_user_info', {}).then(info => {

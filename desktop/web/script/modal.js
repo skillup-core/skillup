@@ -138,9 +138,9 @@ window.desktopModal = (function() {
             boxEl.style.borderColor   = '#373c47';
             titleEl.style.color       = '#eceef2';
         } else {
-            boxEl.style.background    = '';
-            boxEl.style.borderColor   = '';
-            titleEl.style.color       = '';
+            boxEl.style.background    = 'var(--bg-secondary,#20242b)';
+            boxEl.style.borderColor   = 'var(--border-color,#373c47)';
+            titleEl.style.color       = 'var(--text-primary,#eceef2)';
         }
     }
 

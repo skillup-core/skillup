@@ -1444,3 +1444,62 @@ procedure(testProc()
         when(member(6 __sbk_bp_0) _sbDbgBreak(6 0))
         data = 1)
 )
+
+
+[testcase46] if with then keyword and multiple bare assignments in body
+; if(cond then stmt1 stmt2) - multiple bare statements after 'then' keyword must
+; all get breakpoints, not just the first one.
+INPUT:
+procedure(test()
+    a = 0
+    if(a == 0 then
+        c = 1
+        c = 2
+    )
+)
+OUTPUT:
+procedure(test()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    a = 0
+    when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+    if(a == 0 then
+        when(member(4 __sbk_bp_0) _sbDbgBreak(4 0))
+        c = 1
+        when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+        c = 2
+    )
+)
+
+
+[testcase47] if with then/else keywords and multiple bare assignments in each branch
+; Multiple bare statements in both then and else branches.
+INPUT:
+procedure(test()
+    a = 0
+    if(a == 0
+        then
+        x = 1
+        y = 2
+        else
+        x = 3
+        y = 4
+    )
+)
+OUTPUT:
+procedure(test()
+    when(member(2 __sbk_bp_0) _sbDbgBreak(2 0))
+    a = 0
+    when(member(3 __sbk_bp_0) _sbDbgBreak(3 0))
+    if(a == 0
+        then
+        when(member(5 __sbk_bp_0) _sbDbgBreak(5 0))
+        x = 1
+        when(member(6 __sbk_bp_0) _sbDbgBreak(6 0))
+        y = 2
+        else
+        when(member(8 __sbk_bp_0) _sbDbgBreak(8 0))
+        x = 3
+        when(member(9 __sbk_bp_0) _sbDbgBreak(9 0))
+        y = 4
+    )
+)

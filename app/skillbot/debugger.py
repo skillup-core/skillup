@@ -693,33 +693,36 @@ class _ScanCtx:
 
     # ------------------------------------------------------------------
     # Scan inside an if() form.  Positioned just after the opening '('.
-    # Structure: if(cond [then] then-expr [else] else-expr)
-    # 'then' and 'else' are optional keywords that MUST NOT have a
-    # breakpoint inserted before them.  Breakpoints go before the
-    # then-expr and else-expr only when they are on their own line.
+    # Structure: if(cond [then] stmt... [else] stmt...)
+    # 'then' and 'else' are optional keywords.
+    # When 'then' keyword is present, ALL statements until 'else'/')' get
+    # breakpoints.  When 'else' keyword is present, ALL statements until
+    # ')' get breakpoints.  Without keywords, no breakpoints inside.
     # Returns (li, ci, in_string) just AFTER the closing ')'.
     # ------------------------------------------------------------------
     def _scan_if(self, start_li, start_ci, form_depth, insertable):
         """Scan inside an if() form, positioned just after the opening '('.
 
         Rules:
-        - 'then' keyword seen  → then-expr gets a breakpoint
-        - 'else' keyword seen  → else-expr gets a breakpoint
-        - No keyword (bare expr) → NO breakpoint (e.g. if(cond expr) or
-          if(cond then-expr else-expr) without keywords)
+        - 'then' keyword seen  → all then-branch stmts get breakpoints
+        - 'else' keyword seen  → all else-branch stmts get breakpoints
+        - No keyword (bare expr) → NO breakpoint inside
         Returns (li, ci, in_string) just after the closing ')'.
         """
         li, ci = start_li, start_ci
         in_string = False
         cond_li = li  # line where cond expression ends (to detect same-line exprs)
 
-        # States: 'cond' -> 'then_expr' -> 'else_expr'
+        # States: 'cond' -> 'then_body' -> 'else_body'
         state = 'cond'
         then_keyword_seen = False  # 'then' keyword was explicitly present
         else_keyword_seen = False  # 'else' keyword was explicitly present
         then_keyword_li = -1       # line index where 'then' keyword appeared
         else_keyword_li = -1       # line index where 'else' keyword appeared
         last_ident = None
+        # Track whether we're at the start of a new statement in then/else body
+        stmt_started = False
+        after_assign = False
 
         while li < self.hard_end:
             line = self.lines[li]
@@ -747,7 +750,9 @@ class _ScanCtx:
                     if ch == '(':
                         li, ci, in_string = self._skip_paren(li, ci + 1, in_string)
                         cond_li = li
-                        state = 'then_expr'
+                        state = 'then_body'
+                        stmt_started = False
+                        after_assign = False
                         last_ident = None
                         line = self.lines[li] if li < self.hard_end else ''
                         continue
@@ -788,122 +793,177 @@ class _ScanCtx:
                                 continue
                             break
                         cond_li = li
-                        state = 'then_expr'
+                        state = 'then_body'
+                        stmt_started = False
+                        after_assign = False
                         last_ident = None
                         continue
 
-                elif state == 'then_expr':
+                elif state == 'then_body':
                     if ch.isalpha() or ch == '_':
                         end = ci
                         while end < len(line) and (line[end].isalnum() or line[end] == '_'):
                             end += 1
                         token = line[ci:end].lower()
-                        if token == 'then':
+                        if token == 'then' and not stmt_started:
                             then_keyword_seen = True
                             then_keyword_li = li
                             last_ident = None
                             ci = end
+                            stmt_started = False
+                            after_assign = False
                             continue
                         elif token == 'else':
-                            # 'else' keyword before then-expr was consumed
+                            # Transition to else body
                             else_keyword_seen = True
                             else_keyword_li = li
                             last_ident = None
                             ci = end
-                            state = 'else_expr'
+                            state = 'else_body'
+                            stmt_started = False
+                            after_assign = False
                             continue
                         else:
+                            # Identifier starting a statement in then body
+                            if then_keyword_seen and not stmt_started:
+                                if li != cond_li and li != then_keyword_li:
+                                    stripped = line.strip()
+                                    if stripped and not stripped.startswith(';') and \
+                                            not all(c in ') \t' for c in stripped):
+                                        insertable.add(li + 1)
+                                stmt_started = True
                             last_ident = token
                             ci = end
                             continue
                     elif ch == '(':
-                        # Paren-group: this is the then-expr (or part of cond)
                         expr_li = li
                         nested_skip = _SPECIAL_FORM_SKIP.get(last_ident) if last_ident else None
-                        # Only insert breakpoint if expr is on its own line
-                        # (not on the same line as cond or the 'then' keyword)
-                        if then_keyword_seen and expr_li != cond_li and expr_li != then_keyword_li:
-                            stripped = line.strip()
-                            if stripped and not stripped.startswith(';') and \
-                                    not all(c in ') \t' for c in stripped):
-                                insertable.add(expr_li + 1)
+                        # Insert breakpoint for paren-group statement start
+                        if then_keyword_seen and not stmt_started:
+                            if expr_li != cond_li and expr_li != then_keyword_li:
+                                stripped = line.strip()
+                                if stripped and not stripped.startswith(';') and \
+                                        not all(c in ') \t' for c in stripped):
+                                    insertable.add(expr_li + 1)
+                            stmt_started = True
                         if last_ident == 'if':
                             li, ci, in_string = self._scan_if(li, ci + 1, form_depth + 1, insertable)
+                        elif last_ident in ('cond', 'case', 'caseq', 'casev'):
+                            li, ci, in_string = self._scan_cond(li, ci + 1, form_depth + 1, insertable)
                         elif nested_skip is not None:
                             li, ci, in_string = self._scan_special(
                                 li, ci + 1, form_depth + 1, nested_skip, insertable)
                         else:
                             li, ci, in_string = self._skip_paren(li, ci + 1, in_string)
                         last_ident = None
-                        state = 'else_expr'
+                        # After closing a paren-group, the statement is done
+                        stmt_started = False
+                        after_assign = False
                         line = self.lines[li] if li < self.hard_end else ''
                         continue
                     elif ch == ')':
                         return li, ci + 1, in_string
                     else:
-                        # Non-alpha, non-paren: part of cond or bare then-expr atom
+                        # Non-alpha, non-paren character (operator, digit, etc.)
+                        if ch == '=' and stmt_started:
+                            after_assign = True
+                        elif not stmt_started and then_keyword_seen:
+                            if li != cond_li and li != then_keyword_li:
+                                stripped = line.strip()
+                                if stripped and not stripped.startswith(';') and \
+                                        not all(c in ') \t' for c in stripped):
+                                    insertable.add(li + 1)
+                            stmt_started = True
+                            after_assign = False
+                        else:
+                            after_assign = False
+                        last_ident = None
                         end = ci
                         while end < len(line) and line[end] not in ' \t\n();"':
                             end += 1
-                        last_ident = None
                         ci = end
                         continue
 
-                elif state == 'else_expr':
+                elif state == 'else_body':
                     if ch.isalpha() or ch == '_':
                         end = ci
                         while end < len(line) and (line[end].isalnum() or line[end] == '_'):
                             end += 1
                         token = line[ci:end].lower()
-                        if token == 'else':
+                        if token == 'else' and not stmt_started:
                             else_keyword_seen = True
                             else_keyword_li = li
                             last_ident = None
                             ci = end
+                            stmt_started = False
+                            after_assign = False
                             continue
                         else:
+                            # Identifier starting a statement in else body
+                            if else_keyword_seen and not stmt_started:
+                                if li != cond_li and li != else_keyword_li:
+                                    stripped = line.strip()
+                                    if stripped and not stripped.startswith(';') and \
+                                            not all(c in ') \t' for c in stripped):
+                                        insertable.add(li + 1)
+                                stmt_started = True
                             last_ident = token
                             ci = end
                             continue
                     elif ch == '(':
                         expr_li = li
                         nested_skip = _SPECIAL_FORM_SKIP.get(last_ident) if last_ident else None
-                        # Only insert breakpoint if expr is on its own line
-                        # (not on the same line as cond or the 'else' keyword)
-                        if else_keyword_seen and expr_li != cond_li and expr_li != else_keyword_li:
-                            stripped = line.strip()
-                            if stripped and not stripped.startswith(';') and \
-                                    not all(c in ') \t' for c in stripped):
-                                insertable.add(expr_li + 1)
+                        if else_keyword_seen and not stmt_started:
+                            if expr_li != cond_li and expr_li != else_keyword_li:
+                                stripped = line.strip()
+                                if stripped and not stripped.startswith(';') and \
+                                        not all(c in ') \t' for c in stripped):
+                                    insertable.add(expr_li + 1)
+                            stmt_started = True
                         if last_ident == 'if':
                             li, ci, in_string = self._scan_if(li, ci + 1, form_depth + 1, insertable)
+                        elif last_ident in ('cond', 'case', 'caseq', 'casev'):
+                            li, ci, in_string = self._scan_cond(li, ci + 1, form_depth + 1, insertable)
                         elif nested_skip is not None:
                             li, ci, in_string = self._scan_special(
                                 li, ci + 1, form_depth + 1, nested_skip, insertable)
                         else:
                             li, ci, in_string = self._skip_paren(li, ci + 1, in_string)
                         last_ident = None
+                        stmt_started = False
+                        after_assign = False
                         line = self.lines[li] if li < self.hard_end else ''
                         continue
                     elif ch == ')':
                         return li, ci + 1, in_string
                     else:
-                        # Atom else-expr
+                        # Non-alpha, non-paren: part of atom else-expr or operator
+                        if ch == '=' and stmt_started:
+                            after_assign = True
+                        elif not stmt_started and else_keyword_seen:
+                            if li != cond_li and li != else_keyword_li:
+                                stripped = line.strip()
+                                if stripped and not stripped.startswith(';') and \
+                                        not all(c in ') \t' for c in stripped):
+                                    insertable.add(li + 1)
+                            stmt_started = True
+                            after_assign = False
+                        else:
+                            after_assign = False
+                        last_ident = None
                         end = ci
                         while end < len(line) and line[end] not in ' \t\n();"':
                             end += 1
-                        if else_keyword_seen and li != cond_li and li != else_keyword_li:
-                            stripped = line.strip()
-                            if stripped and not stripped.startswith(';') and \
-                                    not all(c in ') \t' for c in stripped):
-                                insertable.add(li + 1)
-                        last_ident = None
                         ci = end
                         continue
 
                 ci += 1
 
             li += 1; ci = 0; last_ident = None
+            # Reset stmt_started at EOL when at body level (like scan_body does),
+            # unless in the middle of an assignment RHS spanning multiple lines.
+            if not after_assign and state in ('then_body', 'else_body'):
+                stmt_started = False
 
         return li, ci, in_string
 

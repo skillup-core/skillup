@@ -108,7 +108,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 setTimeout(function() { cm.scrollIntoView(null); }, 0);
             },
             "Ctrl-Enter": function(cm) { /* Run removed */ },
-            "Ctrl-S": function(cm) { EXP.saveCurrentFile(); },
+            "Ctrl-S": function(cm) { EXP.saveCurrentFileOrAs(); },
             "Ctrl-/": function(cm) { cm.execCommand("toggleComment"); },
             "Ctrl-Space": function(cm) { if (EXP.isILFile()) ISK.onChange(cm); },
             "Ctrl-F": function(cm) { SBFind.open(false); return false; },
@@ -698,6 +698,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const prefs = (res && res.success && res.prefs) ? res.prefs : {};
             const fontSize = prefs['editor.font_size'] || PREFS_DEFAULT['editor.font_size'];
             _applyEditorFontSize(fontSize);
+            const ieEnabled = prefs['editor.intellisense_enabled'];
+            ISK.setEnabled(ieEnabled === undefined ? PREFS_DEFAULT['editor.intellisense_enabled'] : ieEnabled);
         }).catch(() => {});
     }
 
@@ -1100,7 +1102,7 @@ async function clearAllBreakpoints() {
 function openNewTab() { EXP.openNewTab(); }
 
 // ── Preferences ───────────────────────────────────────────────────────────────
-const PREFS_DEFAULT = { 'editor.font_size': 16 };
+const PREFS_DEFAULT = { 'editor.font_size': 16, 'editor.intellisense_enabled': true };
 const PREFS_FONT_SIZES = [10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 22, 24];
 
 function openPreferences() {
@@ -1112,12 +1114,20 @@ function openPreferences() {
     // Build select element HTML
     const options = PREFS_FONT_SIZES.map(sz => `<option value="${sz}">${sz}px</option>`).join('');
     const labelText = ko ? '편집기 글꼴 크기' : 'Editor Font Size';
+    const ieLabel = ko ? '자동완성 사용' : 'Enable Auto-complete';
     const selectStyle = 'background:var(--bg-primary,#1a1d23);border:1px solid var(--border-color,#373c47);' +
         'color:var(--text-primary,#e0e0e0);border-radius:4px;padding:4px 8px;font-size:13px;outline:none;' +
         'cursor:pointer;min-width:80px;';
-    const html = `<div style="display:flex;align-items:center;">` +
-        `<span style="font-size:13px;color:var(--text-secondary,#a0a0a0);flex:1;margin-right:12px;white-space:nowrap;">${labelText}</span>` +
-        `<select id="prefsFontSize" style="${selectStyle}">${options}</select>` +
+    const html =
+        `<div style="display:flex;align-items:center;">` +
+            `<span style="font-size:13px;color:var(--text-secondary,#a0a0a0);flex:1;margin-right:12px;white-space:nowrap;">${labelText}</span>` +
+            `<select id="prefsFontSize" style="${selectStyle}">${options}</select>` +
+        `</div>` +
+        `<div style="display:flex;align-items:center;margin-top:10px;">` +
+            `<label style="display:flex;align-items:center;cursor:pointer;font-size:13px;color:var(--text-secondary,#a0a0a0);">` +
+                `<input type="checkbox" id="prefsIntellisense" style="margin-right:8px;cursor:pointer;">` +
+                `${ieLabel}` +
+            `</label>` +
         `</div>`;
 
     // Load current prefs then open modal
@@ -1133,10 +1143,13 @@ function openPreferences() {
                     primary: true,
                     onClick: function() {
                         const sel = parentDoc.getElementById('prefsFontSize');
+                        const chk = parentDoc.getElementById('prefsIntellisense');
                         if (!sel) return;
                         const fontSize = parseInt(sel.value, 10);
-                        callPython('save_editor_prefs', { prefs: { 'editor.font_size': fontSize } }).then(() => {
+                        const ieEnabled = chk ? chk.checked : true;
+                        callPython('save_editor_prefs', { prefs: { 'editor.font_size': fontSize, 'editor.intellisense_enabled': ieEnabled } }).then(() => {
                             _applyEditorFontSize(fontSize);
+                            ISK.setEnabled(ieEnabled);
                         });
                         modal.close();
                     }
@@ -1145,16 +1158,21 @@ function openPreferences() {
                     label: ko ? '디폴트' : 'Default',
                     onClick: function() {
                         const sel = parentDoc.getElementById('prefsFontSize');
+                        const chk = parentDoc.getElementById('prefsIntellisense');
                         if (sel) sel.value = PREFS_DEFAULT['editor.font_size'];
+                        if (chk) chk.checked = PREFS_DEFAULT['editor.intellisense_enabled'];
                     }
                 },
                 { label: ko ? '취소' : 'Cancel' }
             ],
             onClose: function() {}
         });
-        // Set current value after modal.open() synchronously inserts HTML into parent DOM
+        // Set current values after modal.open() synchronously inserts HTML into parent DOM
         const sel = parentDoc.getElementById('prefsFontSize');
         if (sel) sel.value = prefs['editor.font_size'] || PREFS_DEFAULT['editor.font_size'];
+        const chk = parentDoc.getElementById('prefsIntellisense');
+        const ieVal = prefs['editor.intellisense_enabled'];
+        if (chk) chk.checked = (ieVal === undefined) ? PREFS_DEFAULT['editor.intellisense_enabled'] : ieVal;
     });
 }
 
@@ -2067,6 +2085,7 @@ const ISK = (() => {
         'report', 'restore', 'resume', 'root', 'sample', 'save', 'setup',
         'temp', 'v', 'view', 'watch',
     ]);
+    let _enabled = true;
     let _completeTimer = null;
     let _sigTimer = null;
     let _parseTimer = null;
@@ -3550,6 +3569,7 @@ const ISK = (() => {
 
     function onCursorActivity(cm) {
         _updateOccurrenceHighlight(cm);
+        if (!_enabled) return;
         // Update signature arg highlight when cursor moves inside a call
         const ctx = _parseFuncContext(cm);
         const typedRecently = (Date.now() - _lastChangeTime) < 500;
@@ -3615,6 +3635,7 @@ const ISK = (() => {
     }
 
     function onKeyDown(cm, e) {
+        if (!_enabled) return;
         if (e.key === 'Enter') {
             clearTimeout(_completeTimer);
         }
@@ -3727,6 +3748,7 @@ const ISK = (() => {
     function onChange(cm) {
         if (!_suppressChange) _lastChangeTime = Date.now();
         if (!_suppressChange) _scheduleReparse(cm);
+        if (!_enabled) return;
 
         // @skillbot directive completion takes priority (works inside comments)
         const sbPrefix = _getSkillbotDirectivePrefix(cm);
@@ -3777,6 +3799,7 @@ const ISK = (() => {
     let _hoverTimer = null;
 
     function onHover(cm, e) {
+        if (!_enabled) return;
         if (_debugActive) return;
         clearTimeout(_hoverTimer);
         _hoverTimer = setTimeout(() => {
@@ -3803,7 +3826,12 @@ const ISK = (() => {
         for (const name of names) _intellisenseFuncs.add(name);
     }
 
-    return { init, initWithEditor, pick, setActive, hideDropdown, hideSig, onKeyDown, onChange, onCursorActivity, setEditorValue, onHover, trackMouseMove, tabFuncsCache: _tabFuncsCache, parseSymbols: _parseLocalSymbols, setIntellisenseFuncs };
+    function setEnabled(v) {
+        _enabled = !!v;
+        if (!_enabled) { hideDropdown(); hideSig(); }
+    }
+
+    return { init, initWithEditor, pick, setActive, hideDropdown, hideSig, onKeyDown, onChange, onCursorActivity, setEditorValue, onHover, trackMouseMove, tabFuncsCache: _tabFuncsCache, parseSymbols: _parseLocalSymbols, setIntellisenseFuncs, setEnabled };
 })();
 
 // ── File Explorer ─────────────────────────────────────────────────────────────
@@ -4441,6 +4469,66 @@ const EXP = (() => {
         }).catch(e => appendOutput('err', 'Save error: ' + e));
     }
 
+    async function saveAs() {
+        const tab = _getActiveTab();
+        if (!tab || !editor) return;
+        const ko = currentLanguage === 'ko';
+        const initialDir = _activeFile
+            ? _activeFile.split('/').slice(0, -1).join('/') || _root
+            : _root || '~';
+        const res = await window._showWebFileDialog('save', {
+            language: currentLanguage,
+            startDir: initialDir,
+            initialName: tab.name,
+        });
+        if (!res || !res.success || !res.path) return;
+        const newPath = res.path;
+        const newName = newPath.split('/').pop();
+        const content = editor.getValue();
+        callPython('file_save', { path: newPath, content }).then(r => {
+            if (r && r.success) {
+                tab.path = newPath;
+                tab.name = newName;
+                tab.savedContent = content;
+                tab.changedOnDisk = false;
+                if (r.mtime) tab.mtime = r.mtime;
+                _setDirty(false);
+                _activeFile = newPath;
+                editor.setOption('mode', _modeForFile(newName));
+                _renderTabs();
+                // Refresh explorer if file is under root
+                if (_root && newPath.startsWith(_root)) {
+                    const dir = newPath.split('/').slice(0, -1).join('/');
+                    _expanded.add(dir);
+                    _refreshDir(dir, () => _render());
+                }
+                appendOutput('info', (ko ? '저장됨: ' : 'Saved: ') + newPath);
+            } else {
+                appendOutput('err', (ko ? '저장 실패: ' : 'Save failed: ') + (r && r.error));
+            }
+        }).catch(e => appendOutput('err', 'Save error: ' + e));
+    }
+
+    function saveCurrentFileOrAs() {
+        const tab = _getActiveTab();
+        if (!tab) return;
+        if (!tab.path) {
+            saveAs();
+        } else {
+            saveCurrentFile();
+        }
+    }
+
+    async function openFileDialog() {
+        const res = await window._showWebFileDialog('file', {
+            language: currentLanguage,
+            filter: '*.il *.ils *.scm *.py *.js *.txt',
+        });
+        if (res && res.success && res.path) {
+            _openFile(res.path);
+        }
+    }
+
     async function promptNewFile() {
         if (_debugActive) return; // Block new file creation during debug
         const dirPath = _activeFile
@@ -4700,7 +4788,7 @@ const EXP = (() => {
         editor.focus();
     }
 
-    return { init, reloadRoot, onEditorChange, saveCurrentFile, promptNewFile, openNewTab, openFile: _openFile, closeTab: _closeTab, ctxRename, ctxDelete, hideCtxMenu, tabCtxClose, tabCtxCopyPath, tabCtxToggleDebug, isILFile, renderIcons: _render, loadIconTheme: _loadIconThemeOverrides, getActiveTab: _getActiveTab, getTabs: () => _tabs, switchTab: _switchTab, renderTabs: _renderTabs, startDiskChangePolling: _startDiskChangePolling, stopDiskChangePolling: _stopDiskChangePolling };
+    return { init, reloadRoot, onEditorChange, saveCurrentFile, saveCurrentFileOrAs, saveAs, openFileDialog, promptNewFile, openNewTab, openFile: _openFile, closeTab: _closeTab, ctxRename, ctxDelete, hideCtxMenu, tabCtxClose, tabCtxCopyPath, tabCtxToggleDebug, isILFile, renderIcons: _render, loadIconTheme: _loadIconThemeOverrides, getActiveTab: _getActiveTab, getTabs: () => _tabs, switchTab: _switchTab, renderTabs: _renderTabs, startDiskChangePolling: _startDiskChangePolling, stopDiskChangePolling: _stopDiskChangePolling };
 })();
 
 // ── Explorer open folder ───────────────────────────────────────────────────────

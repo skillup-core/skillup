@@ -1175,10 +1175,11 @@ async function openPermissionDialog(fieldId) {
     });
     function _populateFloatMenu(key, items) {
         const el = _floatMenus[key];
+        el.style.color = _fg;
         el.innerHTML = items.map(it => `
             <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px">
                 <div style="display:flex;align-items:center">
-                    <span style="font-size:13px">${escHtml(it.label)}</span>
+                    <span style="font-size:13px;color:${_fg}">${escHtml(it.label)}</span>
                     ${it.note ? `<span style="font-size:11px;color:${_secondary};margin-left:6px">${escHtml(it.note)}</span>` : ''}
                 </div>
                 ${toggleSwitch(it.id, it.checked, it.disabled, it.label)}

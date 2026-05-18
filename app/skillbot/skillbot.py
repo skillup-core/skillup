@@ -402,8 +402,10 @@ class SkillBotApp(BaseApp):
 
     def _handle_get_editor_prefs(self, data, language):
         config = self.load_config({})
+        ie_val = config.get("editor.intellisense_enabled")
         prefs = {
             "editor.font_size": int(config.get("editor.font_size", 16)),
+            "editor.intellisense_enabled": True if ie_val is None else (str(ie_val).lower() not in ("false", "0")),
         }
         return {"success": True, "prefs": prefs}
 
@@ -412,6 +414,8 @@ class SkillBotApp(BaseApp):
         config = self.load_config({})
         if "editor.font_size" in prefs:
             config["editor.font_size"] = int(prefs["editor.font_size"])
+        if "editor.intellisense_enabled" in prefs:
+            config["editor.intellisense_enabled"] = bool(prefs["editor.intellisense_enabled"])
         self.save_config(config)
         return {"success": True}
 
