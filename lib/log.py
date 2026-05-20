@@ -24,6 +24,22 @@ class Color:
 
 
 # ============================================================================
+# Verbose mode (debug level enabled when True)
+# ============================================================================
+
+_verbose = False
+
+
+def set_verbose(enabled: bool):
+    global _verbose
+    _verbose = enabled
+
+
+def is_verbose() -> bool:
+    return _verbose
+
+
+# ============================================================================
 # File logging state (lazy-initialized, module-level cache)
 # ============================================================================
 
@@ -53,6 +69,61 @@ def _init_file_log():
 _ANSI_ESCAPE = re.compile(r'\033\[[0-9;]*m')
 
 _LOG_ROTATE_BYTES = 256 * 1024  # 256 KB
+
+_APP_USAGE_ROTATE_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+def _format_duration(seconds: float) -> str:
+    """Format duration: under 1 min -> Xs, under 1 hour -> Xmin, else HH:MM"""
+    s = int(seconds)
+    if s < 60:
+        return f"{s}s"
+    m = s // 60
+    if m < 60:
+        return f"{m}min"
+    return f"{m // 60:02d}:{m % 60:02d}"
+
+
+def write_app_usage(account: str, appname: str, duration_seconds: float):
+    """
+    Append one app-usage record to {user_log_dir}/.stat/app-usage.txt.
+    Rotates to app-usage.txt.old when the file exceeds 10 MB.
+    """
+    try:
+        from lib.config import get_desktop_config
+        log_dir = get_desktop_config('general.user_log_dir', '').strip()
+        if not log_dir:
+            return
+
+        stat_dir = os.path.join(log_dir, '.stat')
+        os.makedirs(stat_dir, exist_ok=True)
+        usage_path = os.path.join(stat_dir, 'app-usage.txt')
+
+        from datetime import datetime
+        timestamp = datetime.now().strftime('[%y%m%d_%H:%M:%S]')
+        duration_str = _format_duration(duration_seconds)
+        line = f"{timestamp} account={account}, appname={appname}, duration={duration_str}"
+
+        try:
+            import fcntl
+            lock_path = usage_path + '.lock'
+            with open(lock_path, 'a') as lock_file:
+                fcntl.flock(lock_file, fcntl.LOCK_EX)
+                try:
+                    try:
+                        size = os.path.getsize(usage_path)
+                    except OSError:
+                        size = 0
+                    if size >= _APP_USAGE_ROTATE_BYTES:
+                        os.replace(usage_path, usage_path + '.old')
+                    with open(usage_path, 'a', encoding='utf-8') as f:
+                        f.write(line + '\n')
+                finally:
+                    fcntl.flock(lock_file, fcntl.LOCK_UN)
+        except Exception:
+            pass
+    except Exception:
+        pass
 
 
 def _write_to_file(plain_line: str):
@@ -89,7 +160,7 @@ def log(msg_type: str, line: Optional[int] = None, message: Optional[str] = None
     Print formatted colored log message.
 
     Args:
-        msg_type: Type of message (info, warn, error)
+        msg_type: Type of message (info, warn, error, debug)
         line: Optional line number
         message: Log message text
         tag: Optional tag displayed in gray after msg_type (e.g., "web", "js", "qt")
@@ -102,12 +173,19 @@ def log(msg_type: str, line: Optional[int] = None, message: Optional[str] = None
         log("info", message="Server started")
         log("warn", line=42, message="Deprecated function used")
         log("error", message="Failed to load file", tag="io")
+        log("debug", message="Init complete", tag="web")
     """
+    # debug messages are suppressed unless verbose mode is enabled
+    if msg_type == "debug" and not _verbose:
+        return None
+
     # Choose color based on message type
     if msg_type == "info":
         prefix_color = Color.GREEN
     elif msg_type == "warn":
         prefix_color = Color.YELLOW
+    elif msg_type == "debug":
+        prefix_color = Color.GRAY
     else:  # error
         prefix_color = Color.RED
 

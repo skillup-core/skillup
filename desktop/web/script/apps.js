@@ -499,16 +499,44 @@ async function openInNewWindow() {
     if (rawMode === 'single') {
         var focusResult = await apiCall('open_window', { url: url, title: title, mode: 'single' });
         if (focusResult && focusResult.focused) return;
-        document.body.classList.add('app-standalone');
-        await apiCall('detach_to_new_window', { url: url, title: title });
-        _detachRemoveFromTaskbar(currentApp.id);
+        var L = i18n[lang] || i18n['en'];
+        var confirmed = await showConfirmDialog(
+            L['app.open_new_window_confirm_title'],
+            L['app.open_new_window_confirm_text']
+        );
+        if (!confirmed) return;
+        await apiCall('open_window', { url: url, title: title, mode: 'single_open' });
+        _removeAppFromMain(currentApp.id);
     } else if (rawMode === 'true') {
-        document.body.classList.add('app-standalone');
-        await apiCall('detach_to_new_window', { url: url, title: title, multi: true });
-        _detachRemoveFromTaskbar(currentApp.id);
+        await apiCall('open_window', { url: url, title: title, mode: 'true' });
     } else {
         await apiCall('open_window', { url: url, title: title, mode: 'true' });
     }
+}
+
+function _removeAppFromMain(appId) {
+    clearAppIframes(appId);
+    var idx = runningApps.indexOf(appId);
+    if (idx !== -1) runningApps.splice(idx, 1);
+    delete lastAppMenu[appId];
+    if (currentApp && currentApp.id === appId) {
+        currentApp = null;
+        currentAppMenu = null;
+        appContentIframe = null;
+        currentContentType = null;
+        setTaskbarActive(null);
+        document.getElementById('close-app-btn').style.display = 'none';
+        document.getElementById('minimize-app-btn').style.display = 'none';
+        document.getElementById('popout-app-btn').style.display = 'none';
+        document.getElementById('page-home').style.display = 'block';
+        document.getElementById('page-title').textContent = (i18n[currentLanguage] || i18n['en'])['title.desktop'] || 'Desktop';
+        var homeItem = document.querySelector('#desktop-menu [data-page="home"]');
+        if (homeItem) { var svg = homeItem.querySelector('svg'); if (svg) setTopBarIconSVG(svg.cloneNode(true)); else setTopBarIcon(null); } else { setTopBarIcon(null); }
+        var ac = document.getElementById('app-content');
+        if (Object.keys(iframeCache).length > 0) { ac.classList.add('preserve-hidden'); } else { ac.style.display = 'none'; }
+        ac.querySelectorAll('iframe').forEach(function(f) { f.classList.remove('iframe-visible'); });
+    }
+    updateTaskbar();
 }
 
 function handleAppMenuClick(menuId) {

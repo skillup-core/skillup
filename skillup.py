@@ -79,9 +79,11 @@ def print_usage():
     print("Options:")
     print("    --desktop          Start desktop mode (GUI with app launcher)")
     print("    --app:<id>         Run specific app (e.g., --app:skillverifier)")
+    print("    --verbose          Enable debug-level logging")
     print()
     print("Examples:")
     print("    python3 skillup.py --desktop                    # Start desktop GUI")
+    print("    python3 skillup.py --desktop --verbose          # Start desktop GUI with debug logging")
     print("    python3 skillup.py --app:skillverifier test.il  # Run skillverifier app")
 
 
@@ -93,7 +95,12 @@ def main():
     """
     # Parse command-line arguments to detect desktop mode
     desktop_mode = '--desktop' in sys.argv[1:]
+    verbose_mode = '--verbose' in sys.argv[1:]
     app_id = None
+
+    if verbose_mode:
+        from lib.log import set_verbose
+        set_verbose(True)
 
     # Check for explicit app specification
     for arg in sys.argv[1:]:
@@ -116,9 +123,9 @@ def main():
         # Collect app-specific extra args (e.g. --skillform-run=/tmp/a.json)
         app_extra_args = [
             arg for arg in sys.argv[1:]
-            if not arg.startswith('--app:') and arg != '--desktop'
+            if not arg.startswith('--app:') and arg != '--desktop' and arg != '--verbose'
         ]
-        return run_desktop(auto_launch_app=app_id, app_extra_args=app_extra_args)
+        return run_desktop(auto_launch_app=app_id, app_extra_args=app_extra_args, verbose=verbose_mode)
 
     # ========================================================================
     # CLI MODE: Route to specified app

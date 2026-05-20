@@ -32,8 +32,8 @@
     const basePath = (window.isInIframe || window.isInQtWindow) ? '/' : '../../../../web/';
 
     const modeStr = window.isInIframe ? 'Desktop iframe' : (window.isInQtWindow ? 'Qt standalone window' : 'Web browser');
-    console.log(`[Skillup AppInit] Mode: ${modeStr}`);
-    console.log(`[Skillup AppInit] Base path: ${basePath}`);
+    console.log(`[debug] [Skillup AppInit] Mode: ${modeStr}`);
+    console.log(`[debug] [Skillup AppInit] Base path: ${basePath}`);
 
     // ========================================================================
     // App Context (GUID with random prefix for security)
@@ -55,7 +55,7 @@
         });
 
         document.head.appendChild(link);
-        console.log(`[Skillup AppInit] Loaded CSS: ${href}`);
+        console.log(`[debug] [Skillup AppInit] Loaded CSS: ${href}`);
         return link;
     }
 
@@ -70,7 +70,7 @@
             });
 
             script.onload = () => {
-                console.log(`[Skillup AppInit] Loaded script: ${src}`);
+                console.log(`[debug] [Skillup AppInit] Loaded script: ${src}`);
                 resolve();
             };
             script.onerror = () => {
@@ -109,7 +109,7 @@
 
             this.current = theme;
 
-            console.log(`[Skillup AppInit] Theme set to: ${theme}`);
+            console.log(`[debug] [Skillup AppInit] Theme set to: ${theme}`);
         },
 
         /**
@@ -127,11 +127,11 @@
                     const parentThemeSelect = window.parent.document.getElementById('theme-select');
                     if (parentThemeSelect && parentThemeSelect.value) {
                         savedTheme = parentThemeSelect.value;
-                        console.log('[Skillup AppInit] Using parent theme:', savedTheme);
+                        console.log('[debug] [Skillup AppInit] Using parent theme:', savedTheme);
                     }
                 } catch (e) {
                     // Cross-origin or access denied - will use postMessage later
-                    console.log('[Skillup AppInit] Cannot access parent theme, will use postMessage');
+                    console.log('[debug] [Skillup AppInit] Cannot access parent theme, will use postMessage');
                 }
             } else if (window.isInWebBrowser) {
                 // In web browser mode, use localStorage
@@ -188,12 +188,12 @@
             return;
         }
 
-        console.log('[Skillup AppInit] App ID:', window.skillupAppId);
+        console.log('[debug] [Skillup AppInit] App ID:', window.skillupAppId);
 
         if (window.isInWebBrowser) {
             // Web browser mode - use mock GUID
             window.skillupAppGuid = 'mock_' + window.skillupAppId;
-            console.log('[Skillup AppInit] Web browser mode - using mock GUID');
+            console.log('[debug] [Skillup AppInit] Web browser mode - using mock GUID');
             return;
         }
 
@@ -216,7 +216,7 @@
 
             if (data.success && data.randomized_guid) {
                 window.skillupAppGuid = data.randomized_guid;
-                console.log('[Skillup AppInit] Randomized GUID received:', window.skillupAppGuid);
+                console.log('[debug] [Skillup AppInit] Randomized GUID received:', window.skillupAppGuid);
             } else {
                 throw new Error(data.error || 'Failed to get GUID');
             }
@@ -234,7 +234,7 @@
 
     // Initialize app GUID before marking as complete
     initializeAppGuid().then(() => {
-        console.log('[Skillup AppInit] GUID initialization complete');
+        console.log('[debug] [Skillup AppInit] GUID initialization complete');
         window.skillupInitialized = true;
 
         // Dispatch event for other scripts
@@ -248,7 +248,7 @@
         // Load QWebChannel if in desktop iframe mode (not in standalone window)
         // Standalone window uses REST API via GUID routing - QWebChannel bypasses GUID and breaks routing
         if (!window.isInWebBrowser && !window.isInQtWindow && typeof qt !== 'undefined') {
-            console.log('[Skillup AppInit] Loading QWebChannel...');
+            console.log('[debug] [Skillup AppInit] Loading QWebChannel...');
             return loadScript('qrc:///qtwebchannel/qwebchannel.js');
         } else {
             return Promise.resolve();
@@ -257,7 +257,7 @@
         // Load common application JavaScript AFTER QWebChannel is loaded
         return loadScript(`${basePath}common/script/common.js`);
     }).then(() => {
-        console.log('[Skillup AppInit] Initialization complete');
+        console.log('[debug] [Skillup AppInit] Initialization complete');
     }).catch(err => {
         console.error('[Skillup AppInit] Initialization error:', err);
     });

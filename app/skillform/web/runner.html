@@ -18,6 +18,8 @@
     </script>
     <script src="/common/script/appinit.js" onerror="this.onerror=null;this.src='../../../../web/common/script/appinit.js';"></script>
     <script src="/common/marked/16.x/marked.min.js" onerror="this.onerror=null;this.src='../../../../desktop/common/marked/16.x/marked.min.js';"></script>
+    <link id="hljs-css" rel="stylesheet" href="/common/highlight.js/11.x/styles/github.min.css" onerror="this.onerror=null;this.href='../../../../desktop/common/highlight.js/11.x/styles/github.min.css';">
+    <script src="/common/highlight.js/11.x/highlight.min.js" onerror="this.onerror=null;this.src='../../../../desktop/common/highlight.js/11.x/highlight.min.js';"></script>
 </head>
 <body>
 <link rel="stylesheet" href="skillform.css" onerror="this.onerror=null;this.href='/app/skillform/skillform.css';">
@@ -106,6 +108,12 @@ function renderForm(schema) {
             link.setAttribute('data-skillform-theme', '1');
             link.href = isLight ? '/common/style/white.css' : '/common/style/default.css';
             document.head.appendChild(link);
+        }
+        const hljsCss = document.getElementById('hljs-css');
+        if (hljsCss) {
+            hljsCss.href = isLight
+                ? '/common/highlight.js/11.x/styles/github.min.css'
+                : '/common/highlight.js/11.x/styles/vs2015.min.css';
         }
     }
 
@@ -645,9 +653,7 @@ function buildFieldWidget(f, rowH) {
             }
             input.addEventListener('click', async () => {
                 const cmd = f.boardCommand;
-                const _confirm = (window.parent !== window && window.parent.showConfirmDialog)
-                    ? window.parent.showConfirmDialog.bind(window.parent)
-                    : (t, m) => Promise.resolve(true);
+                const _confirm = showConfirmDialog;
 
                 if (cmd === 'LIST') {
                     let isDirty = false;
@@ -780,6 +786,63 @@ function buildFieldWidget(f, rowH) {
 
 function setStatus(msg, type) {}
 
+function showConfirmDialog(title, text, options) {
+    const outer = _findConfirm();
+    if (outer) return outer(title, text, options);
+    return new Promise(function(resolve) {
+        const dialog  = document.getElementById('sfr-confirm-dialog');
+        const yesBtn  = document.getElementById('sfr-confirm-yes');
+        const noBtn   = document.getElementById('sfr-confirm-no');
+        document.getElementById('sfr-confirm-title').textContent = title;
+        document.getElementById('sfr-confirm-text').textContent  = text;
+        yesBtn.classList.remove('btn-primary', 'btn-danger', 'btn-secondary');
+        yesBtn.classList.add((options && options.yesStyle === 'danger') ? 'btn-danger' : (options && options.yesStyle === 'secondary') ? 'btn-secondary' : 'btn-primary');
+        const hideCancelBtn = options && options.hideCancelBtn;
+        noBtn.style.display = hideCancelBtn ? 'none' : '';
+        const lang = _currentLang || 'en';
+        yesBtn.textContent = lang === 'ko' ? '확인' : 'Yes';
+        noBtn.textContent  = lang === 'ko' ? '취소' : 'No';
+        if (options && options.buttons && options.buttons[0]) {
+            yesBtn.textContent = options.buttons[0].label || yesBtn.textContent;
+            noBtn.style.display = 'none';
+        }
+        dialog.style.display = 'flex';
+        const onYes = () => { dialog.style.display = 'none'; cleanup(); resolve(true); };
+        const onNo  = () => { dialog.style.display = 'none'; cleanup(); resolve(false); };
+        const onKeydown = (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); if (document.activeElement === noBtn) onNo(); else onYes(); }
+            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); onNo(); }
+            else if (e.key === 'Tab') { e.preventDefault(); if (document.activeElement === yesBtn) noBtn.focus(); else yesBtn.focus(); }
+        };
+        const onBackdrop = (e) => { if (e.target === dialog) onNo(); };
+        const cleanup = () => {
+            yesBtn.removeEventListener('click', onYes);
+            noBtn.removeEventListener('click', onNo);
+            document.removeEventListener('keydown', onKeydown, true);
+            dialog.removeEventListener('click', onBackdrop);
+        };
+        yesBtn.addEventListener('click', onYes);
+        noBtn.addEventListener('click', onNo);
+        document.addEventListener('keydown', onKeydown, true);
+        dialog.addEventListener('click', onBackdrop);
+        yesBtn.focus();
+    });
+}
+
+function _findConfirm() {
+    if (window.parent === window) return null;
+    let w = window.parent;
+    while (w) {
+        try {
+            if (w.showConfirmDialog && w.showConfirmDialog !== window.showConfirmDialog)
+                return w.showConfirmDialog.bind(w);
+        } catch (e) { break; }
+        if (w === w.parent) break;
+        w = w.parent;
+    }
+    return null;
+}
+
 // ================================================================
 // BOARD COMPONENT
 // ================================================================
@@ -790,15 +853,21 @@ let _commentLayouts = []; // { fieldDef, wrapEl, gridRowH, formEl, allFieldEls, 
 
 // Initialize marked once
 if (window.marked) {
-    marked.setOptions({ gfm: true, breaks: true });
+    marked.setOptions({
+        gfm: true, breaks: true,
+        highlight: window.hljs
+            ? (code, lang) => {
+                const l = lang && hljs.getLanguage(lang) ? lang : null;
+                return l ? hljs.highlight(code, { language: l }).value
+                         : hljs.highlightAuto(code).value;
+              }
+            : null
+    });
 }
 
 function _cmtRenderMd(text) {
     if (window.marked) {
-        return String(text || '')
-            .split('\n')
-            .map(line => marked.parseInline(line || ''))
-            .join('<br>');
+        return marked.parse(String(text || ''));
     }
     const div = document.createElement('div');
     div.textContent = text || '';
@@ -1004,11 +1073,11 @@ async function _estimateChromeHeight(containerEl, fieldDef) {
     const probe = document.createElement('div');
     probe.style.cssText = 'visibility:hidden;position:absolute;left:-9999px;top:0;'
         + 'width:' + containerEl.clientWidth + 'px;pointer-events:none;';
-    // Worst-case: « ‹ … 1 2 3 … › » = 9 elements; use this width for measurement
+    // Worst-case: << < … 1 2 3 … > >> = 9 elements; use this width for measurement
     // so flex-wrap wrapping on narrow containers is captured.
     const pager = document.createElement('div');
     pager.className = 'sfr-board-pager';
-    ['«', '‹', '…', '1', '2', '3', '…', '›', '»'].forEach(label => {
+    ['<<', '<', '…', '1', '2', '3', '…', '>', '>>'].forEach(label => {
         if (label === '…') {
             const gap = document.createElement('span');
             gap.className = 'sfr-board-pager-gap';
@@ -1113,7 +1182,7 @@ function _renderBoardTable(entry, records) {
             if (c.id === '@created_at' || c.id === '@updated_at') {
                 const fmt = _formatBoardDateTime(v);
                 if (fmt.full) {
-                    html += `<td><span data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="${_escHtml(fmt.full)}">${_escHtml(fmt.display)}</span></td>`;
+                    html += `<td><span data-sfr-tip="${_escHtml(fmt.full)}">${_escHtml(fmt.display)}</span></td>`;
                 } else {
                     html += `<td>${_escHtml(fmt.display)}</td>`;
                 }
@@ -1128,19 +1197,17 @@ function _renderBoardTable(entry, records) {
             }
             if (optionMaps && optionMaps[c.id] && optionMaps[c.id][v] !== undefined) v = optionMaps[c.id][v];
             const cmtCount = (c.width === 'rest') ? (rec['@comment_count'] || 0) : 0;
-            const cmtBadge = cmtCount > 0 ? ` <span class="sfr-cmt-count">[${cmtCount}]</span>` : '';
-            html += `<td>${_escHtml(String(v))}${cmtBadge}</td>`;
+            if (cmtCount > 0) {
+                html += `<td class="sfr-td-rest"><div class="sfr-td-rest-inner"><span class="sfr-td-rest-text">${_escHtml(String(v))}</span><span class="sfr-cmt-count">[${cmtCount}]</span></div></td>`;
+            } else {
+                html += `<td>${_escHtml(String(v))}</td>`;
+            }
         });
         html += '</tr>';
     });
     html += '</tbody></table>';
 
     containerEl.innerHTML = html;
-
-    // Initialize date tooltips
-    containerEl.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
-        new bootstrap.Tooltip(el, { container: 'body' });
-    });
 
     // Load avatars asynchronously after DOM insertion
     const authorCells = containerEl.querySelectorAll('.sfr-author-cell[data-uid]');
@@ -1219,6 +1286,36 @@ function _formatBoardDateTime(value) {
     return { display: `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`, full };
 }
 
+// Shared tooltip element — created once, positioned via JS to avoid overflow:hidden clipping
+const _sfrTipEl = document.createElement('div');
+_sfrTipEl.className = 'sfr-tip-box';
+_sfrTipEl.style.display = 'none';
+document.body.appendChild(_sfrTipEl);
+
+document.addEventListener('mouseover', function(e) {
+    const target = e.target.closest('[data-sfr-tip]');
+    if (!target) return;
+    const tip = target.getAttribute('data-sfr-tip');
+    if (!tip) return;
+    _sfrTipEl.textContent = tip;
+    _sfrTipEl.style.display = '';
+    const r = target.getBoundingClientRect();
+    const tw = _sfrTipEl.offsetWidth;
+    let left = r.left + r.width / 2 - tw / 2;
+    if (left < 4) left = 4;
+    if (left + tw > window.innerWidth - 4) left = window.innerWidth - 4 - tw;
+    _sfrTipEl.style.left = left + 'px';
+    _sfrTipEl.style.top = (r.top - _sfrTipEl.offsetHeight - 5) + 'px';
+}, true);
+
+document.addEventListener('mouseout', function(e) {
+    const target = e.target.closest('[data-sfr-tip]');
+    if (!target) return;
+    if (!target.contains(e.relatedTarget)) {
+        _sfrTipEl.style.display = 'none';
+    }
+}, true);
+
 function _buildPager(entry, currentPage, totalPages) {
     const pager = document.createElement('div');
     pager.className = 'sfr-board-pager';
@@ -1239,8 +1336,8 @@ function _buildPager(entry, currentPage, totalPages) {
     const first = Math.max(1, currentPage - WINDOW);
     const last  = Math.min(totalPages, currentPage + WINDOW);
 
-    addBtn('«', 1, currentPage === 1);
-    addBtn('‹', currentPage - 1, currentPage === 1);
+    addBtn('<<', 1, currentPage === 1);
+    addBtn('<', currentPage - 1, currentPage === 1);
     if (first > 1) {
         const gap = document.createElement('span');
         gap.className = 'sfr-board-pager-gap';
@@ -1254,8 +1351,8 @@ function _buildPager(entry, currentPage, totalPages) {
         gap.textContent = '…';
         pager.appendChild(gap);
     }
-    addBtn('›', currentPage + 1, currentPage === totalPages);
-    addBtn('»', totalPages, currentPage === totalPages);
+    addBtn('>', currentPage + 1, currentPage === totalPages);
+    addBtn('>>', totalPages, currentPage === totalPages);
 
     return pager;
 }
@@ -1323,12 +1420,12 @@ async function _boardNavToDetail(rid, fieldDef) {
         const msg = _currentLang === 'ko'
             ? `그룹을 찾을 수 없습니다: ${label}${idPart}`
             : `Group not found: ${label}${idPart}`;
-        await parent.showConfirmDialog(msg, '', { yesStyle: 'secondary', hideCancelBtn: true }).catch(() => {});
+        await showConfirmDialog(msg, '', { yesStyle: 'secondary', hideCancelBtn: true }).catch(() => {});
         return;
     }
     if (recordRes && recordRes.permission_denied) {
         const msg = _currentLang === 'ko' ? '권한이 없습니다.' : 'Access denied.';
-        await parent.showConfirmDialog(msg, '', { yesStyle: 'secondary', hideCancelBtn: true }).catch(() => {});
+        await showConfirmDialog(msg, '', { yesStyle: 'secondary', hideCancelBtn: true }).catch(() => {});
         return;
     }
 
@@ -1444,26 +1541,12 @@ function _applyInfoRecord(record) {
             return;
         }
 
-        var existing = bootstrap.Tooltip.getInstance(entry.el);
-        if (existing) existing.dispose();
-        entry.el.removeAttribute('data-bs-toggle');
-        entry.el.removeAttribute('data-bs-placement');
-        entry.el.removeAttribute('data-bs-title');
-
         var v = '';
         if (record) {
             v = record[fid] !== undefined ? record[fid] : '';
             if (fid === '@created_at' || fid === '@updated_at') {
                 var fmt = _formatBoardDateTime(String(v));
-                if (fmt && typeof fmt === 'object' && fmt.full) {
-                    entry.el.setAttribute('data-bs-toggle', 'tooltip');
-                    entry.el.setAttribute('data-bs-placement', 'top');
-                    entry.el.setAttribute('data-bs-title', fmt.full);
-                    new bootstrap.Tooltip(entry.el, { container: 'body' });
-                    v = fmt.display;
-                } else {
-                    v = (fmt && typeof fmt === 'object') ? fmt.display : (fmt || String(v));
-                }
+                v = (fmt && typeof fmt === 'object') ? (fmt.full || fmt.display) : (fmt || String(v));
             }
         }
         entry.el.value = String(v);
@@ -1646,9 +1729,7 @@ async function _loadComments(fieldDef, containerEl) {
 }
 
 function _setupCommentListeners(fieldDef, containerEl, rid, currentUser, detailFormPath) {
-    const _confirm = (window.parent !== window && window.parent.showConfirmDialog)
-        ? window.parent.showConfirmDialog.bind(window.parent)
-        : (_t, m) => Promise.resolve(true);
+    const _confirm = showConfirmDialog;
 
     // Auto-resize on all textareas
     containerEl.querySelectorAll('textarea.sfr-cmt-input').forEach(ta => {
@@ -1976,5 +2057,16 @@ if (typeof isInWebBrowser !== 'undefined' && isInWebBrowser) {
     }, 200);
 }
 </script>
+
+<div id="sfr-confirm-dialog" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10800;align-items:center;justify-content:center;">
+  <div style="background:var(--bg-primary,#fff);border-radius:8px;padding:24px;min-width:280px;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,0.18);">
+    <div id="sfr-confirm-title" style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:12px;"></div>
+    <div id="sfr-confirm-text" style="font-size:13px;color:var(--text-secondary,#6c757d);margin-bottom:24px;line-height:1.5;white-space:pre-wrap;"></div>
+    <div style="display:flex;justify-content:flex-end;">
+      <button id="sfr-confirm-no"  class="btn btn-secondary" style="font-size:13px;padding:6px 16px;margin-right:8px;">No</button>
+      <button id="sfr-confirm-yes" class="btn btn-primary"   style="font-size:13px;padding:6px 16px;">Yes</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

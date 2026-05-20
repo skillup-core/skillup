@@ -756,7 +756,12 @@ class WebUIEngine:
                     # Fallback to info for unknown levels
                     msg_type = "info"
 
-                # Format: [info ][web] message (or [error][web], [warn ][web])
+                # [debug] prefix in message body overrides level to debug
+                if message.startswith('[debug] '):
+                    msg_type = "debug"
+                    message = message[8:]
+
+                # Format: [info ][web] message (or [error][web], [warn ][web], [debug][web])
                 location = f" (line {lineNumber})" if lineNumber else ""
                 log(msg_type, message=f"{message}{location}", tag="web")
 
@@ -890,13 +895,10 @@ class WebUIEngine:
                     new_view.setPage(new_page)
                     new_view.setWindowTitle(w_title)
 
-                    # Determine window size, capping height at 80% of screen height
-                    screen = engine_ref.qt_app.primaryScreen()
-                    screen_h = screen.availableGeometry().height() if screen else 900
-                    max_h = int(screen_h * 0.8)
-                    win_w = w_width if w_width > 0 else 1200
-                    win_h = w_height if w_height > 0 else 800
-                    win_h = min(win_h, max_h)
+                    # Determine window size: use main window size as default
+                    main_size = engine_ref.view.size()
+                    win_w = w_width if w_width > 0 else main_size.width()
+                    win_h = w_height if w_height > 0 else main_size.height()
                     new_view.resize(win_w, win_h)
                     min_w = w_min_w if w_min_w > 0 else 600
                     min_h = w_min_h if w_min_h > 0 else 400

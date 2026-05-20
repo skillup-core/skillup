@@ -22,7 +22,7 @@ from lib.config import (
     load_config,
     save_config
 )
-from lib.log import log
+from lib.log import log, write_app_usage
 from desktop.account import (
     get_default_account_db_path,
     init_db,
@@ -720,6 +720,9 @@ class DesktopManager:
         # In-process app instances: {app_id: app_instance} (for legacy mode)
         self._app_instances: Dict[str, Any] = {}
 
+        # App start timestamps for usage tracking: {app_id: monotonic time}
+        self._app_start_times: Dict[str, float] = {}
+
         self._discover_apps()
         self._load_settings()
         self._setup_handlers()
@@ -976,6 +979,10 @@ class DesktopManager:
             # Prepare environment with app mode indicator
             env = os.environ.copy()
             env['_SKILLUP_APP_MODE'] = 'desktop'
+            # Forward verbose flag to subprocess
+            from lib.log import is_verbose
+            if is_verbose():
+                env['_SKILLUP_VERBOSE'] = '1'
             # Forward extra launch args as JSON via environment variable
             extra_args = self._auto_launch_extra_args.pop(app_id, None)
             if extra_args:
@@ -1004,6 +1011,8 @@ class DesktopManager:
                             log("error", message=line[7:].lstrip(), tag=app_id)
                         elif line.startswith('[warn ]'):
                             log("warn", message=line[7:].lstrip(), tag=app_id)
+                        elif line.startswith('[debug]'):
+                            log("debug", message=line[7:].lstrip(), tag=app_id)
                         else:
                             log("info", message=line, tag=app_id)
                 except Exception:
@@ -1105,6 +1114,19 @@ class DesktopManager:
         except Exception as e:
             log("error", message=f"Failed to start subprocess for {app_id}: {e}", tag="desktop")
             return False
+
+    def _record_app_usage(self, app_id: str):
+        """Write one app-usage entry if a start time was recorded for app_id."""
+        import time as _time
+        start = self._app_start_times.pop(app_id, None)
+        if start is None:
+            return
+        duration = _time.monotonic() - start
+        appname = self.apps[app_id].id_name if app_id in self.apps else app_id
+        try:
+            write_app_usage(self.current_user, appname, duration)
+        except Exception:
+            pass
 
     def _stop_app_process(self, app_id: str):
         """Stop an app subprocess"""
@@ -1441,6 +1463,8 @@ class DesktopManager:
                     return {'success': False, 'error': f'Failed to start subprocess for app: {app_id}'}
 
             self.current_app = app_id
+            import time as _time
+            self._app_start_times[app_id] = _time.monotonic()
             return {'success': True, 'app_id': app_id}
 
         def handle_close_app(data):
@@ -1449,6 +1473,9 @@ class DesktopManager:
             target_app = app_id or self.current_app
 
             if target_app:
+                # Record app usage duration
+                self._record_app_usage(target_app)
+
                 # Call on_close for in-process app instances
                 if target_app in self._app_instances:
                     try:
@@ -2177,6 +2204,10 @@ class DesktopManager:
         try:
             return self.engine.run_qt(load_url)
         finally:
+            # Record usage for any apps still open at shutdown
+            for app_id in list(self._app_start_times.keys()):
+                self._record_app_usage(app_id)
+
             # Call on_close for all in-process app instances
             for app_id, app_instance in list(self._app_instances.items()):
                 try:
@@ -2190,16 +2221,20 @@ class DesktopManager:
                 self._stop_app_process(app_id)
 
 
-def run_desktop(auto_launch_app: str = None, app_extra_args: list = None) -> int:
+def run_desktop(auto_launch_app: str = None, app_extra_args: list = None, verbose: bool = False) -> int:
     """
     Run the Skillup Desktop.
 
     Args:
         auto_launch_app: App ID to launch automatically
         app_extra_args: Extra CLI args to pass to the auto-launched app subprocess
+        verbose: Enable debug-level logging
 
     Returns:
         Exit code
     """
+    if verbose:
+        from lib.log import set_verbose
+        set_verbose(True)
     manager = DesktopManager()
     return manager.run(auto_launch_app, app_extra_args=app_extra_args)

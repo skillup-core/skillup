@@ -95,8 +95,8 @@ class DefinitionDatabase:
         """Connect to database with NFS-safe settings"""
         self.conn = sqlite3.connect(self.db_path, timeout=30.0)
 
-        # Enable WAL mode for better concurrency (NFS-safe in recent SQLite)
-        self.conn.execute('PRAGMA journal_mode=WAL')
+        # DELETE journal mode: NFS-safe (no .wal/.shm files)
+        self.conn.execute('PRAGMA journal_mode=DELETE')
 
         # Enable foreign keys
         self.conn.execute('PRAGMA foreign_keys = ON')

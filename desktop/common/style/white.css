@@ -186,6 +186,7 @@ code, pre {
 
 .btn-secondary:hover {
     background: var(--bg-secondary);
+    color: var(--text-primary);
 }
 
 /* ============================================================================
