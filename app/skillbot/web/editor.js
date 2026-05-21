@@ -638,7 +638,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Reset virtual scroll on mouse click or cursor-key navigation
     const _virtualResetKeys = new Set([
         'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
-        'Home', 'End', 'PageUp', 'PageDown',
+        'Home', 'End', 'PageUp', 'PageDown', 'F3',
     ]);
     editor.on('mousedown', function() {
         if (_virtualExtra > 0) {
@@ -810,6 +810,7 @@ document.addEventListener('DOMContentLoaded', function() {
             hideCiwSelect();
             hidePreferences();
             EXP.hideCtxMenu();
+            SBFind.clearMarks();
         }
     });
 
@@ -2095,6 +2096,8 @@ const ISK = (() => {
     let _sigShownByCursor = false; // true if signature was shown via cursor-idle (not typing)
     let _lastMouseX = 0, _lastMouseY = 0;  // last mousemove coords on editor
     let _sigRequestMouseX = 0, _sigRequestMouseY = 0; // mouse coords when sig timer started
+    let _dropdownOpenX = null, _dropdownOpenY = null; // mouse coords when dropdown was opened
+    let _sigOpenX = null, _sigOpenY = null; // mouse coords when sigBox was opened
     let _cursorMovedByKeyboard = false; // true if cursor last moved via keyboard (not mouse)
 
     // ── Local symbol cache ──
@@ -2517,10 +2520,13 @@ const ISK = (() => {
     // Parse ;; @skillbot(no-warn:name) directives from source
     function _parseNowarn(src) {
         const names = new Set();
-        const re = /;+[^\n]*@skillbot\(no-warn:([^)\s]+)\)/g;
+        const re = /;+[^\n]*@skillbot\(no-warn:([^)]+)\)/g;
         let m;
         while ((m = re.exec(src)) !== null) {
-            names.add(m[1].trim());
+            for (const name of m[1].split(',')) {
+                const t = name.trim();
+                if (t) names.add(t);
+            }
         }
         return names;
     }
@@ -2948,9 +2954,29 @@ const ISK = (() => {
         }, true);
     }
 
+    function _onMouseMove(e) {
+        _lastMouseX = e.clientX;
+        _lastMouseY = e.clientY;
+        _cursorMovedByKeyboard = false;
+        if (_sigOpenX !== null && _sigBox && _sigBox.style.display !== 'none') {
+            const dx = _lastMouseX - _sigOpenX;
+            const dy = _lastMouseY - _sigOpenY;
+
+            if (dx * dx + dy * dy > 900) hideSig();
+        }
+    }
+
     function initWithEditor(cm) {
         init();
         _initGotoDef(cm);
+        cm.getScrollerElement().addEventListener('wheel', () => {
+            if (_dropdown && _dropdown.style.display !== 'none') hideDropdown();
+            if (_sigBox   && _sigBox.style.display   !== 'none') hideSig();
+        }, { passive: true });
+        // mousemove: scroller + wrapper + sigBox 커버
+        cm.getScrollerElement().addEventListener('mousemove', _onMouseMove);
+        cm.getWrapperElement().addEventListener('mousemove', _onMouseMove);
+        _sigBox.addEventListener('mousemove', _onMouseMove);
     }
 
     // ── Helpers ──
@@ -3096,6 +3122,8 @@ const ISK = (() => {
         _dropdown.style.left = coords.left + 'px';
         _dropdown.style.top  = (coords.bottom + 2) + 'px';
         _dropdown.style.display = 'block';
+        _dropdownOpenX = _lastMouseX;
+        _dropdownOpenY = _lastMouseY;
     }
 
     let _suppressSigRestore = false;
@@ -3103,6 +3131,8 @@ const ISK = (() => {
     function hideDropdown() {
         if (_dropdown) _dropdown.style.display = 'none';
         _items = [];
+        _dropdownOpenX = null;
+        _dropdownOpenY = null;
         // Restore signature hint if cursor is still inside a function call
         if (editor && !_suppressSigRestore) onCursorActivity(editor);
     }
@@ -3432,6 +3462,8 @@ const ISK = (() => {
         _sigBox.style.left = coords.left + 'px';
         _sigBox.style.top  = (coords.top - _sigBox.offsetHeight - 6) + 'px';
         _sigBox.style.display = 'block';
+        _sigOpenX = _lastMouseX;
+        _sigOpenY = _lastMouseY;
 
         // Reposition after render (offsetHeight now correct)
         requestAnimationFrame(() => {
@@ -3442,6 +3474,8 @@ const ISK = (() => {
     function hideSig() {
         if (_sigBox) _sigBox.style.display = 'none';
         _sigData = null;
+        _sigOpenX = null;
+        _sigOpenY = null;
         _sigShownByCursor = false;
     }
 
@@ -3743,6 +3777,8 @@ const ISK = (() => {
         _dropdown.style.left = coords.left + 'px';
         _dropdown.style.top  = (coords.bottom + 2) + 'px';
         _dropdown.style.display = 'block';
+        _dropdownOpenX = _lastMouseX;
+        _dropdownOpenY = _lastMouseY;
     }
 
     function onChange(cm) {
@@ -3819,7 +3855,7 @@ const ISK = (() => {
         }, 2000);
     }
 
-    function trackMouseMove(e) { _lastMouseX = e.clientX; _lastMouseY = e.clientY; _cursorMovedByKeyboard = false; }
+    function trackMouseMove(e) { _onMouseMove(e); }
 
     function setIntellisenseFuncs(names) {
         _intellisenseFuncs.clear();
@@ -4964,8 +5000,15 @@ const SBFind = (function() {
         if (_matchIdx < 0 || _matchIdx >= _matches.length) return;
         const { from, to } = _matches[_matchIdx];
         _highlightMark = editor.markText(from, to, { className: 'sb-find-match-current' });
-        editor.scrollIntoView({ from, to }, 80);
+        // Reset virtual scroll (translateY offset)
+        const wrap = editor.getWrapperElement();
+        wrap.style.transform = '';
+        // setSelection triggers CM's auto-scroll; defer our center-scroll to override it
         editor.setSelection(from, to);
+        const scroller = editor.getScrollerElement();
+        const coords = editor.charCoords(from, 'local');
+        const target = Math.max(0, coords.top - scroller.clientHeight / 2);
+        setTimeout(function() { scroller.scrollTop = target; }, 0);
     }
 
     function _pd() { return window.parent ? window.parent.document : document; }
@@ -5174,7 +5217,7 @@ const SBFind = (function() {
         }
     }
 
-    return { open, findNext };
+    return { open, findNext, clearMarks: _clearMarks };
 })();
 
 // ── PRJ: Project Manager ──────────────────────────────────────────────────────

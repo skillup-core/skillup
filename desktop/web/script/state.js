@@ -95,7 +95,13 @@ var i18n = {
         'settings.group_join_confirm_text': 'Join this group?',
         'settings.group_join_request_sent': 'Your request has been sent to the group admin.',
         'settings.group_remove_member_confirm_title': 'Remove Member',
-        'settings.group_remove_member_confirm_text': 'Are you sure you want to remove this member?'
+        'settings.group_remove_member_confirm_text': 'Are you sure you want to remove this member?',
+        'update.title': 'Update Available',
+        'update.message': 'Skillup has been updated. Please restart to use the new version.',
+        'update.warning': 'Unsaved work may be lost.',
+        'update.restart': 'Restart',
+        'update.confirm_title': 'Restart Skillup',
+        'update.confirm_text': 'Unsaved work may be lost. Restart now?'
     },
     ko: {
         'sidebarSubtitle': '데스크탑',
@@ -190,7 +196,13 @@ var i18n = {
         'settings.group_join_confirm_text': '이 그룹에 가입하시겠습니까?',
         'settings.group_join_request_sent': '가입 요청이 그룹 관리자에게 전송되었습니다.',
         'settings.group_remove_member_confirm_title': '멤버 제거',
-        'settings.group_remove_member_confirm_text': '이 멤버를 제거하시겠습니까?'
+        'settings.group_remove_member_confirm_text': '이 멤버를 제거하시겠습니까?',
+        'update.title': '업데이트 감지',
+        'update.message': 'Skillup이 업데이트되었습니다. 새로 실행해주세요.',
+        'update.warning': '작업 중인 내용이 손상될 수 있습니다.',
+        'update.restart': '재시작',
+        'update.confirm_title': 'Skillup 재시작',
+        'update.confirm_text': '작업 중인 내용이 손상될 수 있습니다. 지금 재시작하시겠습니까?'
     }
 };
 

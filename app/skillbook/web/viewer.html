@@ -1343,6 +1343,17 @@
             margin-bottom: 12px;
         }
 
+        .skb-find-match {
+            background: rgba(255, 200, 0, 0.35);
+            border-radius: 2px;
+        }
+
+        .skb-find-current {
+            background: rgba(255, 140, 0, 0.7);
+            border-radius: 2px;
+            outline: 1px solid rgba(255, 100, 0, 0.8);
+        }
+
     </style>
 </head>
 <body>
@@ -1687,6 +1698,11 @@
         let currentHashtagFunc = '';
         const HASHTAG_MAX_VISIBLE = 5;
 
+        // F3 in-page search state
+        let _findQuery = '';
+        let _findMatches = [];
+        let _findIdx = -1;
+
         // UI text translations
         const uiTexts = {
             en: {
@@ -1938,10 +1954,105 @@
             }
         }
 
+        // ─── F3 In-Page Search ───
+
+        function _findClearMarks() {
+            contentDiv.querySelectorAll('.skb-find-match, .skb-find-current').forEach(el => {
+                const parent = el.parentNode;
+                parent.replaceChild(document.createTextNode(el.textContent), el);
+                parent.normalize();
+            });
+            _findMatches = [];
+            _findIdx = -1;
+        }
+
+        function _findRebuild(query) {
+            // Full rebuild: walk, wrap all matches, then collect <mark> elements
+            _findClearMarks();
+            if (!query) return;
+
+            function wrapMatches(root, q) {
+                const lq = q.toLowerCase();
+                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+                const nodes = [];
+                let n;
+                while ((n = walker.nextNode())) nodes.push(n);
+                for (const tn of nodes) {
+                    const text = tn.nodeValue;
+                    const lt = text.toLowerCase();
+                    if (lt.indexOf(lq) === -1) continue;
+                    const frag = document.createDocumentFragment();
+                    let pos = 0;
+                    while (true) {
+                        const idx = lt.indexOf(lq, pos);
+                        if (idx === -1) { frag.appendChild(document.createTextNode(text.slice(pos))); break; }
+                        if (idx > pos) frag.appendChild(document.createTextNode(text.slice(pos, idx)));
+                        const span = document.createElement('mark');
+                        span.className = 'skb-find-match';
+                        span.textContent = text.slice(idx, idx + q.length);
+                        frag.appendChild(span);
+                        pos = idx + q.length;
+                    }
+                    tn.parentNode.replaceChild(frag, tn);
+                }
+            }
+
+            wrapMatches(contentDiv, query);
+            _findMatches = Array.from(contentDiv.querySelectorAll('.skb-find-match'));
+        }
+
+        function _findScrollToCurrent() {
+            if (_findIdx < 0 || _findIdx >= _findMatches.length) return;
+            const mark = _findMatches[_findIdx];
+            const markRect = mark.getBoundingClientRect();
+            const contRect = contentDiv.getBoundingClientRect();
+            const markTop = markRect.top - contRect.top + contentDiv.scrollTop;
+            const markBot = markRect.bottom - contRect.top + contentDiv.scrollTop;
+            const visTop = contentDiv.scrollTop;
+            const visBot = contentDiv.scrollTop + contentDiv.clientHeight;
+            if (markTop < visTop || markBot > visBot) {
+                // Center the match vertically in the content area
+                contentDiv.scrollTop = markTop - (contentDiv.clientHeight / 2) + (markRect.height / 2);
+            }
+        }
+
+        function _findHighlightCurrent() {
+            _findMatches.forEach((m, i) => {
+                m.className = i === _findIdx ? 'skb-find-current' : 'skb-find-match';
+            });
+            _findScrollToCurrent();
+        }
+
+        function findInPage(reverse) {
+            const sel = window.getSelection();
+            const selText = sel ? sel.toString().trim() : '';
+            if (selText && selText !== _findQuery) {
+                _findQuery = selText;
+                _findRebuild(_findQuery);
+                if (_findMatches.length === 0) return;
+                _findIdx = 0;
+                _findHighlightCurrent();
+                return;
+            }
+            if (!_findQuery || _findMatches.length === 0) return;
+            if (reverse) {
+                _findIdx = (_findIdx <= 0) ? _findMatches.length - 1 : _findIdx - 1;
+            } else {
+                _findIdx = (_findIdx >= _findMatches.length - 1) ? 0 : _findIdx + 1;
+            }
+            _findHighlightCurrent();
+        }
+
+        function findClear() {
+            _findQuery = '';
+            _findClearMarks();
+        }
+
         async function loadFunction(index, langId, addToHistory = false, scrollPos = null) {
             if (isLoading) return;
             if (index < 0 || index >= totalFunctions) return;
 
+            findClear();
             isLoading = true;
             updateStatus('Loading function...');
 
@@ -2552,7 +2663,15 @@
                     return;
                 }
 
-                if (e.key === 'ArrowLeft') {
+                if (e.key === 'F3') {
+                    e.preventDefault();
+                    findInPage(e.shiftKey);
+                } else if (e.key === 'Escape') {
+                    if (_findQuery) {
+                        e.preventDefault();
+                        findClear();
+                    }
+                } else if (e.key === 'ArrowLeft') {
                     e.preventDefault();
                     const prevIdx = getFilteredPrev(currentIndex);
                     if (prevIdx !== -1) {

@@ -957,7 +957,20 @@ html, body {
 }
 .sfr-author-cell { display: inline-flex; align-items: center; vertical-align: middle; }
 .sfr-author-avatar-wrap { flex-shrink: 0; width: 18px; height: 18px; margin-right: 6px; display: flex; align-items: center; }
+.sfr-author-cell { cursor: pointer; }
 .sfr-author-avatar { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; display: block; }
+.sfr-avatar-preview {
+    position: fixed;
+    z-index: 9999;
+    display: none;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 2px solid rgba(128,128,128,0.4);
+    object-fit: cover;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+    pointer-events: none;
+}
 
 /* Spacer between table and chrome — pushes chrome to the bottom */
 .sfr-board-spacer {

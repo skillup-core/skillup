@@ -847,7 +847,8 @@ function _findConfirm() {
 // BOARD COMPONENT
 // ================================================================
 let _boardFields = [];
-const _avatarCache = {};  // user_id → data_uri | null | 'loading'
+const _avatarCache = {};      // user_id → data_uri | null | 'loading'
+const _avatarCacheFull = {};  // user_id → data_uri | null | 'loading'
 let _infoFields = [];
 let _commentLayouts = []; // { fieldDef, wrapEl, gridRowH, formEl, allFieldEls, observer }
 
@@ -1316,6 +1317,102 @@ document.addEventListener('mouseout', function(e) {
     }
 }, true);
 
+// Avatar hover preview
+// The runner executes inside an iframe; position:fixed is relative to the iframe
+// viewport, not the parent window. Attach the overlay to window.parent.document.body
+// so it can appear outside the iframe boundaries.
+const _avatarPreviewDoc = (function() {
+    try { return (window.parent && window.parent !== window) ? window.parent.document : document; } catch(e) { return document; }
+})();
+const _avatarPreviewEl = _avatarPreviewDoc.createElement('img');
+_avatarPreviewEl.className = 'sfr-avatar-preview';
+_avatarPreviewEl.alt = '';
+_avatarPreviewEl.setAttribute('aria-hidden', 'true');
+(function() {
+    if (_avatarPreviewDoc !== document && !_avatarPreviewDoc.getElementById('sfr-avatar-preview-style')) {
+        const st = _avatarPreviewDoc.createElement('style');
+        st.id = 'sfr-avatar-preview-style';
+        st.textContent = '.sfr-avatar-preview{'
+            + 'position:fixed;z-index:99999;display:none;'
+            + 'width:48px;height:48px;border-radius:50%;'
+            + 'border:2px solid rgba(128,128,128,0.4);'
+            + 'object-fit:cover;box-shadow:0 4px 12px rgba(0,0,0,0.35);'
+            + 'pointer-events:none;}';
+        _avatarPreviewDoc.head.appendChild(st);
+    }
+})();
+_avatarPreviewDoc.body.appendChild(_avatarPreviewEl);
+let _avatarPreviewTimer = null;
+
+function _showAvatarPreview(wrap, uid) {
+    const PREVIEW_SIZE = 48;
+    const OFFSET = 8;
+
+    function positionAndShow(src) {
+        if (!src) return;
+        _avatarPreviewEl.src = src;
+        _avatarPreviewEl.style.display = 'block';
+        // Convert wrap coords from iframe-local to parent viewport coords.
+        const r = wrap.getBoundingClientRect();
+        const avatarWrapEl = wrap.querySelector('.sfr-author-avatar-wrap');
+        const ra = avatarWrapEl ? avatarWrapEl.getBoundingClientRect() : r;
+        let iframeOffsetX = 0, iframeOffsetY = 0;
+        try {
+            const fe = window.frameElement;
+            if (fe) {
+                const ir = fe.getBoundingClientRect();
+                iframeOffsetX = ir.left;
+                iframeOffsetY = ir.top;
+            }
+        } catch(e) {}
+        const absLeft = r.left + iframeOffsetX;
+        const absTop  = r.top  + iframeOffsetY;
+        const absBottom = r.bottom + iframeOffsetY;
+        const avatarCenterX = ra.left + ra.width / 2 + iframeOffsetX;
+        const vw = (_avatarPreviewDoc.documentElement || {}).clientWidth || window.innerWidth;
+        let left = avatarCenterX - PREVIEW_SIZE / 2;
+        let top  = absTop - PREVIEW_SIZE - OFFSET;
+        if (left < 4) left = 4;
+        if (left + PREVIEW_SIZE > vw - 4) left = vw - 4 - PREVIEW_SIZE;
+        if (top < 4) top = absBottom + OFFSET;
+        _avatarPreviewEl.style.left = left + 'px';
+        _avatarPreviewEl.style.top  = top  + 'px';
+    }
+
+    if (_avatarCacheFull[uid] !== undefined) {
+        if (_avatarCacheFull[uid] !== 'loading') positionAndShow(_avatarCacheFull[uid]);
+        return;
+    }
+    _avatarCacheFull[uid] = 'loading';
+    callPython('get_account_photo', { user_id: uid, size: 'full' }).then(r => {
+        const uri = (r && r.data_uri) || _avatarCache[uid] || null;
+        _avatarCacheFull[uid] = uri;
+        positionAndShow(uri);
+    }).catch(() => {
+        const fallback = _avatarCache[uid] || null;
+        _avatarCacheFull[uid] = fallback;
+        positionAndShow(fallback);
+    });
+}
+
+document.addEventListener('mouseover', function(e) {
+    const cell = e.target.closest('.sfr-author-cell');
+    if (!cell) return;
+    const uid = cell.dataset.uid;
+    if (!uid) return;
+    clearTimeout(_avatarPreviewTimer);
+    _avatarPreviewTimer = setTimeout(() => _showAvatarPreview(cell, uid), 250);
+}, true);
+
+document.addEventListener('mouseout', function(e) {
+    const cell = e.target.closest('.sfr-author-cell');
+    if (!cell) return;
+    if (!cell.contains(e.relatedTarget)) {
+        clearTimeout(_avatarPreviewTimer);
+        _avatarPreviewEl.style.display = 'none';
+    }
+}, true);
+
 function _buildPager(entry, currentPage, totalPages) {
     const pager = document.createElement('div');
     pager.className = 'sfr-board-pager';
@@ -1399,6 +1496,10 @@ function _applyDetailButtonState(isMine, flags) {
 let _currentBoardPermission = null;
 
 async function _boardNavToDetail(rid, fieldDef) {
+    clearTimeout(_avatarPreviewTimer);
+    _avatarPreviewEl.style.display = 'none';
+    _sfrTipEl.style.display = 'none';
+
     const detailPath = fieldDef.detailFormPath || '';
     if (!detailPath) return;
 

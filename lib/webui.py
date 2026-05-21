@@ -147,6 +147,7 @@ class WebUIEngine:
         self.bridge = None  # QWebChannel bridge
         self._lock = threading.Lock()
         self._status = {}
+        self._qt_ready_callbacks = []
 
     def register_handler(self, handler_name: str, handler: Callable):
         """
@@ -216,6 +217,43 @@ class WebUIEngine:
         with self._lock:
             self._status['pending_messages'] = self._status.get('pending_messages', [])
             self._status['pending_messages'].append({'action': action, 'data': data})
+
+    def broadcast_callJS(self, action: str, data: Dict[str, Any]):
+        """
+        Call a JS function in ALL windows: main desktop window and every popup/detach window.
+        Use this instead of callJS() when the function must appear in the desktop window scope
+        regardless of whether popup windows are open.
+        """
+        import json
+        args_json = json.dumps(json.dumps(data))
+        js = (f"(function(){{var _fn='{action}',_args=JSON.parse({args_json});"
+              f"if(typeof window[_fn]==='function'){{window[_fn](_args);}}"
+              f"else{{console.warn('[callJS] no target for:',_fn);}}"
+              f"}})()")
+
+        if not self.bridge:
+            return
+
+        # Send to main desktop window via bridge signal
+        try:
+            self.bridge.callJS.emit(action, json.dumps(data))
+        except Exception:
+            pass
+
+        # Also send to all popup/detach windows
+        popup_windows = getattr(self, '_popup_windows', {})
+        for url_key in list(popup_windows):
+            try:
+                self.bridge.runJSInPopup.emit(url_key, js)
+            except Exception:
+                pass
+
+        detached_pages = getattr(self, '_detached_pages', {})
+        for uk in list(detached_pages.keys()):
+            try:
+                self.bridge.runJSInPopup.emit(uk, js)
+            except Exception:
+                pass
 
     def get_config(self, key: str, default=None):
         """Get configuration value"""
@@ -523,9 +561,21 @@ class WebUIEngine:
             focusWindow = Signal(str)  # (url_prefix) - focus existing popup window
             detachToNewWindow = Signal(str, str, str, str)  # (url_key, title, desktop_url, app_id)
             runJSInPopup = Signal(str, str)  # (url_key, js_code) - run JS in a popup window page
+            quitApp = Signal()  # quit Qt app from non-main thread
 
             def __init__(self):
                 super().__init__()
+
+            @Slot()
+            def _do_quit(self):
+                """Quit the Qt application. Called on the main thread via invokeMethod."""
+                try:
+                    from PySide2.QtWidgets import QApplication as _QApp  # type: ignore
+                except ImportError:
+                    from PySide6.QtWidgets import QApplication as _QApp  # type: ignore
+                app = _QApp.instance()
+                if app:
+                    app.quit()
 
             @Slot(str, str, result=str)
             def callPython(self, action, json_data):
@@ -671,6 +721,30 @@ class WebUIEngine:
             def contextMenuEvent(self, event):
                 pass
 
+            def keyPressEvent(self, event):
+                # Intercept F3 / Shift+F3 before Chromium's native find-next
+                # consumes them, and re-dispatch as a keydown event into JS.
+                try:
+                    from PySide2.QtCore import Qt as _Qt  # type: ignore
+                except ImportError:
+                    from PySide6.QtCore import Qt as _Qt  # type: ignore
+                if event.key() == _Qt.Key_F3:
+                    shift = bool(event.modifiers() & _Qt.ShiftModifier)
+                    js = (
+                        "(function(){{"
+                        "var e=new KeyboardEvent('keydown',{{key:'F3',bubbles:true,cancelable:true,shiftKey:{shift}}});"
+                        "document.dispatchEvent(e);"
+                        "var frames=document.querySelectorAll('iframe');"
+                        "for(var i=0;i<frames.length;i++){{"
+                        "try{{frames[i].contentDocument.dispatchEvent(new KeyboardEvent('keydown',{{key:'F3',bubbles:true,cancelable:true,shiftKey:{shift}}}));}}catch(ex){{}}"
+                        "}}"
+                        "}})();"
+                    ).format(shift='true' if shift else 'false')
+                    self.page().runJavaScript(js)
+                    event.accept()
+                    return
+                super().keyPressEvent(event)
+
             def focusInEvent(self, event):
                 super().focusInEvent(event)
                 # Reset IM context on focus-in to restore Korean input
@@ -767,6 +841,12 @@ class WebUIEngine:
 
 
         self.qt_app = QApplication(sys.argv)
+
+        for _cb in self._qt_ready_callbacks:
+            try:
+                _cb(self.qt_app)
+            except Exception as _e:
+                log("warn", message=f"qt_ready_callback error: {_e}", tag="qt")
 
         # ibus 1.5.3 workaround: GTK apps steal ibus input context from Qt.
         # On focus loss with Korean active, restart ibus immediately.
@@ -1040,6 +1120,7 @@ class WebUIEngine:
             self.bridge.focusWindow.connect(_do_focus_window)
             self.bridge.detachToNewWindow.connect(_do_detach_to_new_window)
             self.bridge.runJSInPopup.connect(_do_run_js_in_popup)
+            self.bridge.quitApp.connect(self.qt_app.quit)
 
         if url is None:
             url = f"http://localhost:{self.port}/"

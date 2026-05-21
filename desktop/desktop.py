@@ -723,9 +723,101 @@ class DesktopManager:
         # App start timestamps for usage tracking: {app_id: monotonic time}
         self._app_start_times: Dict[str, float] = {}
 
+        # Build update detection: snapshot of (version, build, date) at startup
+        self._startup_build_info: Optional[tuple] = self._read_build_info()
+        self._update_detected: bool = False
+
         self._discover_apps()
         self._load_settings()
         self._setup_handlers()
+
+    def _read_build_info(self) -> Optional[tuple]:
+        """Read (version, build, date) from buildinfo.ini. Returns None on failure."""
+        try:
+            script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            buildinfo_path = os.path.join(script_dir, 'buildinfo.ini')
+            cfg = configparser.ConfigParser()
+            cfg.read(buildinfo_path, encoding='utf-8')
+            return (
+                cfg.get('buildinfo', 'version', fallback=''),
+                cfg.get('buildinfo', 'build', fallback=''),
+                cfg.get('buildinfo', 'date', fallback=''),
+            )
+        except Exception:
+            return None
+
+    def _check_build_update(self):
+        """Poll buildinfo.ini; if changed, notify all windows and subprocesses."""
+        if self._update_detected:
+            return
+        current = self._read_build_info()
+        if current is None or self._startup_build_info is None:
+            return
+        if current == self._startup_build_info:
+            return
+
+        self._update_detected = True
+        log("info", message="Build update detected, notifying all windows", tag="desktop")
+
+        # Notify main desktop window via bridge signal
+        if self.engine.bridge:
+            try:
+                self.engine.bridge.callJS.emit('showUpdateOverlay', '{}')
+            except Exception:
+                pass
+
+        # Inject overlay directly into popup/detach windows (they have no showUpdateOverlay)
+        _inject_js = (
+            "(function(){"
+            "if(document.getElementById('_su_update_overlay'))return;"
+            "var d=document.createElement('div');"
+            "d.id='_su_update_overlay';"
+            "d.style='position:fixed;top:0;left:0;width:100%;height:100%;"
+            "background:rgba(0,0,0,0.75);z-index:2147483647;"
+            "display:flex;align-items:center;justify-content:center;"
+            "pointer-events:all;font-family:sans-serif;';"
+            "d.innerHTML='<div style=\"background:#20242b;border:1px solid #373c47;"
+            "border-radius:12px;padding:32px 36px;min-width:320px;max-width:440px;"
+            "text-align:center;box-shadow:0 8px 40px rgba(0,0,0,0.5);\">"
+            "<div style=\"font-size:32px;margin-bottom:16px;\">&#x21BA;</div>"
+            "<div style=\"font-size:15px;font-weight:600;color:#eceef2;margin-bottom:10px;\">"
+            "업데이트 감지 / Update Available</div>"
+            "<div style=\"font-size:13px;color:#a0a0b0;margin-bottom:6px;\">"
+            "Skillup이 업데이트되었습니다. 메인 창에서 재시작하세요.</div>"
+            "<div style=\"font-size:12px;color:#e07b39;\">"
+            "작업 중인 내용이 손상될 수 있습니다.</div>"
+            "</div>';"
+            "document.body.appendChild(d);"
+            "})()"
+        )
+        if self.engine.bridge:
+            popup_windows = getattr(self.engine, '_popup_windows', {})
+            for url_key in list(popup_windows):
+                try:
+                    self.engine.bridge.runJSInPopup.emit(url_key, _inject_js)
+                except Exception:
+                    pass
+            detached_pages = getattr(self.engine, '_detached_pages', {})
+            for uk in list(detached_pages.keys()):
+                try:
+                    self.engine.bridge.runJSInPopup.emit(uk, _inject_js)
+                except Exception:
+                    pass
+
+        # Notify subprocess apps via JSON-RPC notification (fire-and-forget)
+        for app_id, process in list(self.app_processes.items()):
+            if process.poll() is not None:
+                continue
+            try:
+                notification = json.dumps({
+                    'jsonrpc': '2.0',
+                    'method': 'show_update_overlay',
+                    'params': {}
+                }) + '\n'
+                process.stdin.write(notification)
+                process.stdin.flush()
+            except Exception as e:
+                log("warn", message=f"Failed to notify subprocess {app_id} of update: {e}", tag="desktop")
 
     def _discover_apps(self):
         """Discover all apps in the app directory"""
@@ -2005,6 +2097,62 @@ class DesktopManager:
         except Exception as _e:
             log("warn", message=f"Suggest board unavailable: {_e}", tag="desktop")
 
+        def handle_restart_after_update(data):
+            """Restart skillup via a detached shell script that waits for this process to exit."""
+            import tempfile, stat
+            parent_pid = os.getpid()
+            python_exe = sys.executable
+
+            skillup_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+            executor = os.path.abspath(os.path.join(skillup_root, '..', 'skillup-tool', 'skillup-executor.sh'))
+
+            if os.path.isfile(executor):
+                launch_cmd = f'bash {executor} --desktop'
+            else:
+                skillup_py = os.path.join(skillup_root, 'skillup.py')
+                launch_cmd = f'"{python_exe}" "{skillup_py}" --desktop'
+
+            script = (
+                '#!/bin/bash\n'
+                f'while kill -0 {parent_pid} 2>/dev/null; do sleep 0.3; done\n'
+                f'{launch_cmd}\n'
+            )
+
+            try:
+                fd, script_path = tempfile.mkstemp(prefix='skillup_restart_', suffix='.sh')
+                try:
+                    with os.fdopen(fd, 'w') as f:
+                        f.write(script)
+                    os.chmod(script_path, stat.S_IRWXU)
+                    subprocess.Popen(
+                        ['bash', script_path],
+                        start_new_session=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                except Exception:
+                    os.unlink(script_path)
+                    raise
+            except Exception as e:
+                log("warn", message=f"Failed to write restart script: {e}", tag="desktop")
+                return {'success': False}
+
+            # Quit Qt on the main thread via QMetaObject.invokeMethod (thread-safe)
+            bridge = self.engine.bridge
+            if bridge:
+                try:
+                    try:
+                        from PySide2.QtCore import QMetaObject, Qt as _Qt  # type: ignore
+                    except ImportError:
+                        from PySide6.QtCore import QMetaObject, Qt as _Qt  # type: ignore
+                    QMetaObject.invokeMethod(bridge, '_do_quit', _Qt.QueuedConnection)
+                except Exception as e:
+                    log("warn", message=f"invokeMethod failed: {e}", tag="desktop")
+                    bridge.quitApp.emit()
+            return {'success': True}
+
+        self.engine.register_handler('restart_after_update', handle_restart_after_update)
+
     def _register_app_handlers_to_engine(self, app_instance):
         """
         Register an in-process app's handlers directly into the engine's
@@ -2199,6 +2347,22 @@ class DesktopManager:
                 log("info", message=f"Auto-launching app: {auto_launch_app_id}")
                 if app_extra_args:
                     self._auto_launch_extra_args[auto_launch_app_id] = app_extra_args
+
+        # Register QTimer for build update polling (60s interval)
+        def _setup_update_timer(qt_app):
+            try:
+                try:
+                    from PySide2.QtCore import QTimer  # type: ignore
+                except ImportError:
+                    from PySide6.QtCore import QTimer  # type: ignore
+                timer = QTimer()
+                timer.timeout.connect(self._check_build_update)
+                timer.start(60000)
+                self._update_timer = timer
+            except Exception as e:
+                log("warn", message=f"Failed to start update timer: {e}", tag="desktop")
+
+        self.engine._qt_ready_callbacks.append(_setup_update_timer)
 
         # Run Qt
         try:

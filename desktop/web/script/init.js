@@ -47,3 +47,19 @@ async function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+function showUpdateOverlay() {
+    var lang = window.currentLanguage || 'en';
+    var t = (i18n[lang] || i18n['en']);
+    var overlay = document.getElementById('update-overlay');
+    if (!overlay) return;
+    document.getElementById('update-overlay-title').textContent = t['update.title'] || 'Update Available';
+    document.getElementById('update-overlay-message').textContent = t['update.message'] || 'Skillup has been updated. Please restart.';
+    document.getElementById('update-overlay-warning').textContent = t['update.warning'] || 'Unsaved work may be lost.';
+    document.getElementById('update-overlay-btn').textContent = t['update.restart'] || 'Restart';
+    overlay.style.display = 'flex';
+}
+
+function onUpdateRestartClick() {
+    apiCall('restart_after_update', {});
+}
