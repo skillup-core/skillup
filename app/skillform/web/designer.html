@@ -943,6 +943,7 @@ function renderProps() {
     }
     if (f.type === 'textarea') {
         html += propText('rows', t('props.textarea_rows'), f.rows !== undefined ? String(f.rows) : '3');
+        html += propCheck('markdown', t('props.textarea_markdown'), f.markdown !== false);
     }
     if (f.type === 'label') {
         html += `<div class="sfd-prop-row">
@@ -2590,6 +2591,7 @@ const I18N = {
         'props.sep_align': 'Align',
         'props.sep_align.center': 'Center', 'props.sep_align.edge': 'Edge',
         'props.textarea_rows': 'Rows',
+        'props.textarea_markdown': 'Markdown',
         'props.label_size': 'Size',
         'props.grid_col': 'Col', 'props.grid_row': 'Row',
         'props.grid_w': 'W (cols)', 'props.grid_h': 'H (rows)',
@@ -2677,6 +2679,7 @@ const I18N = {
         'props.sep_align': '정렬',
         'props.sep_align.center': '가운데', 'props.sep_align.edge': '끝',
         'props.textarea_rows': '행 수',
+        'props.textarea_markdown': '마크다운',
         'props.label_size': '크기',
         'props.grid_col': '열', 'props.grid_row': '행',
         'props.grid_w': '너비 (열)', 'props.grid_h': '높이 (행)',

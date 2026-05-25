@@ -17,6 +17,62 @@
     <script>
         // Handler for callJS from Python backend
         // Must be defined early so common.js can call it
+        window.onSkilltalkAlert = function(data) {
+            try {
+                if (window.DesktopAlert) {
+                    var roomId = data.chatroom_id;
+                    var msg = data.message || ('New message in chat room ' + roomId);
+                    DesktopAlert.add({
+                        app_id: 'skilltalk',
+                        chatroom_id: roomId,
+                        message: msg,
+                        onClick: function() { _openSkilltalkRoom(roomId); }
+                    });
+                }
+            } catch (e) {
+                console.warn('[Desktop] onSkilltalkAlert error:', e);
+            }
+        };
+
+        // Open skilltalk app and navigate to a specific chatroom.
+        window._openSkilltalkRoom = function(roomId) {
+            var stApp = window.apps && window.apps.find(function(a) { return a.id_name === 'skilltalk'; });
+            if (!stApp) return;
+            var appId = stApp.id;
+
+            function _postOpenRoom() {
+                var iframes = document.querySelectorAll('#app-content iframe[data-app-id="' + appId + '"]');
+                iframes.forEach(function(f) {
+                    if (f.contentWindow) {
+                        f.contentWindow.postMessage({action: 'openRoom', chatroom_id: roomId}, '*');
+                    }
+                });
+            }
+
+            if (typeof launchApp !== 'function') return;
+
+            // If iframe already exists (app was running), post immediately after launch resolves
+            var alreadyLoaded = !!document.querySelector('#app-content iframe[data-app-id="' + appId + '"]');
+            launchApp(appId).then(function() {
+                if (alreadyLoaded) {
+                    _postOpenRoom();
+                } else {
+                    // Wait for iframe onload — poll until it exists and is loaded
+                    var attempts = 0;
+                    var poll = setInterval(function() {
+                        var f = document.querySelector('#app-content iframe[data-app-id="' + appId + '"]');
+                        if (f && f.contentDocument && f.contentDocument.readyState === 'complete') {
+                            clearInterval(poll);
+                            _postOpenRoom();
+                        } else if (++attempts > 40) {
+                            clearInterval(poll);
+                            _postOpenRoom();
+                        }
+                    }, 150);
+                }
+            });
+        };
+
         window.onVerifierStateUpdate = function(status) {
             try {
                 // Forward to ALL skillverifier iframes via postMessage
@@ -171,8 +227,10 @@
                         </svg>
                     </button>
                     <span class="clock" id="clock">00:00:00</span>
-                    <div id="topbar-avatar" style="width:30px;height:30px;border-radius:50%;overflow:hidden;background:var(--bg-tertiary);display:flex;align-items:center;justify-content:center;margin-left:12px;flex-shrink:0;cursor:default;">
-                        <img id="topbar-avatar-img" src="/common/resource/img/default-avatar.svg" alt="me" style="width:100%;height:100%;object-fit:cover;">
+                    <div id="topbar-avatar" style="position:relative;width:30px;height:30px;margin-left:12px;flex-shrink:0;cursor:default;">
+                        <div style="width:30px;height:30px;border-radius:50%;overflow:hidden;background:var(--bg-tertiary);display:flex;align-items:center;justify-content:center;">
+                            <img id="topbar-avatar-img" src="/common/resource/img/default-avatar.svg" alt="me" style="width:100%;height:100%;object-fit:cover;">
+                        </div>
                     </div>
                 </div>
             </header>
@@ -482,6 +540,7 @@
     <script src="/desktop-web-script/toast.js"></script>
     <script src="/desktop-web-script/dialogs.js"></script>
     <script src="/desktop-web-script/modal.js"></script>
+    <script src="/desktop-web-script/desktop-alert.js"></script>
     <script src="/desktop-web-script/init.js"></script>
 </body>
 </html>

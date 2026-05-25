@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="12" fill="#1d4ed8"/>
+  <!-- 왼쪽 말풍선 (뒤) -->
+  <path d="M7 36 Q7 32 11 32 L31 32 Q35 32 35 36 L35 46 Q35 50 31 50 L18 50 L12 55 L12 50 L11 50 Q7 50 7 46 Z" fill="#fff" opacity="0.95"/>
+  <!-- 오른쪽 말풍선 (앞, 위) -->
+  <path d="M27 14 Q27 10 31 10 L53 10 Q57 10 57 14 L57 24 Q57 28 53 28 L52 28 L52 33 L46 28 L31 28 Q27 28 27 24 Z" fill="#93c5fd"/>
+</svg>

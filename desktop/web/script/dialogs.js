@@ -72,11 +72,17 @@ window.showConfirmBox = function(args) {
 
 // showConfirmDialog: reusable JS confirm dialog, returns Promise<bool>
 // options.yesStyle: 'danger' for red yes button
+// options.yesLabel: override yes button text (restored to default on close)
 window.showConfirmDialog = function(title, text, options) {
     return new Promise(function(resolve) {
         document.getElementById('confirm-dialog-title').textContent = title;
         document.getElementById('confirm-dialog-text').textContent = text;
         var yesBtn = document.getElementById('confirm-dialog-yes');
+        var _origYesLabel = yesBtn.getAttribute('data-i18n-default') || yesBtn.textContent;
+        if (!yesBtn.getAttribute('data-i18n-default')) {
+            yesBtn.setAttribute('data-i18n-default', yesBtn.textContent);
+        }
+        yesBtn.textContent = (options && options.yesLabel) ? options.yesLabel : _origYesLabel;
         yesBtn.classList.remove('btn-primary', 'btn-danger');
         yesBtn.classList.add((options && options.yesStyle === 'danger') ? 'btn-danger' : 'btn-primary');
         var dialog = document.getElementById('confirm-dialog');

@@ -963,8 +963,8 @@ html, body {
     position: fixed;
     z-index: 9999;
     display: none;
-    width: 48px;
-    height: 48px;
+    width: 64px;
+    height: 64px;
     border-radius: 50%;
     border: 2px solid rgba(128,128,128,0.4);
     object-fit: cover;

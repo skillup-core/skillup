@@ -191,7 +191,7 @@ function renderForm(schema) {
             el.style.top    = (f.row * gridRowH + MARGIN) + 'px';
             el.style.height = '0px';  // starts at 0; _applyCommentLayout sets real height
             el.style.padding = '0';
-        } else if (f.type === 'textarea' && f.markdown && !f.readonly) {
+        } else if (f.type === 'textarea' && f.markdown !== false && !f.readonly) {
             el.style.left   = (f.col * cellW   + MARGIN) + 'px';
             el.style.width  = (f.w   * cellW) + 'px';
             el.style.top    = (f.row * gridRowH + MARGIN) + 'px';
@@ -225,7 +225,7 @@ function renderForm(schema) {
     });
 
     // Initialize markdown textarea layout (content-driven height like comment)
-    fields.filter(f => f.type === 'textarea' && f.markdown).forEach(f => {
+    fields.filter(f => f.type === 'textarea' && f.markdown !== false).forEach(f => {
         const wrapEl = formEl.querySelector('#sfr-' + f.id);
         if (!wrapEl) return;
         const fieldEl = wrapEl.closest('.sfr-field');
@@ -403,7 +403,7 @@ function buildFieldWidget(f, rowH) {
         }
 
         case 'textarea':
-            if (f.markdown && f.readonly) {
+            if (f.markdown !== false && f.readonly) {
                 // Readonly markdown: render as preview-only div, no edit controls.
                 const roMdWrap = document.createElement('div');
                 roMdWrap.className = 'sfr-md-wrap';
@@ -432,7 +432,7 @@ function buildFieldWidget(f, rowH) {
                 wrap.appendChild(roMdWrap);
                 return wrap;
             }
-            if (f.markdown && !f.readonly) {
+            if (f.markdown !== false && !f.readonly) {
                 const mdWrap = document.createElement('div');
                 mdWrap.className = 'sfr-md-wrap';
 
@@ -487,7 +487,7 @@ function buildFieldWidget(f, rowH) {
                         mdEditBtn.style.display = 'none';
                         return;
                     }
-                    mdPreview.innerHTML     = _cmtRenderMd(val);
+                    mdPreview.innerHTML     = _cmtRenderMd(_imgExpand(val));
                     mdTa.style.display      = 'none';
                     mdPreview.style.display = '';
                     mdEditBtn.style.display = '';
@@ -497,10 +497,65 @@ function buildFieldWidget(f, rowH) {
                     _switchToView();
                 };
 
-                mdTa.addEventListener('input', () => { formValues[f.id] = mdTa.value; });
+                // imgMap: token -> dataUrl  (session-only; tokens are expanded on submit/render)
+                const imgMap = {};
+                let imgSeq = 0;
+
+                function _imgExpand(text) {
+                    return text.replace(/!\[([^\]]*)\]\(image:(\d+)\)/g, (_, alt, id) => {
+                        const data = imgMap[id];
+                        return data ? '![' + alt + '](' + data + ')' : '![' + alt + '](image:' + id + ')';
+                    });
+                }
+
+                function _imgTokenize(text) {
+                    return text.replace(/!\[([^\]]*)\]\((data:image\/[^)]+)\)/g, (_, alt, data) => {
+                        const id = ++imgSeq;
+                        imgMap[id] = data;
+                        return '![' + alt + '](image:' + id + ')';
+                    });
+                }
+
+                function _syncFormValue() {
+                    formValues[f.id] = _imgExpand(mdTa.value);
+                }
+
+                mdTa.addEventListener('input', () => { _syncFormValue(); });
                 mdTa.addEventListener('blur',  () => { _switchToView(); });
                 mdEditBtn.addEventListener('click', () => { _switchToEdit(); });
 
+                mdTa.addEventListener('paste', (e) => {
+                    const items = e.clipboardData && e.clipboardData.items;
+                    if (!items) return;
+                    for (let i = 0; i < items.length; i++) {
+                        if (!items[i].type.startsWith('image/')) continue;
+                        e.preventDefault();
+                        const file = items[i].getAsFile();
+                        const img = new Image();
+                        const url = URL.createObjectURL(file);
+                        img.onload = () => {
+                            URL.revokeObjectURL(url);
+                            const canvas = document.createElement('canvas');
+                            canvas.width  = img.naturalWidth;
+                            canvas.height = img.naturalHeight;
+                            canvas.getContext('2d').drawImage(img, 0, 0);
+                            const dataUrl = canvas.toDataURL('image/webp', 0.85);
+                            const id = ++imgSeq;
+                            imgMap[id] = dataUrl;
+                            const token = '![](image:' + id + ')';
+                            const start = mdTa.selectionStart;
+                            const end   = mdTa.selectionEnd;
+                            mdTa.value = mdTa.value.slice(0, start) + token + mdTa.value.slice(end);
+                            mdTa.selectionStart = mdTa.selectionEnd = start + token.length;
+                            _syncFormValue();
+                        };
+                        img.src = url;
+                        break;
+                    }
+                });
+
+                const _initVal = _imgTokenize(f.default || '');
+                mdTa.value = _initVal;
                 formValues[f.id] = f.default || '';
 
                 mdWrap.appendChild(mdPreview);
@@ -1334,7 +1389,7 @@ _avatarPreviewEl.setAttribute('aria-hidden', 'true');
         st.id = 'sfr-avatar-preview-style';
         st.textContent = '.sfr-avatar-preview{'
             + 'position:fixed;z-index:99999;display:none;'
-            + 'width:48px;height:48px;border-radius:50%;'
+            + 'width:64px;height:64px;border-radius:50%;'
             + 'border:2px solid rgba(128,128,128,0.4);'
             + 'object-fit:cover;box-shadow:0 4px 12px rgba(0,0,0,0.35);'
             + 'pointer-events:none;}';
@@ -1345,17 +1400,15 @@ _avatarPreviewDoc.body.appendChild(_avatarPreviewEl);
 let _avatarPreviewTimer = null;
 
 function _showAvatarPreview(wrap, uid) {
-    const PREVIEW_SIZE = 48;
-    const OFFSET = 8;
+    const PREVIEW_SIZE = 64;
 
     function positionAndShow(src) {
         if (!src) return;
         _avatarPreviewEl.src = src;
         _avatarPreviewEl.style.display = 'block';
         // Convert wrap coords from iframe-local to parent viewport coords.
-        const r = wrap.getBoundingClientRect();
         const avatarWrapEl = wrap.querySelector('.sfr-author-avatar-wrap');
-        const ra = avatarWrapEl ? avatarWrapEl.getBoundingClientRect() : r;
+        const ra = (avatarWrapEl || wrap).getBoundingClientRect();
         let iframeOffsetX = 0, iframeOffsetY = 0;
         try {
             const fe = window.frameElement;
@@ -1365,16 +1418,16 @@ function _showAvatarPreview(wrap, uid) {
                 iframeOffsetY = ir.top;
             }
         } catch(e) {}
-        const absLeft = r.left + iframeOffsetX;
-        const absTop  = r.top  + iframeOffsetY;
-        const absBottom = r.bottom + iframeOffsetY;
-        const avatarCenterX = ra.left + ra.width / 2 + iframeOffsetX;
-        const vw = (_avatarPreviewDoc.documentElement || {}).clientWidth || window.innerWidth;
+        const avatarCenterX = ra.left + ra.width  / 2 + iframeOffsetX;
+        const avatarCenterY = ra.top  + ra.height / 2 + iframeOffsetY;
+        const vw = (_avatarPreviewDoc.documentElement || {}).clientWidth  || window.innerWidth;
+        const vh = (_avatarPreviewDoc.documentElement || {}).clientHeight || window.innerHeight;
         let left = avatarCenterX - PREVIEW_SIZE / 2;
-        let top  = absTop - PREVIEW_SIZE - OFFSET;
+        let top  = avatarCenterY - PREVIEW_SIZE / 2;
         if (left < 4) left = 4;
         if (left + PREVIEW_SIZE > vw - 4) left = vw - 4 - PREVIEW_SIZE;
-        if (top < 4) top = absBottom + OFFSET;
+        if (top  < 4) top  = 4;
+        if (top  + PREVIEW_SIZE > vh - 4) top  = vh - 4 - PREVIEW_SIZE;
         _avatarPreviewEl.style.left = left + 'px';
         _avatarPreviewEl.style.top  = top  + 'px';
     }
@@ -1967,7 +2020,7 @@ function _applyCommentLayout(layout) {
     const fieldEl = wrapEl.closest('.sfr-field');
     if (!fieldEl) return;
 
-    const isMdField = f.type === 'textarea' && f.markdown;
+    const isMdField = f.type === 'textarea' && f.markdown !== false;
 
     if (isMdField) {
         // markdown textarea: always visible, height driven by preview content (set by ResizeObserver)

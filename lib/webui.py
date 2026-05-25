@@ -228,8 +228,10 @@ class WebUIEngine:
         args_json = json.dumps(json.dumps(data))
         js = (f"(function(){{var _fn='{action}',_args=JSON.parse({args_json});"
               f"if(typeof window[_fn]==='function'){{window[_fn](_args);}}"
+              f"else{{var _if=document.querySelector('#app-content iframe.iframe-visible')||document.querySelector('iframe');"
+              f"if(_if&&_if.contentWindow){{_if.contentWindow.postMessage({{action:'callJS',functionName:_fn,args:_args}},'*');}}"
               f"else{{console.warn('[callJS] no target for:',_fn);}}"
-              f"}})()")
+              f"}}}})()")
 
         if not self.bridge:
             return

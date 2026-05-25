@@ -173,6 +173,7 @@ window.desktopModal = (function() {
         var boxEl   = document.getElementById('desktop-modal-box');
         _applyThemeOverride(boxEl, titleEl, config.forcedTheme || null);
 
+        boxEl.style.width = config.width || '';
         if (config.noPadding) {
             boxEl.style.padding = '0';
             titleEl.style.padding = '12px 20px 10px';
@@ -247,7 +248,9 @@ window.desktopModal = (function() {
                 close();
             } else if (e.key === 'Enter') {
                 var activeEl = document.activeElement;
-                if (activeEl && activeEl.tagName === 'TEXTAREA') return;
+                if (activeEl && (activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'IFRAME')) return;
+                var body = document.getElementById('desktop-modal-body');
+                if (activeEl && body && body.contains(activeEl)) return;
                 if (!activeEl || !footer.contains(activeEl)) {
                     var primary = footer.querySelector('.btn-primary') || footer.querySelector('button');
                     if (primary) {

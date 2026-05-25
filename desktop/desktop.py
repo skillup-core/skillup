@@ -727,9 +727,131 @@ class DesktopManager:
         self._startup_build_info: Optional[tuple] = self._read_build_info()
         self._update_detected: bool = False
 
+        # Skilltalk alerts buffered before desktop_ready fires (QWebChannel not yet connected)
+        self._pending_st_alerts: list = []
+        self._desktop_js_ready: bool = False
+        self._pending_st_alerts_lock = __import__('threading').Lock()
+
         self._discover_apps()
         self._load_settings()
         self._setup_handlers()
+
+    def _start_peerbus_daemon(self) -> None:
+        """Ensure the peerbus daemon singleton is running. Non-fatal if it fails."""
+        try:
+            from lib.peerbuswrapper import PeerbusWrapper
+            import lib.config as _cfg
+
+            def _peerbus_log(msg: str) -> None:
+                log("info", message=f"peerbus {msg}", tag="desktop")
+
+            wrapper = PeerbusWrapper(log_fn=_peerbus_log)
+            wrapper._ensure_daemon()
+            pid_path = os.path.join(_cfg.get_config_home(), 'peerbus', 'daemon.pid')
+            try:
+                pid = int(open(pid_path).read().strip())
+            except Exception:
+                pid = '?'
+            log("info", message=f"peerbus daemon running checked (PID: {pid})", tag="desktop")
+        except Exception as e:
+            log("warn", message=f"peerbus daemon could not start: {e}", tag="desktop")
+
+        # Option B: desktop registers as skilltalk proxy so it can receive
+        # skilltalk messages and show alerts even when skilltalk is not running.
+        try:
+            import uuid as _uuid
+            from lib.peerbuswrapper import PeerbusWrapper
+
+            def _st_log(msg: str) -> None:
+                log("info", message=f"peerbus[skilltalk] {msg}", tag="desktop")
+
+            self._skilltalk_peerbus = PeerbusWrapper(log_fn=_st_log)
+            self._skilltalk_desktop_id = str(_uuid.uuid4())
+            self._skilltalk_peerbus.on_message(self._on_skilltalk_peerbus_message)
+            _st_port = self._skilltalk_peerbus.register(
+                self._skilltalk_desktop_id,
+                app_id='skilltalk',
+                callback_port=0,
+            )
+            log("info", message=f"desktop registered as skilltalk peerbus proxy (port={_st_port})", tag="desktop")
+        except Exception as e:
+            log("warn", message=f"skilltalk peerbus proxy could not start: {e}", tag="desktop")
+            self._skilltalk_peerbus = None
+            self._skilltalk_desktop_id = None
+
+    def _on_skilltalk_peerbus_message(self, send_id, from_uid, from_ip, app_id, msg_type, payload) -> None:
+        """Handle skilltalk peerbus messages in desktop (Option B proxy)."""
+        if not payload or app_id != 'skilltalk':
+            return
+        action = payload.get('action')
+        if action not in ('new_chat', 'room_created'):
+            return
+
+        if action == 'room_created':
+            created_by = payload.get('created_by', '')
+            if created_by == self.current_user:
+                return
+            chatroom_id = payload.get('chatroom_id')
+            st_process = self.app_processes.get('sk1llt4k')
+            st_running = st_process is not None and st_process.poll() is None
+            if not st_running:
+                try:
+                    self.engine.broadcast_callJS('onRoomCreated', {
+                        'chatroom_id': chatroom_id,
+                        'created_by': created_by,
+                    })
+                except Exception:
+                    pass
+                alert_data = {
+                    'app_id': 'skilltalk',
+                    'chatroom_id': chatroom_id,
+                    'message': f'{created_by}: 새 채팅방에 초대되었습니다.',
+                }
+                with self._pending_st_alerts_lock:
+                    if not self._desktop_js_ready:
+                        self._pending_st_alerts.append(alert_data)
+                        return
+                try:
+                    self.engine.broadcast_callJS('onSkilltalkAlert', alert_data)
+                except Exception as e:
+                    log("warn", message=f"skilltalk room_created alert failed: {e}", tag="desktop")
+            return
+
+        chatroom_id = payload.get('chatroom_id')
+        chat_id = payload.get('chat_id')
+        sender_uid = from_uid or payload.get('sender_uid', '')
+        if sender_uid == self.current_user:
+            return
+
+        st_process = self.app_processes.get('sk1llt4k')
+        st_running = st_process is not None and st_process.poll() is None
+        if not st_running:
+            # Subprocess is gone — push onChatNew to any open popup windows
+            # and show a topbar alert.  chat.html handles alert when running.
+            try:
+                self.engine.broadcast_callJS('onChatNew', {
+                    'chatroom_id': chatroom_id,
+                    'chat_id': chat_id,
+                })
+            except Exception as e:
+                log("warn", message=f"skilltalk onChatNew broadcast failed: {e}", tag="desktop")
+
+            preview = payload.get('preview', '')
+            message = f'{sender_uid}: {preview}' if sender_uid else preview
+            alert_data = {
+                'app_id': 'skilltalk',
+                'chatroom_id': chatroom_id,
+                'chat_id': chat_id,
+                'message': message,
+            }
+            with self._pending_st_alerts_lock:
+                if not self._desktop_js_ready:
+                    self._pending_st_alerts.append(alert_data)
+                    return
+            try:
+                self.engine.broadcast_callJS('onSkilltalkAlert', alert_data)
+            except Exception as e:
+                log("warn", message=f"skilltalk alert dispatch failed: {e}", tag="desktop")
 
     def _read_build_info(self) -> Optional[tuple]:
         """Read (version, build, date) from buildinfo.ini. Returns None on failure."""
@@ -1138,14 +1260,18 @@ class DesktopManager:
                                 if method == 'callJS':
                                     function_name = params.get('function_name')
                                     json_args = params.get('json_args')
+                                    broadcast = params.get('broadcast', False)
                                     if function_name:
                                         try:
                                             data = json.loads(json_args) if json_args else {}
                                         except Exception:
                                             data = {}
-                                        # Route through engine.callJS() so popup/detach windows
-                                        # are handled correctly (runJSInPopup signal).
-                                        self.engine.callJS(function_name, data)
+                                        if broadcast:
+                                            self.engine.broadcast_callJS(function_name, data)
+                                        else:
+                                            # Route through engine.callJS() so popup/detach windows
+                                            # are handled correctly (runJSInPopup signal).
+                                            self.engine.callJS(function_name, data)
                                 elif method == 'msgbox':
                                     # Handle msgbox notification from subprocess
                                     title = params.get('title', 'Message')
@@ -2059,6 +2185,16 @@ class DesktopManager:
             if pending:
                 self.engine.callJS('showGroupJoinRequests', {'requests': pending})
             self._fire_skillup_started()
+            # Flush any skilltalk alerts that arrived before QWebChannel was ready.
+            with self._pending_st_alerts_lock:
+                self._desktop_js_ready = True
+                pending_alerts = list(self._pending_st_alerts)
+                self._pending_st_alerts.clear()
+            for alert_data in pending_alerts:
+                try:
+                    self.engine.broadcast_callJS('onSkilltalkAlert', alert_data)
+                except Exception as e:
+                    log("warn", message=f"skilltalk alert replay failed: {e}", tag="desktop")
             return {'success': True}
 
         self.engine.register_handler('open_window', handle_open_window)
@@ -2316,6 +2452,10 @@ class DesktopManager:
         # Start server
         url = self.engine.start_server(index_html_generator=self._generate_desktop_html)
         log("info", message=f"Desktop running at {url}")
+
+        # Start peerbus daemon in background so it doesn't block app subprocess startup
+        import threading as _threading
+        _threading.Thread(target=self._start_peerbus_daemon, daemon=True).start()
 
         # Detect standalone app mode (skip desktop shell entirely)
         # Currently supports --skillform-run=<path> → open runner.html directly

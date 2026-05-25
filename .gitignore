@@ -7,3 +7,12 @@ desktop/data/
 
 # skillbook_custom.db
 app/skillbook/data/skillbook_custom.db
+
+# codehub db
+app/codehub/data/db/codehub.db
+
+# codehub svn checkout
+app/codehub/data/svn/codehub/
+
+# peerbus data
+desktop/peerbus/data
