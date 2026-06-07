@@ -1,0 +1,341 @@
+/* Help overlay system */
+
+/* ---- dim panels (4-piece surround) ---- */
+.help-dim {
+    position: fixed;
+    background: var(--overlay-dim, rgba(0,0,0,0.65));
+    z-index: 10100;
+    pointer-events: auto;
+}
+
+/* ---- intro overlay (full screen) ---- */
+#help-intro-overlay {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background: var(--overlay-dim, rgba(0,0,0,0.65));
+    z-index: 10200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ---- intro card ---- */
+#help-intro-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 32px;
+    max-width: 420px;
+    width: 90%;
+    box-shadow: var(--shadow-modal, 0 10px 30px rgba(0,0,0,0.5));
+    position: relative;
+}
+
+#help-intro-card.tip-mode {
+    max-width: 680px;
+}
+
+#help-intro-card .help-intro-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+#help-intro-card .help-intro-icon {
+    width: 36px;
+    height: 36px;
+    margin-right: 12px;
+    flex-shrink: 0;
+}
+
+#help-intro-card .help-intro-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+#help-intro-card .help-intro-body {
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 24px;
+}
+
+#help-intro-card.tip-mode .help-intro-body {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+#help-intro-card .help-intro-body p { margin: 0 0 8px; }
+#help-intro-card .help-intro-body p:last-child { margin-bottom: 0; }
+#help-intro-card .help-intro-body code {
+    background: var(--code-bg, rgba(0,0,0,0.2));
+    border: 1px solid var(--border-color);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 0.92em;
+    color: var(--text-primary);
+}
+#help-intro-card .help-intro-body table { border-collapse: collapse; margin: 6px 0; width: auto; }
+#help-intro-card .help-intro-body table th,
+#help-intro-card .help-intro-body table td { border: 1px solid var(--border-color); padding: 4px 10px; }
+#help-intro-card .help-intro-body table th { background: var(--bg-secondary); font-weight: 600; }
+#help-intro-card .help-intro-body table tr:nth-child(even) { background: var(--bg-secondary); }
+
+#help-intro-card .help-intro-body h1,
+#help-intro-card .help-intro-body h2,
+#help-intro-card .help-intro-body h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 14px 0 6px;
+}
+#help-intro-card .help-intro-body h1:first-child,
+#help-intro-card .help-intro-body h2:first-child,
+#help-intro-card .help-intro-body h3:first-child { margin-top: 0; }
+
+#help-intro-card .help-intro-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+#help-intro-card.tip-mode .help-intro-actions {
+    justify-content: space-between;
+}
+
+.tip-page-nav {
+    display: flex;
+    align-items: center;
+}
+
+.tip-page-counter {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-right: 6px;
+}
+
+.btn-tip-prev,
+.btn-tip-next {
+    background: none;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    padding: 4px 10px;
+    font-size: 14px;
+    cursor: pointer;
+    margin-left: 4px;
+}
+
+.btn-tip-prev:hover:not(:disabled),
+.btn-tip-next:hover:not(:disabled) {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.btn-tip-prev:disabled,
+.btn-tip-next:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+#help-intro-card .help-intro-actions button {
+    margin-left: 8px;
+    padding: 8px 20px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+}
+
+#help-intro-card .btn-tour-start {
+    background: var(--accent-primary, #0071e3);
+    color: #fff;
+    border-color: var(--accent-primary, #0071e3);
+}
+
+#help-intro-card .btn-tour-start:hover {
+    background: var(--accent-primary-hover, #005ec0);
+    border-color: var(--accent-primary-hover, #005ec0);
+}
+
+#help-intro-card .btn-tour-close {
+    background: none;
+    color: var(--text-secondary);
+}
+
+#help-intro-card .btn-tour-close:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+#help-intro-card .btn-tour-tip {
+    background: none;
+    color: var(--text-secondary);
+}
+
+#help-intro-card .btn-tour-tip:hover:not(:disabled) {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+#help-intro-card .btn-tour-tip:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+#help-intro-card .btn-tour-back {
+    background: none;
+    color: var(--text-secondary);
+}
+
+#help-intro-card .btn-tour-back:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+/* ---- step tooltip ---- */
+#help-tooltip {
+    position: fixed;
+    z-index: 10300;
+    max-width: 320px;
+    min-width: 200px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 14px 16px;
+    box-shadow: var(--shadow-modal, 0 10px 30px rgba(0,0,0,0.5));
+    pointer-events: auto;
+}
+
+#help-tooltip .help-tip-counter {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+#help-tooltip .help-tip-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+#help-tooltip .help-tip-body {
+    font-size: 13px;
+    color: var(--text-primary);
+    line-height: 1.5;
+    margin-bottom: 10px;
+}
+
+#help-tooltip .help-tip-body p { margin: 0 0 6px; }
+#help-tooltip .help-tip-body p:last-child { margin-bottom: 0; }
+
+#help-tooltip .help-tip-body code {
+    background: var(--code-bg, rgba(0,0,0,0.2));
+    border: 1px solid var(--border-color);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 12px;
+    color: var(--text-primary);
+}
+
+#help-tooltip .help-tip-body pre {
+    background: var(--code-bg, rgba(0,0,0,0.2));
+    padding: 8px;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 12px;
+}
+#help-tooltip .help-tip-body table { border-collapse: collapse; margin: 6px 0; width: auto; }
+#help-tooltip .help-tip-body table th,
+#help-tooltip .help-tip-body table td { border: 1px solid var(--border-color); padding: 4px 10px; }
+#help-tooltip .help-tip-body table th { background: var(--bg-secondary); font-weight: 600; }
+#help-tooltip .help-tip-body table tr:nth-child(even) { background: var(--bg-secondary); }
+
+#help-tooltip .help-tip-legend {
+    font-size: 11px;
+    color: var(--text-secondary);
+    border-top: 1px solid var(--border-color);
+    padding-top: 8px;
+}
+
+/* ---- tooltip arrow ---- */
+#help-tooltip::before {
+    content: '';
+    position: absolute;
+    border: 7px solid transparent;
+}
+
+#help-tooltip.tip-top::before {
+    bottom: -14px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-top-color: var(--border-color);
+}
+
+#help-tooltip.tip-top::after {
+    content: '';
+    position: absolute;
+    border: 6px solid transparent;
+    bottom: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-top-color: var(--bg-secondary);
+}
+
+#help-tooltip.tip-bottom::before {
+    top: -14px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-bottom-color: var(--border-color);
+}
+
+#help-tooltip.tip-bottom::after {
+    content: '';
+    position: absolute;
+    border: 6px solid transparent;
+    top: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-bottom-color: var(--bg-secondary);
+}
+
+#help-tooltip.tip-left::before {
+    right: -14px;
+    top: 50%;
+    transform: translateY(-50%);
+    border-left-color: var(--border-color);
+}
+
+#help-tooltip.tip-left::after {
+    content: '';
+    position: absolute;
+    border: 6px solid transparent;
+    right: -12px;
+    top: 50%;
+    transform: translateY(-50%);
+    border-left-color: var(--bg-secondary);
+}
+
+#help-tooltip.tip-right::before {
+    left: -14px;
+    top: 50%;
+    transform: translateY(-50%);
+    border-right-color: var(--border-color);
+}
+
+#help-tooltip.tip-right::after {
+    content: '';
+    position: absolute;
+    border: 6px solid transparent;
+    left: -12px;
+    top: 50%;
+    transform: translateY(-50%);
+    border-right-color: var(--bg-secondary);
+}
+

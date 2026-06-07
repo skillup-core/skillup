@@ -788,6 +788,9 @@ class SkillbookApp(BaseApp):
             'addHashtag': self._handle_add_hashtag,
             'removeHashtag': self._handle_remove_hashtag,
             'searchByHashtag': self._handle_search_by_hashtag,
+            # Search counts / ranking
+            'incrementSearchCount': self._handle_increment_search_count,
+            'getPopularSearches': self._handle_get_popular_searches,
         })
 
         return 0
@@ -1054,6 +1057,36 @@ class SkillbookApp(BaseApp):
             return {'success': True, 'history': history}
         except Exception as e:
             print(f"[error][SkillBook] Failed to delete history: {e}", file=sys.stderr)
+            return {'success': False, 'error': str(e)}
+
+    def _handle_increment_search_count(self, data: dict, language: str) -> dict:
+        """Increment search count for a function reached via autocomplete."""
+        try:
+            name = data.get('name', '')
+            if not name:
+                return {'success': False, 'error': 'No name provided'}
+            custom_db.increment_search_count(self.custom_db_path, name)
+            return {'success': True}
+        except Exception as e:
+            print(f"[error][SkillBook] Failed to increment search count: {e}", file=sys.stderr)
+            return {'success': False, 'error': str(e)}
+
+    def _handle_get_popular_searches(self, data: dict, language: str) -> dict:
+        """Return popular searches ordered by count desc with pagination."""
+        try:
+            offset = data.get('offset', 0)
+            limit = data.get('limit', 20)
+            result = custom_db.get_popular_searches(self.custom_db_path, offset, limit)
+            return {
+                'success': True,
+                'items': result['items'],
+                'total': result['total'],
+                'offset': offset,
+                'limit': limit,
+                'has_more': (offset + limit) < result['total'],
+            }
+        except Exception as e:
+            print(f"[error][SkillBook] Failed to get popular searches: {e}", file=sys.stderr)
             return {'success': False, 'error': str(e)}
 
     def _handle_get_settings(self, data: dict, language: str) -> dict:

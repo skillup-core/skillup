@@ -435,6 +435,82 @@
     }
 
     /**
+     * In Qt standalone window mode, inject dialog DOM elements and load
+     * modal.js / dialogs.js so that parent.desktopModal, parent.showConfirmDialog,
+     * and parent.showInputDialog work without a desktop.html parent frame.
+     * Since window.parent === window in standalone, existing app code works unchanged.
+     */
+    function initStandaloneDialogs() {
+        if (!window.isInQtWindow) return;
+        if (document.getElementById('desktop-modal-overlay')) return; // already present
+
+        // Inject dialog DOM (matches desktop.html)
+        var html = [
+            '<div id="desktop-modal-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:10000;pointer-events:none;">',
+            '  <div id="desktop-modal-box" style="background:var(--bg-secondary,#20242b);border:1px solid var(--border-color,#373c47);border-radius:8px;min-width:320px;max-width:90vw;max-height:90vh;display:flex;flex-direction:column;position:absolute;pointer-events:all;box-shadow:0 8px 32px rgba(0,0,0,0.4);">',
+            '    <div id="desktop-modal-title" style="font-size:14px;font-weight:600;color:var(--text-primary,#eceef2);flex-shrink:0;"></div>',
+            '    <div id="desktop-modal-body" style="font-size:13px;color:var(--text-secondary,#a0a0b0);overflow-y:auto;flex:1;"></div>',
+            '    <div id="desktop-modal-footer" style="display:flex;justify-content:flex-end;flex-shrink:0;"></div>',
+            '  </div>',
+            '</div>',
+            '<div id="msgbox-dialog" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10800;align-items:center;justify-content:center;">',
+            '  <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:24px;min-width:300px;max-width:420px;">',
+            '    <div id="msgbox-dialog-title" style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:12px;"></div>',
+            '    <div id="msgbox-dialog-text" style="font-size:13px;color:var(--text-secondary);margin-bottom:24px;line-height:1.5;white-space:pre-wrap;"></div>',
+            '    <div style="display:flex;justify-content:flex-end;">',
+            '      <button id="msgbox-dialog-ok" class="btn btn-primary" style="font-size:13px;padding:6px 20px;">OK</button>',
+            '    </div>',
+            '  </div>',
+            '</div>',
+            '<div id="input-dialog" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10800;align-items:center;justify-content:center;">',
+            '  <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:24px;min-width:300px;max-width:420px;">',
+            '    <div id="input-dialog-title" style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:12px;"></div>',
+            '    <input id="input-dialog-value" type="text" class="form-control" style="font-size:13px;margin-bottom:16px;">',
+            '    <div style="display:flex;justify-content:flex-end;">',
+            '      <button id="input-dialog-cancel" class="btn btn-secondary" style="font-size:13px;padding:6px 16px;margin-right:8px;">Cancel</button>',
+            '      <button id="input-dialog-ok" class="btn btn-primary" style="font-size:13px;padding:6px 16px;">OK</button>',
+            '    </div>',
+            '  </div>',
+            '</div>',
+            '<div id="confirm-dialog" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10800;align-items:center;justify-content:center;">',
+            '  <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:24px;min-width:300px;max-width:420px;">',
+            '    <div id="confirm-dialog-title" style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:12px;"></div>',
+            '    <div id="confirm-dialog-text" style="font-size:13px;color:var(--text-secondary);margin-bottom:24px;line-height:1.5;white-space:pre-wrap;"></div>',
+            '    <div style="display:flex;justify-content:flex-end;">',
+            '      <button id="confirm-dialog-no" class="btn btn-secondary" style="font-size:13px;padding:6px 16px;margin-right:8px;">No</button>',
+            '      <button id="confirm-dialog-yes" class="btn btn-primary" style="font-size:13px;padding:6px 16px;">Yes</button>',
+            '    </div>',
+            '  </div>',
+            '</div>',
+            '<div id="skillup-toast-container" style="position:fixed;bottom:0;right:0;padding:12px;z-index:99999;display:flex;flex-direction:column;align-items:flex-end;pointer-events:none"></div>'
+        ].join('');
+        var container = document.createElement('div');
+        container.innerHTML = html;
+        while (container.firstChild) {
+            document.body.appendChild(container.firstChild);
+        }
+
+        // Load modal.js, dialogs.js, toast.js which define window.desktopModal,
+        // window.showConfirmDialog, window.showInputDialog, window.showToast.
+        // Expose window._standaloneDialogsReady so app code can await it before
+        // calling desktopModal.open() when timing is tight (e.g. on page load).
+        function loadScript(src) {
+            return new Promise(function(resolve) {
+                var s = document.createElement('script');
+                s.src = src;
+                s.onload = resolve;
+                s.onerror = resolve; // non-fatal
+                document.head.appendChild(s);
+            });
+        }
+        window._standaloneDialogsReady = loadScript('/common/script/modal.js').then(function() {
+            return loadScript('/common/script/dialogs.js');
+        }).then(function() {
+            return loadScript('/common/script/toast.js');
+        });
+    }
+
+    /**
      * In Qt standalone window mode, load language/theme from desktop config
      * since there's no parent iframe to forward these settings via postMessage
      */
@@ -464,6 +540,7 @@
     if (document.readyState === 'loading') {
         // DOM not yet loaded, wait for DOMContentLoaded
         document.addEventListener('DOMContentLoaded', () => {
+            initStandaloneDialogs();
             initAppState();
             initStandaloneSettings();
         });
@@ -471,6 +548,7 @@
         // DOM already loaded (common when scripts load late), load immediately
         // But use setTimeout to ensure inline scripts have chance to execute
         setTimeout(() => {
+            initStandaloneDialogs();
             initAppState();
             initStandaloneSettings();
         }, 0);
@@ -497,6 +575,27 @@
     // ========================================================================
     // PostMessage Listener for callJS Forwarding from Desktop
     // ========================================================================
+
+    // In Qt standalone mode, app code sends postMessage to window.parent (===window)
+    // for showMessageBox. Handle it here so dialogs.js showMessageBox works.
+    if (window.isInQtWindow) {
+        window.addEventListener('message', function(event) {
+            const data = event.data;
+            if (!data || !data.action) return;
+            if (data.action === 'showMessageBox') {
+                if (typeof window.showMessageBox === 'function') {
+                    window.showMessageBox({ title: data.title || '', text: data.text || '' });
+                } else if (window._standaloneDialogsReady) {
+                    window._standaloneDialogsReady.then(function() {
+                        if (typeof window.showMessageBox === 'function') {
+                            window.showMessageBox({ title: data.title || '', text: data.text || '' });
+                        }
+                    });
+                }
+            }
+        });
+    }
+
     // When running in iframe, desktop.html forwards callJS via postMessage
     if (window.isInIframe) {
         window.addEventListener('message', (event) => {

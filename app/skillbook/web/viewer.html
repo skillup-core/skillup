@@ -462,6 +462,183 @@
             color: var(--text-primary);
         }
 
+        .skillbook-ranking-button {
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 8px;
+            flex-shrink: 0;
+            padding: 5px 7px;
+            transition: all 0.2s;
+            height: 32px;
+        }
+
+        .skillbook-ranking-button:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .skillbook-ranking-button.active {
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+            background: var(--bg-tertiary);
+        }
+
+        .skillbook-ranking-dialog {
+            outline: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .skillbook-ranking-dialog-inner {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            min-width: 320px;
+            max-width: 440px;
+            max-height: 70vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .skillbook-ranking-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: var(--text-primary);
+        }
+
+        .skillbook-ranking-list {
+            overflow-y: auto;
+            flex: 1;
+            margin-bottom: 12px;
+        }
+
+        .skillbook-ranking-item {
+            display: flex;
+            align-items: center;
+            padding: 6px 10px;
+            font-size: 13px;
+            border-radius: 4px;
+            color: var(--text-primary);
+            background: transparent;
+            border: none;
+            text-align: left;
+            width: 100%;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+
+        .skillbook-ranking-item:hover,
+        .skillbook-ranking-item.selected {
+            background: var(--accent-primary);
+            color: #fff;
+        }
+
+        .skillbook-ranking-item-rank {
+            font-size: 11px;
+            font-weight: 700;
+            min-width: 22px;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+        }
+
+        .skillbook-ranking-item:hover .skillbook-ranking-item-rank,
+        .skillbook-ranking-item.selected .skillbook-ranking-item-rank {
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .skillbook-ranking-item-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-family: var(--font-mono);
+            margin-left: 6px;
+        }
+
+        .skillbook-ranking-item-count {
+            font-size: 11px;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+            margin-left: 8px;
+        }
+
+        .skillbook-ranking-item:hover .skillbook-ranking-item-count,
+        .skillbook-ranking-item.selected .skillbook-ranking-item-count {
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .skillbook-ranking-empty {
+            color: var(--text-secondary);
+            font-size: 13px;
+            padding: 8px 10px;
+        }
+
+        .skillbook-ranking-pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 10px;
+            gap: 6px;
+        }
+
+        .skillbook-ranking-page-btn {
+            padding: 3px 10px;
+            font-size: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .skillbook-ranking-page-btn:hover {
+            background: var(--bg-hover);
+        }
+
+        .skillbook-ranking-page-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .skillbook-ranking-page-info {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .skillbook-ranking-close-btn {
+            align-self: flex-end;
+            padding: 5px 14px;
+            font-size: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .skillbook-ranking-close-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
         .skillbook-settings-button {
             border: 1px solid var(--border-color);
             border-radius: 6px;
@@ -1391,6 +1568,15 @@
             </svg>
         </button>
 
+        <!-- Ranking button (bar chart icon) -->
+        <button class="skillbook-ranking-button" id="rankingBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="12" width="4" height="10"/>
+                <rect x="9" y="7" width="4" height="15"/>
+                <rect x="16" y="2" width="4" height="20"/>
+            </svg>
+        </button>
+
         <!-- Settings button (gear icon) -->
         <button class="skillbook-settings-button" id="settingsBtn">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -1693,6 +1879,12 @@
         let allSections = [];
         let historyBtn, historyDialog, historyList, historyCloseBtn;
         let historySelectedIndex = -1;
+
+        let rankingBtn, rankingDialog, rankingList, rankingCloseBtn, rankingPagination, rankingPrevBtn, rankingNextBtn, rankingPageInfo, rankingTitle;
+        let rankingSelectedIndex = -1;
+        const RANKING_PAGE_SIZE = 20;
+        let rankingOffset = 0;
+        let rankingTotal = 0;
         let settingsBtn, settingsDialog, settingsLangSelect, settingsSaveBtn, settingsCloseBtn;
         let hashtagDialog, hashtagDialogInput, hashtagDialogResults, hashtagDialogCloseBtn;
         let currentHashtagFunc = '';
@@ -1734,6 +1926,9 @@
                 hashTagSearchFailed: 'Search failed.',
                 hashTagDeleteConfirmTitle: 'Delete Tag',
                 hashTagDeleteConfirm: 'Delete tag "#TAG"?',
+                rankingTitle: 'Popular Searches',
+                rankingEmpty: 'No search data yet.',
+                rankingFailed: 'Failed to load.',
             },
             ko: {
                 settings: '설정',
@@ -1764,6 +1959,9 @@
                 hashTagSearchFailed: '검색 실패.',
                 hashTagDeleteConfirmTitle: '태그 삭제',
                 hashTagDeleteConfirm: '"#TAG" 태그를 삭제할까요?',
+                rankingTitle: '인기 검색 순위',
+                rankingEmpty: '검색 데이터가 없습니다.',
+                rankingFailed: '불러오기 실패.',
             }
         };
 
@@ -1799,6 +1997,8 @@
             if (shortcutArrows) shortcutArrows.textContent = texts.shortcutArrows;
             if (shortcutE) shortcutE.textContent = texts.shortcutE;
             if (favoritesTitle) favoritesTitle.textContent = '♡ ' + texts.favorites;
+            if (rankingTitle) rankingTitle.textContent = texts.rankingTitle;
+            if (rankingCloseBtn) rankingCloseBtn.textContent = texts.close;
         }
 
         // Wait for callPython to be available
@@ -1812,6 +2012,15 @@
             }
         }
 
+        function onLanguageChange(lang) {
+            const langCode = (lang || 'en').substring(0, 2).toLowerCase();
+            uiLanguage = langCode === 'ko' ? 'ko' : 'en';
+            updateUIText();
+            if (currentCommentsFunc) {
+                loadComments(currentCommentsFunc);
+            }
+        }
+
         // Listen for messages from desktop (setLanguage from skillup framework)
         window.addEventListener('message', async (event) => {
             const data = event.data;
@@ -1819,20 +2028,7 @@
 
             // Handle setLanguage message from desktop
             if (data.action === 'setLanguage' && data.language) {
-                const langCode = data.language.substring(0, 2).toLowerCase();
-                if (langCode === 'ko') {
-                    uiLanguage = 'ko';
-                } else {
-                    uiLanguage = 'en';
-                }
-                updateUIText();
-                if (currentCommentsFunc) {
-                    loadComments(currentCommentsFunc);
-                }
-
-                // If app is already initialized, no need to reload function
-                // The UI text (settings modal) is updated, but function content doesn't change
-                // with Skillup UI language - it uses the function's own language selection
+                onLanguageChange(data.language);
             }
 
             // Restore focus to search input when desktop shows this iframe
@@ -1862,8 +2058,18 @@
                 // Wait for callPython to be available
                 await waitForCallPython();
 
-                // Get UI language
-                uiLanguage = getUILanguage();
+                // Get UI language - in Qt standalone (new window) mode, fetch from config
+                // directly so language is correct before any UI is rendered
+                if (window.isInQtWindow) {
+                    try {
+                        var cfg = await window.callPython('get_config', {});
+                        if (cfg && cfg.language) {
+                            uiLanguage = cfg.language.substring(0, 2).toLowerCase() === 'ko' ? 'ko' : 'en';
+                        }
+                    } catch(e) {}
+                } else {
+                    uiLanguage = getUILanguage();
+                }
                 updateUIText();
 
                 // Get DOM elements
@@ -1887,6 +2093,15 @@
                 historyDialog = document.getElementById('historyDialog');
                 historyList = document.getElementById('historyList');
                 historyCloseBtn = document.getElementById('historyCloseBtn');
+                rankingBtn = document.getElementById('rankingBtn');
+                rankingDialog = document.getElementById('rankingDialog');
+                rankingList = document.getElementById('rankingList');
+                rankingCloseBtn = document.getElementById('rankingCloseBtn');
+                rankingPagination = document.getElementById('rankingPagination');
+                rankingPrevBtn = document.getElementById('rankingPrevBtn');
+                rankingNextBtn = document.getElementById('rankingNextBtn');
+                rankingPageInfo = document.getElementById('rankingPageInfo');
+                rankingTitle = document.getElementById('rankingTitle');
                 settingsBtn = document.getElementById('settingsBtn');
                 settingsDialog = document.getElementById('settingsDialog');
                 settingsLangSelect = document.getElementById('settingsLangSelect');
@@ -2291,6 +2506,75 @@
             });
         }
 
+        async function openRankingDialog(offset) {
+            if (offset === undefined) offset = rankingOffset;
+            const texts = uiTexts[uiLanguage] || uiTexts.en;
+            try {
+                const result = await callPython('getPopularSearches', { offset: offset, limit: RANKING_PAGE_SIZE });
+                if (result.success) {
+                    rankingOffset = offset;
+                    rankingTotal = result.total;
+                    const items = result.items;
+                    if (items.length === 0 && offset === 0) {
+                        rankingList.innerHTML = `<div class="skillbook-ranking-empty">${escapeHtml(texts.rankingEmpty)}</div>`;
+                        rankingPagination.style.display = 'none';
+                    } else {
+                        const startRank = offset + 1;
+                        rankingList.innerHTML = items.map((item, i) => `
+                            <div class="skillbook-ranking-item" data-name="${escapeHtml(item.name)}">
+                                <span class="skillbook-ranking-item-rank">${startRank + i}.</span>
+                                <span class="skillbook-ranking-item-name">${escapeHtml(item.name)}</span>
+                                <span class="skillbook-ranking-item-count">${item.count}</span>
+                            </div>
+                        `).join('');
+                        rankingList.querySelectorAll('.skillbook-ranking-item').forEach(el => {
+                            el.addEventListener('click', async () => {
+                                const name = el.dataset.name;
+                                rankingDialog.style.display = 'none';
+                                _notifyDialogClose();
+                                const jumpResult = await callPython('jump', { name });
+                                if (jumpResult.success) {
+                                    loadFunction(jumpResult.index, currentLanguage, false);
+                                }
+                            });
+                        });
+                        const totalPages = Math.ceil(rankingTotal / RANKING_PAGE_SIZE);
+                        const currentPage = Math.floor(offset / RANKING_PAGE_SIZE) + 1;
+                        if (totalPages > 1) {
+                            rankingPagination.style.display = 'flex';
+                            rankingPageInfo.textContent = currentPage + ' / ' + totalPages;
+                            rankingPrevBtn.disabled = offset === 0;
+                            rankingNextBtn.disabled = !result.has_more;
+                        } else {
+                            rankingPagination.style.display = 'none';
+                        }
+                    }
+                } else {
+                    rankingList.innerHTML = `<div class="skillbook-ranking-empty">${escapeHtml(texts.rankingFailed)}</div>`;
+                    rankingPagination.style.display = 'none';
+                }
+            } catch (e) {
+                rankingList.innerHTML = `<div class="skillbook-ranking-empty">${escapeHtml(texts.rankingFailed)}</div>`;
+                rankingPagination.style.display = 'none';
+            }
+            rankingSelectedIndex = -1;
+            rankingDialog.style.display = 'flex';
+            rankingDialog.focus();
+            _notifyDialogOpen();
+        }
+
+        function updateRankingSelection() {
+            const items = rankingList.querySelectorAll('.skillbook-ranking-item');
+            items.forEach((item, i) => {
+                if (i === rankingSelectedIndex) {
+                    item.classList.add('selected');
+                    item.scrollIntoView({ block: 'nearest' });
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
+        }
+
         function updateFilterSelection(items) {
             items.forEach((item, i) => {
                 if (i === filterSelectedIndex) {
@@ -2303,6 +2587,84 @@
         }
 
         function setupEventListeners() {
+            // Ranking button and dialog handlers
+            rankingBtn.addEventListener('click', () => {
+                if (rankingDialog.style.display === 'none') {
+                    rankingOffset = 0;
+                    openRankingDialog(0);
+                } else {
+                    rankingDialog.style.display = 'none';
+                    _notifyDialogClose();
+                }
+            });
+
+            rankingCloseBtn.addEventListener('click', () => {
+                rankingDialog.style.display = 'none';
+                _notifyDialogClose();
+            });
+
+            rankingDialog.addEventListener('click', (e) => {
+                if (e.target === rankingDialog) {
+                    rankingDialog.style.display = 'none';
+                    _notifyDialogClose();
+                }
+            });
+
+            rankingPrevBtn.addEventListener('click', () => {
+                if (rankingOffset > 0) {
+                    openRankingDialog(rankingOffset - RANKING_PAGE_SIZE);
+                }
+            });
+
+            rankingNextBtn.addEventListener('click', () => {
+                if (rankingOffset + RANKING_PAGE_SIZE < rankingTotal) {
+                    openRankingDialog(rankingOffset + RANKING_PAGE_SIZE);
+                }
+            });
+
+            rankingDialog.addEventListener('keydown', async (e) => {
+                if (rankingDialog.style.display === 'none') return;
+                const items = rankingList.querySelectorAll('.skillbook-ranking-item');
+                if (e.key === 'Escape') {
+                    rankingDialog.style.display = 'none';
+                    _notifyDialogClose();
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    rankingSelectedIndex = Math.min(rankingSelectedIndex + 1, items.length - 1);
+                    updateRankingSelection();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    rankingSelectedIndex = Math.max(rankingSelectedIndex - 1, 0);
+                    updateRankingSelection();
+                } else if (e.key === 'PageDown') {
+                    e.preventDefault();
+                    rankingSelectedIndex = Math.min(rankingSelectedIndex + 5, items.length - 1);
+                    updateRankingSelection();
+                } else if (e.key === 'PageUp') {
+                    e.preventDefault();
+                    rankingSelectedIndex = Math.max(rankingSelectedIndex - 5, 0);
+                    updateRankingSelection();
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (rankingSelectedIndex >= 0 && rankingSelectedIndex < items.length) {
+                        const name = items[rankingSelectedIndex].dataset.name;
+                        rankingDialog.style.display = 'none';
+                        _notifyDialogClose();
+                        const jumpResult = await callPython('jump', { name });
+                        if (jumpResult.success) {
+                            loadFunction(jumpResult.index, currentLanguage, false);
+                        }
+                    }
+                } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    if (e.key === 'ArrowLeft' && rankingOffset > 0) {
+                        openRankingDialog(rankingOffset - RANKING_PAGE_SIZE);
+                    } else if (e.key === 'ArrowRight' && rankingOffset + RANKING_PAGE_SIZE < rankingTotal) {
+                        openRankingDialog(rankingOffset + RANKING_PAGE_SIZE);
+                    }
+                }
+            });
+
             // History button and dialog handlers
             historyBtn.addEventListener('click', () => {
                 if (historyDialog.style.display === 'none') {
@@ -2518,7 +2880,7 @@
                             // First page - replace content
                             autocompleteList.innerHTML = result.results
                                 .map((item, idx) =>
-                                    `<div class="skillbook-autocomplete-item" data-index="${item.index}">${escapeHtml(item.name)}</div>`
+                                    `<div class="skillbook-autocomplete-item" data-index="${item.index}" data-name="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>`
                                 )
                                 .join('');
                         } else {
@@ -2529,6 +2891,7 @@
                                 const div = document.createElement('div');
                                 div.className = 'skillbook-autocomplete-item';
                                 div.dataset.index = item.index;
+                                div.dataset.name = item.name;
                                 div.textContent = item.name;
                                 fragment.appendChild(div);
                             });
@@ -2563,6 +2926,8 @@
                             autocompleteList.addEventListener('click', (e) => {
                                 if (e.target.classList.contains('skillbook-autocomplete-item')) {
                                     const index = parseInt(e.target.dataset.index);
+                                    const name = e.target.dataset.name;
+                                    if (name) callPython('incrementSearchCount', { name }).catch(() => {});
                                     loadFunction(index, currentLanguage, true);
                                     searchInput.value = '';
                                     autocompleteList.classList.remove('active');
@@ -2635,7 +3000,9 @@
                     e.preventDefault();
                     if (isDropdownActive && autocompleteSelectedIndex >= 0 && autocompleteSelectedIndex < items.length) {
                         const index = parseInt(items[autocompleteSelectedIndex].dataset.index);
+                        const name = items[autocompleteSelectedIndex].dataset.name;
                         console.log('[Skillbook] Selected function at index:', index);
+                        if (name) callPython('incrementSearchCount', { name }).catch(() => {});
                         loadFunction(index, currentLanguage, true);
                         searchInput.value = '';
                         autocompleteList.classList.remove('active');
@@ -2659,7 +3026,7 @@
                 }
 
                 // Let filter/history/settings/favorites dialogs handle their own keys
-                if (filterDialog.style.display !== 'none' || historyDialog.style.display !== 'none' || settingsDialog.style.display !== 'none' || favoritesDialog.style.display !== 'none' || (hashtagDialog && hashtagDialog.style.display !== 'none')) {
+                if (filterDialog.style.display !== 'none' || historyDialog.style.display !== 'none' || rankingDialog.style.display !== 'none' || settingsDialog.style.display !== 'none' || favoritesDialog.style.display !== 'none' || (hashtagDialog && hashtagDialog.style.display !== 'none')) {
                     return;
                 }
 
@@ -3752,6 +4119,22 @@
                 <!-- Populated by JS -->
             </div>
             <button id="favoritesCloseBtn" class="skillbook-favorites-close-btn">Close</button>
+        </div>
+    </div>
+
+    <!-- Ranking Dialog -->
+    <div id="rankingDialog" class="skillbook-ranking-dialog" style="display:none;" tabindex="-1">
+        <div class="skillbook-ranking-dialog-inner">
+            <div class="skillbook-ranking-title" id="rankingTitle">Popular Searches</div>
+            <div class="skillbook-ranking-list" id="rankingList">
+                <!-- Populated by JS -->
+            </div>
+            <div class="skillbook-ranking-pagination" id="rankingPagination" style="display:none;">
+                <button class="skillbook-ranking-page-btn" id="rankingPrevBtn">&#8592;</button>
+                <span class="skillbook-ranking-page-info" id="rankingPageInfo"></span>
+                <button class="skillbook-ranking-page-btn" id="rankingNextBtn">&#8594;</button>
+            </div>
+            <button id="rankingCloseBtn" class="skillbook-ranking-close-btn">Close</button>
         </div>
     </div>
 

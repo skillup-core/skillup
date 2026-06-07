@@ -520,6 +520,8 @@
     let _logEnabled    = false;
 
     // ── i18n ─────────────────────────────────────────────────────
+    function onLanguageChange(lang) { applyLang(lang); }
+
     function applyLang(lang) {
         _lang = lang || 'ko';
         document.querySelectorAll('[data-' + _lang + ']').forEach(function(el) {
@@ -793,7 +795,12 @@
 
     function selectCiw(ciw) {
         _selectedCiw = ciw;
-        loadAgentList();
+        if (_selectedAgent) {
+            // CIW was selected mid-agent-selection; continue with the already-chosen agent
+            _startAgent(_selectedAgent);
+        } else {
+            loadAgentList();
+        }
     }
 
     function backToCiw() {
@@ -888,6 +895,10 @@
             }
         }
 
+        _startAgent(agent);
+    }
+
+    function _startAgent(agent) {
         document.getElementById('init-error').style.display = 'none';
         document.getElementById('btn-init-back').style.display = 'none';
         showPhase('init');
@@ -1148,25 +1159,44 @@
     });
 
     // ── Init ──────────────────────────────────────────────────────
-    function init() {
+    async function init() {
         if (window.isInWebBrowser) {
             document.getElementById('connect-status').textContent =
                 'Web browser mode: connect to desktop app to use.';
             return;
         }
-        try {
-            var parentLang = window.parent && window.parent.currentLanguage;
-            if (parentLang) applyLang(parentLang);
-        } catch(e) {}
-        try {
-            var themeEl = window.parent && window.parent.document.getElementById('theme-select');
-            if (themeEl) _applyHljsTheme(themeEl.value || 'default');
-        } catch(e) {}
 
-        if (window.callPythonReady) {
-            startConnect();
+        // In iframe mode, get language from parent window immediately
+        if (!window.isInQtWindow) {
+            try {
+                var parentLang = window.parent && window.parent.currentLanguage;
+                if (parentLang) applyLang(parentLang);
+            } catch(e) {}
+            try {
+                var themeEl = window.parent && window.parent.document.getElementById('theme-select');
+                if (themeEl) _applyHljsTheme(themeEl.value || 'default');
+            } catch(e) {}
+            if (window.callPythonReady) {
+                startConnect();
+            } else {
+                window.addEventListener('callPythonReady', startConnect, {once: true});
+            }
         } else {
-            window.addEventListener('callPythonReady', startConnect, {once: true});
+            // In Qt standalone (new window) mode, wait for callPython then fetch config
+            // before connecting, so language is applied before "Connecting..." text is shown
+            if (!window.callPythonReady) {
+                await new Promise(function(resolve) {
+                    window.addEventListener('callPythonReady', resolve, {once: true});
+                });
+            }
+            try {
+                var config = await window.callPython('get_config', {});
+                if (config) {
+                    if (config.language) applyLang(config.language);
+                    if (config.theme) _applyHljsTheme(config.theme);
+                }
+            } catch(e) {}
+            startConnect();
         }
     }
 

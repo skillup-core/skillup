@@ -377,6 +377,7 @@ async function launchApp(appId, initialMenu) {
         document.getElementById('minimize-app-btn').style.display = 'block';
         var newWindowMode = currentApp ? currentApp.new_window : 'false';
         document.getElementById('popout-app-btn').style.display = (newWindowMode === 'false') ? 'none' : 'block';
+        document.getElementById('help-btn').style.display = 'block';
 
         document.querySelectorAll('.page').forEach(function(p) { p.style.display = 'none'; });
         var appContent = document.getElementById('app-content');
@@ -410,6 +411,7 @@ async function backToDesktop() {
     document.getElementById('close-app-btn').style.display = 'none';
     document.getElementById('minimize-app-btn').style.display = 'none';
     document.getElementById('popout-app-btn').style.display = 'none';
+    document.getElementById('help-btn').style.display = 'none';
 
     var appContent = document.getElementById('app-content');
     if (Object.keys(iframeCache).length > 0) {
@@ -433,14 +435,35 @@ async function backToDesktop() {
     }
 }
 
-function clearAppIframes(appId) {
+async function clearAppIframes(appId) {
     var appContent = document.getElementById('app-content');
+    var savePromises = [];
     Object.keys(iframeCache).forEach(function(key) {
         if (key.startsWith(appId + '_')) {
             var iframe = iframeCache[key];
-            if (iframe && iframe.parentElement) iframe.parentElement.removeChild(iframe);
-            delete iframeCache[key];
+            var p = new Promise(function(resolve) {
+                var timer = setTimeout(resolve, 800);
+                function onMsg(ev) {
+                    if (ev.data && ev.data.type === 'appWillCloseSave' && ev.source === iframe.contentWindow) {
+                        clearTimeout(timer);
+                        window.removeEventListener('message', onMsg);
+                        fetch('/api/callPython/' + ev.data.guid + '/' + ev.data.action, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(ev.data.payload)
+                        }).then(resolve).catch(resolve);
+                    }
+                }
+                window.addEventListener('message', onMsg);
+                try { iframe.contentWindow.postMessage({ type: 'appWillClose' }, '*'); } catch(e) { clearTimeout(timer); resolve(); }
+            });
+            savePromises.push({ key: key, iframe: iframe, promise: p });
         }
+    });
+    await Promise.all(savePromises.map(function(s) { return s.promise; }));
+    savePromises.forEach(function(s) {
+        if (s.iframe && s.iframe.parentElement) s.iframe.parentElement.removeChild(s.iframe);
+        delete iframeCache[s.key];
     });
     delete lastAppMenu[appId];
     if (Object.keys(iframeCache).length === 0) {
@@ -451,10 +474,10 @@ function clearAppIframes(appId) {
 
 async function exitApp() {
     var closingAppId = currentApp ? currentApp.id : null;
+    if (closingAppId) await clearAppIframes(closingAppId);
     await apiCall('close_app');
     await backToDesktop();
     if (closingAppId) {
-        clearAppIframes(closingAppId);
         var idx = runningApps.indexOf(closingAppId);
         if (idx !== -1) runningApps.splice(idx, 1);
         updateTaskbar();
@@ -466,8 +489,8 @@ async function exitAppById(appId) {
     if (wasCurrentApp) { await exitApp(); return; }
     var appInfo = apps.find(function(a) { return a.id === appId; });
     if (appInfo) {
+        await clearAppIframes(appId);
         await apiCall('close_app', { app_id: appId });
-        clearAppIframes(appId);
         var idx = runningApps.indexOf(appId);
         if (idx !== -1) runningApps.splice(idx, 1);
         delete lastAppMenu[appId];
@@ -528,6 +551,7 @@ function _removeAppFromMain(appId) {
         document.getElementById('close-app-btn').style.display = 'none';
         document.getElementById('minimize-app-btn').style.display = 'none';
         document.getElementById('popout-app-btn').style.display = 'none';
+        document.getElementById('help-btn').style.display = 'none';
         document.getElementById('page-home').style.display = 'block';
         document.getElementById('page-title').textContent = (i18n[currentLanguage] || i18n['en'])['title.desktop'] || 'Desktop';
         var homeItem = document.querySelector('#desktop-menu [data-page="home"]');
@@ -635,9 +659,15 @@ function showIframe(targetIframe) {
         iframe.classList.remove('iframe-visible');
     });
     targetIframe.classList.add('iframe-visible');
-    if (targetIframe.contentWindow) {
-        targetIframe.contentWindow.postMessage({ action: 'requestFocus' }, '*');
-    }
+    setTimeout(function() {
+        try {
+            if (targetIframe.contentWindow && typeof targetIframe.contentWindow.skillupRequestFocus === 'function') {
+                targetIframe.contentWindow.skillupRequestFocus();
+            } else if (targetIframe.contentWindow) {
+                targetIframe.contentWindow.postMessage({ action: 'requestFocus' }, '*');
+            }
+        } catch(e) {}
+    }, 150);
     try {
         if (targetIframe.contentWindow) {
             var iframeDoc = targetIframe.contentWindow.document;

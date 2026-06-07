@@ -312,6 +312,8 @@ class PeerbusDaemon:
 
         # in-memory message queue (incoming, to be delivered to desktops)
         self._inbox = MessageQueue()
+        # command_exec messages bypass the desktop delivery queue entirely
+        self._cmd_queue = MessageQueue()
         # initialized in _run() after event loop is running
         self._desktop_registered: Optional[asyncio.Event] = None
 
@@ -570,6 +572,28 @@ class PeerbusDaemon:
         if after_online != before_online:
             logger.info("presence poll: peers online %d -> %d", before_online, after_online)
 
+    def _poll_presence_for_uid(self, uid: str) -> None:
+        """Re-read presence files for a specific uid directly, bypassing mtime cache."""
+        presence_dir = os.path.join(self.nfs_dir, 'presence')
+        prefix = f'{uid}@'
+        now = time.time()
+        try:
+            with os.scandir(presence_dir) as it:
+                for entry in it:
+                    if not entry.name.startswith(prefix) or not entry.name.endswith('.json'):
+                        continue
+                    try:
+                        mtime = entry.stat(follow_symlinks=False).st_mtime
+                        if now - mtime > PRESENCE_OFFLINE_TIMEOUT:
+                            continue
+                        data = json.loads(open(entry.path).read())
+                        self._mtime_cache[entry.name] = mtime
+                        self._update_peer(data)
+                    except Exception as e:
+                        logger.warning("poll_presence_for_uid %s entry error: %s", uid, e)
+        except Exception as e:
+            logger.warning("poll_presence_for_uid %s error: %s", uid, e)
+
     def _update_peer(self, data: dict) -> None:
         uid = data.get('uid')
         ip  = data.get('ip')
@@ -579,16 +603,25 @@ class PeerbusDaemon:
         if uid == self.uid and ip == self._local_ip:
             return
         peer_key: PeerKey = (uid, ip)
-        was_online = self._peers.get(peer_key, {}).get('online', False)
+        prev = self._peers.get(peer_key, {})
+        was_online = prev.get('online', False)
+        old_port = prev.get('tcp_port')
+        new_port = data.get('tcp_port')
         self._peers[peer_key] = {**data, 'online': True}
         if not was_online:
-            logger.debug("peer online: %s @ %s", uid, ip)
+            logger.info("peer online: %s @ %s port=%s", uid, ip, new_port)
+        elif old_port != new_port:
+            logger.info("peer port updated: %s @ %s %s -> %s", uid, ip, old_port, new_port)
 
     def _mark_offline(self, uid: str, ip: str) -> None:
         peer_key: PeerKey = (uid, ip)
+        was_online = self._peers.get(peer_key, {}).get('online', False)
         if peer_key in self._peers:
             self._peers[peer_key]['online'] = False
-        logger.debug("peer offline: %s @ %s", uid, ip)
+        if was_online:
+            logger.info("peer offline: %s @ %s", uid, ip)
+        else:
+            logger.debug("peer offline: %s @ %s", uid, ip)
 
     # ------------------------------------------------------------------
     # NFS queue (fallback)
@@ -605,6 +638,7 @@ class PeerbusDaemon:
         tmp      = os.path.join(drop_dir, f'{send_id}.tmp')
         data     = json.dumps(envelope).encode()
         try:
+            os.makedirs(drop_dir, mode=0o733, exist_ok=True)
             with open(tmp, 'wb') as f:
                 f.write(data)
             os.replace(tmp, path)
@@ -635,7 +669,11 @@ class PeerbusDaemon:
                     # Replay is already prevented by _seen_send_ids + mtime TTL.
                     decrypted = self._decrypt_envelope(envelope, check_ts=False)
                     if decrypted is not None:
-                        self._inbox.enqueue(decrypted)
+                        if (decrypted.get('app_id') == 'skilltalk' and
+                                decrypted.get('payload', {}).get('action') == 'command_exec'):
+                            self._cmd_queue.enqueue(decrypted)
+                        else:
+                            self._inbox.enqueue(decrypted)
                 except Exception as e:
                     logger.warning("poll_my_nfs_queue entry error: %s", e)
         except Exception as e:
@@ -888,6 +926,8 @@ class PeerbusDaemon:
                     if envelope.get('type') == 'result':
                         self._resolve_pending(
                             envelope['send_id'], envelope['status'], envelope.get('result'))
+                    elif envelope.get('type') == 'queue_notify':
+                        self._poll_my_nfs_queue()
                     else:
                         self._handle_incoming_envelope(envelope)
                 except Exception as e:
@@ -906,7 +946,27 @@ class PeerbusDaemon:
         decrypted = self._decrypt_envelope(envelope)
         if decrypted is None:
             return
-        self._inbox.enqueue(decrypted)
+        if (decrypted.get('app_id') == 'skilltalk' and
+                decrypted.get('payload', {}).get('action') == 'command_exec'):
+            self._cmd_queue.enqueue(decrypted)
+        else:
+            self._inbox.enqueue(decrypted)
+
+    async def _send_queue_notify(self, to_uid: str, to_ip: Optional[str]) -> None:
+        """Send a lightweight signal telling the peer to poll its NFS queue now."""
+        notify = json.dumps({'type': 'queue_notify'}).encode()
+        targets = self._select_peer_targets(to_uid, to_ip, 'ALL')
+        for t in targets:
+            sess = await self._get_or_connect(to_uid, t['ip'])
+            if sess is None:
+                continue
+            _reader, writer, session_key = sess
+            try:
+                payload = _encrypt(session_key, notify)
+                writer.write(_encode_frame(payload))
+                await writer.drain()
+            except Exception:
+                self._sessions.pop((to_uid, t['ip']), None)
 
     async def _send_result_to_peer(self, to_uid: str, to_ip: str, send_id: str,
                                    status: str, result: Any) -> None:
@@ -987,7 +1047,11 @@ class PeerbusDaemon:
                 'msg_type':   msg_type,
                 'payload':    payload,
             }
-            self._inbox.enqueue(msg)
+            if (app_id == 'skilltalk' and
+                    payload.get('action') == 'command_exec'):
+                self._cmd_queue.enqueue(msg)
+            else:
+                self._inbox.enqueue(msg)
             return {'send_id': send_id, 'status': 'SENT', 'result': None}
 
         id_info = self._load_peer_identity(to_uid)
@@ -1001,9 +1065,19 @@ class PeerbusDaemon:
 
         targets = self._select_peer_targets(to_uid, to_ip, target_mode)
         if not targets:
-            self._poll_presence()
+            # Evict cached presence data for this uid so _poll_presence_for_uid
+            # is forced to re-read from disk rather than using mtime cache.
+            stale_keys = [k for k in self._mtime_cache if k.startswith(f'{to_uid}@')]
+            for k in stale_keys:
+                del self._mtime_cache[k]
+            for pk in list(self._peers.keys()):
+                if pk[0] == to_uid:
+                    del self._peers[pk]
+            logger.info("send to %s: no targets, evicted cache and re-polling presence", to_uid)
+            self._poll_presence_for_uid(to_uid)
             targets = self._select_peer_targets(to_uid, to_ip, target_mode)
         if not targets:
+            logger.info("send to %s: still no targets after poll, queue_offline=%s", to_uid, queue_offline)
             if queue_offline:
                 self._write_nfs_queue(envelope)
                 return {'send_id': send_id, 'status': 'QUEUED', 'result': None}
@@ -1019,11 +1093,41 @@ class PeerbusDaemon:
                 sent_any = True
 
         if not sent_any:
+            # All TCP targets failed — cached peer info may be stale (e.g. peer
+            # restarted with a new port).  Evict stale entries, re-poll presence,
+            # and make one more attempt before falling back to NFS queue.
+            logger.info("send to %s: all TCP targets failed, evicting and re-polling", to_uid)
+            for t in targets:
+                self._peers.pop((to_uid, t['ip']), None)
+                self._mtime_cache.pop(self._presence_filename(to_uid, t['ip']), None)
+            stale_keys = [k for k in self._mtime_cache if k.startswith(f'{to_uid}@')]
+            for k in stale_keys:
+                del self._mtime_cache[k]
+            self._poll_presence_for_uid(to_uid)
+            retry_targets = self._select_peer_targets(to_uid, to_ip, target_mode)
+            logger.info("send to %s: retry targets after re-poll: %s", to_uid,
+                        [(t['ip'], t.get('tcp_port')) for t in retry_targets])
+            for t in retry_targets:
+                sent = await self._tcp_send_envelope(to_uid, t['ip'], envelope)
+                if sent:
+                    sent_any = True
+                    break
+
+        if not sent_any:
             self._pending.pop(send_id, None)
             if queue_offline:
                 self._write_nfs_queue(envelope)
+                await self._send_queue_notify(to_uid, to_ip)
                 return {'send_id': send_id, 'status': 'QUEUED', 'result': None}
             return {'send_id': send_id, 'status': 'ERROR', 'result': 'peer offline'}
+
+        # TCP succeeded — also write NFS queue as backup when queue_offline is set.
+        # The receiver deduplicates by send_id, so double-delivery is harmless.
+        # This ensures delivery even if the TCP frame was accepted by the kernel
+        # but dropped before the peer processed it (e.g. handshake race on restart).
+        if queue_offline:
+            self._write_nfs_queue(envelope)
+            await self._send_queue_notify(to_uid, to_ip)
 
         if wait_for == 'sent':
             self._pending.pop(send_id, None)
@@ -1045,6 +1149,20 @@ class PeerbusDaemon:
     # ------------------------------------------------------------------
     # Desktop delivery
     # ------------------------------------------------------------------
+
+    async def _cmd_exec_loop(self) -> None:
+        """Dedicated loop for command_exec — never blocked by desktop delivery parking."""
+        import threading as _threading
+        while True:
+            await self._cmd_queue.wait()
+            msg = self._cmd_queue.dequeue()
+            if msg is None:
+                continue
+            _threading.Thread(
+                target=self._handle_skilltalk_command_exec,
+                args=(msg,),
+                daemon=True,
+            ).start()
 
     async def _delivery_loop(self) -> None:
         while True:
@@ -1102,19 +1220,24 @@ class PeerbusDaemon:
             'payload':  msg['payload'],
         }).encode()
 
+        def _http_post(port: int, data: bytes) -> bool:
+            req = urllib.request.Request(
+                f'http://127.0.0.1:{port}/message',
+                data=data,
+                headers={'Content-Type': 'application/json'},
+                method='POST',
+            )
+            with urllib.request.urlopen(req, timeout=DELIVERY_CB_TIMEOUT) as resp:
+                resp.read()
+            return True
+
+        loop = asyncio.get_event_loop()
         delivered = False
         failed_dids = []
         for did, info in targets:
             port = info['callback_port']
             try:
-                req = urllib.request.Request(
-                    f'http://127.0.0.1:{port}/message',
-                    data=body,
-                    headers={'Content-Type': 'application/json'},
-                    method='POST',
-                )
-                with urllib.request.urlopen(req, timeout=DELIVERY_CB_TIMEOUT) as resp:
-                    resp.read()
+                await loop.run_in_executor(None, _http_post, port, body)
                 delivered = True
             except Exception as e:
                 logger.warning("deliver to desktop %s port %s failed: %s", did, port, e)
@@ -1127,6 +1250,8 @@ class PeerbusDaemon:
         if delivered:
             from_uid = msg['from_uid']
             from_ip  = msg.get('from_ip', '')
+            action   = msg.get('payload', {}).get('action', '')
+            logger.info("delivered to desktop: app=%s action=%s", app_id, action)
             self._resolve_pending(msg['send_id'], 'DELIVERED', None)
             asyncio.ensure_future(
                 self._send_result_to_peer(from_uid, from_ip, msg['send_id'], 'DELIVERED', None))
@@ -1315,19 +1440,150 @@ class PeerbusDaemon:
         import urllib.request
         import urllib.error
         body = json.dumps({'event': 'daemon_restarting'}).encode()
+        loop = asyncio.get_event_loop()
         for did, info in self._desktops.items():
             port = info['callback_port']
             try:
-                req = urllib.request.Request(
-                    f'http://127.0.0.1:{port}/message',
-                    data=body,
-                    headers={'Content-Type': 'application/json'},
-                    method='POST',
-                )
-                with urllib.request.urlopen(req, timeout=3) as resp:
-                    resp.read()
+                def _post(p=port, b=body):
+                    req = urllib.request.Request(
+                        f'http://127.0.0.1:{p}/message',
+                        data=b,
+                        headers={'Content-Type': 'application/json'},
+                        method='POST',
+                    )
+                    with urllib.request.urlopen(req, timeout=3) as resp:
+                        resp.read()
+                await loop.run_in_executor(None, _post)
             except Exception:
                 pass
+
+    # ------------------------------------------------------------------
+    # Skilltalk command execution (peerbus-native, no desktop required)
+    # ------------------------------------------------------------------
+
+    def _get_skilltalk_admins(self) -> list:
+        from lib.config import _get_default_config_path
+        default_path = _get_default_config_path()
+        if not default_path or not os.path.exists(default_path):
+            return []
+        cp = configparser.ConfigParser()
+        cp.read(default_path)
+        raw = cp.get('skilltalk', 'admins', fallback='')
+        return [u.strip() for u in raw.split(',') if u.strip()]
+
+    def _handle_skilltalk_command_exec(self, msg: dict) -> None:
+        import subprocess
+        payload   = msg.get('payload', {})
+        from_uid  = msg.get('from_uid', '')
+        from_ip   = msg.get('from_ip', '')
+
+        admins = self._get_skilltalk_admins()
+        if from_uid not in admins:
+            logger.warning("command_exec rejected: from_uid=%r not in admins=%r", from_uid, admins)
+            return
+
+        cmd         = payload.get('cmd', '')
+        room_id     = payload.get('chatroom_id')
+        timeout     = int(payload.get('timeout') or 30)
+        cmd_chat_id = payload.get('cmd_chat_id')
+
+        if not cmd or not room_id:
+            logger.warning("command_exec: missing cmd or chatroom_id")
+            return
+
+        received_at = int(time.time())
+        try:
+            import tempfile as _tempfile
+            # Write stdout/stderr to temp files instead of PIPE so that
+            # background processes spawned by the command (e.g. "sleep 30 &")
+            # do not keep the pipe fds open and block proc.wait().
+            with _tempfile.TemporaryFile() as out_f, \
+                 _tempfile.TemporaryFile() as err_f:
+                proc = subprocess.Popen(
+                    cmd, shell=True, stdout=out_f, stderr=err_f,
+                )
+                try:
+                    proc.wait(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                    raise
+                out_f.seek(0); err_f.seek(0)
+                raw_out = out_f.read()
+                raw_err = err_f.read()
+            stdout   = raw_out.decode('utf-8', errors='replace')
+            stderr   = raw_err.decode('utf-8', errors='replace')
+            exitcode = proc.returncode
+        except subprocess.TimeoutExpired:
+            stdout   = ''
+            stderr   = f'[timeout after {timeout}s]'
+            exitcode = -1
+        except Exception as e:
+            stdout   = ''
+            stderr   = str(e)
+            exitcode = -1
+
+        finished_at = int(time.time())
+        result_payload = {
+            'action':       'command_result',
+            'chatroom_id':  room_id,
+            'executor_uid': self.uid,
+            'exitcode':     exitcode,
+            'stdout':       stdout,
+            'stderr':       stderr,
+            'received_at':  received_at,
+            'finished_at':  finished_at,
+            'cmd_chat_id':  cmd_chat_id,
+            'hostname':     socket.gethostname(),
+            'ip':           self._local_ip,
+        }
+        send_id = str(uuid.uuid4())
+        logger.info("command_exec done: uid=%s room=%s exit=%d, sending result to %s",
+                    self.uid, room_id, exitcode, from_uid)
+        asyncio.run_coroutine_threadsafe(
+            self._do_send_command_result(send_id, from_uid, result_payload),
+            self._loop,
+        )
+
+    async def _do_send_command_result(self, send_id: str, to_uid: str, payload: dict) -> None:
+        """Send command_result: attempt TCP and always write NFS queue as backup."""
+        # Self-delivery: bypass encryption/NFS, enqueue directly.
+        if to_uid == self.uid:
+            msg = {
+                'send_id':    send_id,
+                'from_uid':   self.uid,
+                'from_ip':    self._local_ip,
+                'app_id':     'skilltalk',
+                'target_mode': 'ALL',
+                'desktop_id': None,
+                'msg_type':   'postmessage',
+                'payload':    payload,
+            }
+            self._inbox.enqueue(msg)
+            return
+
+        id_info = self._load_peer_identity(to_uid)
+        if id_info is None:
+            logger.warning("command_result: no identity for %s, dropping", to_uid)
+            return
+
+        eph_priv = nacl.public.PrivateKey.generate()
+        envelope = self._encrypt_envelope(
+            send_id, to_uid, 'skilltalk', 'ALL', None,
+            'postmessage', payload, eph_priv, id_info['enc_pub'])
+
+        # Always persist to NFS queue first — guarantees delivery even if TCP succeeds
+        # but admin peerbus is torn down before it can hand off to desktop.
+        # Dedup via send_id prevents double-processing on the receiving side.
+        self._write_nfs_queue(envelope)
+
+        # Also try TCP for low-latency delivery
+        targets = self._select_peer_targets(to_uid, None, 'ALL')
+        if not targets:
+            self._poll_presence_for_uid(to_uid)
+            targets = self._select_peer_targets(to_uid, None, 'ALL')
+        for t in targets:
+            await self._tcp_send_envelope(to_uid, t['ip'], envelope)
 
     # ------------------------------------------------------------------
     # Idle TCP session cleanup
@@ -1382,6 +1638,7 @@ class PeerbusDaemon:
         logger.info("peerbus daemon started uid=%s tcp_port=%d sock=%s",
                     self.uid, self._tcp_port, self._sock_path)
 
+        asyncio.ensure_future(self._cmd_exec_loop())
         asyncio.ensure_future(self._delivery_loop())
 
         tick = 0

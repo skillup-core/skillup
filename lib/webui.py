@@ -66,7 +66,8 @@ def load_static_files(web_dir: str) -> Dict[str, Tuple[bytes, str]]:
         '.woff2': 'font/woff2',
         '.ttf': 'font/ttf',
         '.eot': 'application/vnd.ms-fontobject',
-        '.json': 'application/json'
+        '.json': 'application/json',
+        '.md': 'text/markdown'
     }
 
     binary_extensions = {'.png', '.jpg', '.gif', '.ico', '.woff', '.woff2', '.ttf', '.eot'}
@@ -498,11 +499,16 @@ class WebUIEngine:
                             self.send_header('Content-type', 'application/json')
                             self.end_headers()
                             self.wfile.write(json.dumps(result or {}).encode('utf-8'))
+                        except (BrokenPipeError, ConnectionResetError):
+                            return
                         except Exception as e:
-                            self.send_response(500)
-                            self.send_header('Content-type', 'application/json')
-                            self.end_headers()
-                            self.wfile.write(json.dumps({'error': str(e)}).encode('utf-8'))
+                            try:
+                                self.send_response(500)
+                                self.send_header('Content-type', 'application/json')
+                                self.end_headers()
+                                self.wfile.write(json.dumps({'error': str(e)}).encode('utf-8'))
+                            except (BrokenPipeError, ConnectionResetError):
+                                return
                     else:
                         self.send_response(404)
                         self.end_headers()
@@ -1141,9 +1147,11 @@ class WebUIEngine:
         else:
             exit_code = self.qt_app.exec_()
 
-        # Cleanup
+        # Cleanup: signal serve_forever to stop without blocking.
+        # server_thread is daemon so it will die with the process;
+        # we just need to close the socket so no new connections are accepted.
         if self.server:
-            self.server.shutdown()
+            self.server._BaseServer__shutdown_request = True
             self.server.server_close()
 
         return exit_code
@@ -1218,5 +1226,5 @@ class WebUIEngine:
     def shutdown(self):
         """Shutdown the engine"""
         if self.server:
-            self.server.shutdown()
+            self.server._BaseServer__shutdown_request = True
             self.server.server_close()

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="12" fill="#1d4ed8"/>
+  <!-- Note (white paper) -->
+  <rect x="14" y="14" width="30" height="38" rx="3" fill="#93c5fd"/>
+  <!-- Lines on note -->
+  <rect x="19" y="22" width="20" height="2.5" rx="1.25" fill="#1d4ed8"/>
+  <rect x="19" y="28" width="20" height="2.5" rx="1.25" fill="#1d4ed8"/>
+  <rect x="19" y="34" width="14" height="2.5" rx="1.25" fill="#1d4ed8"/>
+  <!-- Pencil (/ direction, tip bottom-left) -->
+  <g transform="translate(53,12) rotate(30)">
+    <!-- Eraser -->
+    <rect x="-4" y="0" width="8" height="6" rx="1" fill="#fca5a5"/>
+    <!-- Metal band -->
+    <rect x="-4" y="6" width="8" height="3" fill="#d97706"/>
+    <!-- Body -->
+    <rect x="-4" y="9" width="8" height="24" rx="1.5" fill="#fbbf24"/>
+    <!-- Tip (triangle) -->
+    <polygon points="-4,33 4,33 0,41" fill="#f5f0e8"/>
+    <!-- Tip point -->
+    <polygon points="-1,39 1,39 0,41" fill="#374151"/>
+  </g>
+</svg>

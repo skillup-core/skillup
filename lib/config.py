@@ -298,6 +298,31 @@ def get_desktop_config(key: str, default: Any = None) -> Any:
     return config.get(key, default)
 
 
+def parse_size_bytes(value: str, default: int) -> int:
+    """
+    Parse a human size string like "32MB", "1.5 GB", "1024", "512KB" to bytes.
+
+    Units (case-insensitive, whitespace tolerated): B, KB, MB, GB.
+    Bare number (no unit) is interpreted as bytes.
+    Returns `default` if the value is empty, None, or unparseable.
+    """
+    if value is None:
+        return default
+    s = str(value).strip()
+    if not s:
+        return default
+    import re as _re
+    m = _re.match(r'^([0-9]+(?:\.[0-9]+)?)\s*([a-zA-Z]*)$', s)
+    if not m:
+        return default
+    num = float(m.group(1))
+    unit = m.group(2).upper()
+    mult = {'': 1, 'B': 1, 'KB': 1024, 'MB': 1024 * 1024, 'GB': 1024 * 1024 * 1024}.get(unit)
+    if mult is None:
+        return default
+    return int(num * mult)
+
+
 def save_config(config_path: str, config: Dict[str, Any]):
     """
     Save configuration to flat key=value file (no section headers).

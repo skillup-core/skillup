@@ -725,17 +725,13 @@ document.addEventListener('DOMContentLoaded', function() {
     function startPolling() {
         callPython('get_skillbot_config', {}).then(res => {
             const interval = (res && res.success && res.connection_check_interval_ms) || 5000;
-            // Get current language from parent window
+            // Get current language from parent window (iframe mode)
             try {
                 const languageSelect = window.parent.document.getElementById('language-select');
-                if (languageSelect && languageSelect.value === 'ko') {
-                    currentLanguage = 'ko';
-                } else {
-                    currentLanguage = 'en';
+                if (languageSelect) {
+                    onLanguageChange(languageSelect.value);
                 }
-            } catch (e) {
-                currentLanguage = 'en';
-            }
+            } catch (e) {}
             refreshStatus();
             setInterval(refreshStatus, interval);
 
@@ -1058,13 +1054,17 @@ function applyEditorTheme(skillupTheme) {
     EXP.renderIcons();
 }
 
+function onLanguageChange(lang) {
+    currentLanguage = lang === 'ko' ? 'ko' : 'en';
+    refreshStatus();
+}
+
 window.addEventListener('message', function(event) {
     if (event.data && event.data.action === 'setTheme' && event.data.theme) {
         applyEditorTheme(event.data.theme);
     }
     if (event.data && event.data.action === 'setLanguage' && event.data.language) {
-        currentLanguage = event.data.language === 'ko' ? 'ko' : 'en';
-        refreshStatus();
+        onLanguageChange(event.data.language);
     }
     if (event.data && event.data.action === 'requestFocus') {
         if (editor) editor.focus();
@@ -1530,10 +1530,12 @@ let _ciwSelectFiles = [];
 let _ciwSelectPreloadPaths = [];
 let _ciwSelectMode = 'debug';   // 'debug' | 'run'
 
-function showCiwSelect(ciwWindows, files, mode, preloadPaths) {
+async function showCiwSelect(ciwWindows, files, mode, preloadPaths) {
     _ciwSelectFiles = files || [];
     _ciwSelectPreloadPaths = preloadPaths || (files && files._preloadPaths) || [];
     _ciwSelectMode  = mode || 'debug';
+
+    if (window._standaloneDialogsReady) await window._standaloneDialogsReady;
 
     if (window.parent && window.parent.desktopModal) {
         const lang = currentLanguage;

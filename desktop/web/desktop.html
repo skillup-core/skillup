@@ -121,6 +121,7 @@
     <link rel="stylesheet" href="/desktop-web-css/settings.css">
     <link rel="stylesheet" href="/desktop-web-css/empty-state.css">
     <link rel="stylesheet" href="/desktop-web-css/app-switcher.css">
+    <link rel="stylesheet" href="/desktop-web-css/help.css">
 </head>
 <body>
     <!-- Filter Dialog -->
@@ -211,6 +212,11 @@
                     <span class="top-bar-title" id="page-title" data-i18n="title.desktop">Desktop</span>
                 </div>
                 <div class="top-bar-right">
+                    <button class="help-btn" id="help-btn" aria-label="Help" onclick="openHelp()" style="display:none;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-5h2v2h-2zm1.07-9.75C9.77 5.25 8 7.02 8 9h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-3.93-3.75z"/>
+                        </svg>
+                    </button>
                     <button class="popout-app-btn" id="popout-app-btn" onclick="openInNewWindow()">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M19 19H5V5h7V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
@@ -542,5 +548,8 @@
     <script src="/desktop-web-script/modal.js"></script>
     <script src="/desktop-web-script/desktop-alert.js"></script>
     <script src="/desktop-web-script/init.js"></script>
+    <script src="/common/marked/16.x/marked.min.js"></script>
+    <script>if (window.marked) marked.setOptions({ gfm: true, breaks: true });</script>
+    <script src="/desktop-web-script/help.js"></script>
 </body>
 </html>

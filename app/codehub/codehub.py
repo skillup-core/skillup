@@ -47,6 +47,7 @@ class CodeHubApp(BaseApp):
             'codehub.svn_repo_url': '',
             'codehub.svn_checkout_root': '',
             'codehub.db_path': '',
+            'codehub.snapshot_limit': '',
         })
 
         # Resolve SVN repo URL
@@ -92,6 +93,19 @@ class CodeHubApp(BaseApp):
             except SvnError as e:
                 print(f"[warn ] SVN repo init failed: {e}", file=sys.stderr)
 
+        # Init snapshot service
+        from .snapshot_service import SnapshotService
+        from lib.config import parse_size_bytes, get_app_config_path
+        snap_root = os.path.join(
+            os.path.dirname(get_app_config_path(self.context.app_id, 'codehub')),
+            'snapshot',
+        )
+        limit_bytes = parse_size_bytes(
+            config.get('codehub.snapshot_limit', ''), 32 * 1024 * 1024
+        )
+        self._snapshots = SnapshotService(snap_root, limit_bytes)
+        self._snapshots.cleanup_tmp()
+
         # Register handlers
         self.register_handlers({
             'get_init_state':       self._handle_get_init_state,
@@ -125,6 +139,12 @@ class CodeHubApp(BaseApp):
             'list_orphan_dirs':     self._handle_list_orphan_dirs,
             'delete_orphan_dirs':   self._handle_delete_orphan_dirs,
             'dismiss_orphan_dirs':  self._handle_dismiss_orphan_dirs,
+            'list_snapshots':       self._handle_list_snapshots,
+            'prepare_snapshot':     self._handle_prepare_snapshot,
+            'commit_snapshot':      self._handle_commit_snapshot,
+            'cancel_snapshot':      self._handle_cancel_snapshot,
+            'restore_snapshot':     self._handle_restore_snapshot,
+            'delete_snapshots':     self._handle_delete_snapshots,
         })
 
         return 0
@@ -880,6 +900,111 @@ class CodeHubApp(BaseApp):
         except Exception as e:
             return {'success': False, 'error': str(e)}
         return {'success': True, 'deleted': deleted, 'failed': failed}
+
+
+    # ── snapshot handlers ────────────────────────────────────────────────────
+
+    def _handle_list_snapshots(self, data: dict, language: str) -> dict:
+        project_id = data.get('project_id')
+        pid = int(project_id) if project_id is not None else None
+        snaps = self._snapshots.list_all(pid)
+        return {
+            'success': True,
+            'snapshots': snaps,
+            'total_bytes': self._snapshots.total_bytes(),
+            'limit_bytes': self._snapshots.limit,
+        }
+
+    def _handle_prepare_snapshot(self, data: dict, language: str) -> dict:
+        from .snapshot_service import SnapshotError
+        project_id = data.get('project_id')
+        name = (data.get('name') or '').strip()
+        if project_id is None or not name:
+            return {'success': False, 'error': 'project_id and name required'}
+        project = self._db.get_project(int(project_id))
+        if project is None:
+            return {'success': False, 'error': 'Not found'}
+        wc = self._project_checkout_path(project['owner_account'], project['name'])
+        if not os.path.isdir(wc):
+            return {'success': False, 'error': 'working_copy_missing'}
+        label = f"{project['owner_account']}/{project['name']}"
+        try:
+            res = self._snapshots.prepare(int(project_id), label, name, wc, kind='manual')
+        except SnapshotError as e:
+            return {'success': False, 'error': str(e)}
+        res['success'] = True
+        return res
+
+    def _handle_commit_snapshot(self, data: dict, language: str) -> dict:
+        from .snapshot_service import SnapshotError
+        tmp_id = data.get('tmp_id', '')
+        delete_ids = data.get('delete_ids', []) or []
+        if not tmp_id:
+            return {'success': False, 'error': 'tmp_id required'}
+        try:
+            snap = self._snapshots.commit(tmp_id, delete_ids)
+        except SnapshotError as e:
+            return {'success': False, 'error': str(e)}
+        return {'success': True, 'snapshot': snap}
+
+    def _handle_cancel_snapshot(self, data: dict, language: str) -> dict:
+        tmp_id = data.get('tmp_id', '')
+        if tmp_id:
+            self._snapshots.cancel(tmp_id)
+        return {'success': True}
+
+    def _handle_restore_snapshot(self, data: dict, language: str) -> dict:
+        from .snapshot_service import SnapshotError
+        snap_id = data.get('id', '')
+        project_id = data.get('project_id')
+        if not snap_id or project_id is None:
+            return {'success': False, 'error': 'id and project_id required'}
+        project = self._db.get_project(int(project_id))
+        if project is None:
+            return {'success': False, 'error': 'Not found'}
+        wc = self._project_checkout_path(project['owner_account'], project['name'])
+        label = f"{project['owner_account']}/{project['name']}"
+
+        # find source snapshot for naming
+        src = next((s for s in self._snapshots.list_all(int(project_id))
+                    if s['id'] == snap_id), None)
+        if src is None:
+            return {'success': False, 'error': 'snapshot_not_found'}
+
+        # Step 1: auto snapshot of current WC (if WC exists).
+        # If WC does not exist there is nothing to back up — skip safely.
+        auto_id = None
+        if os.path.isdir(wc):
+            auto_name = f"auto: {src.get('name','')} 복원 직전"
+            try:
+                prep = self._snapshots.prepare(
+                    int(project_id), label, auto_name, wc,
+                    kind='auto', source_snapshot_id=snap_id,
+                )
+            except SnapshotError as e:
+                return {'success': False, 'error': f'auto_backup_failed: {e}'}
+            if prep.get('status') != 'ok':
+                # too_large or need_select (auto can't prompt) → abort
+                if prep.get('tmp_id'):
+                    self._snapshots.cancel(prep['tmp_id'])
+                return {'success': False, 'error': 'auto_backup_quota'}
+            try:
+                committed = self._snapshots.commit(prep['tmp_id'])
+                auto_id = committed['id']
+            except SnapshotError as e:
+                return {'success': False, 'error': f'auto_backup_commit_failed: {e}'}
+
+        # Step 2: clean + extract
+        try:
+            self._snapshots.restore(snap_id, wc)
+        except SnapshotError as e:
+            return {'success': False, 'error': str(e), 'auto_snapshot_id': auto_id}
+        return {'success': True, 'auto_snapshot_id': auto_id}
+
+    def _handle_delete_snapshots(self, data: dict, language: str) -> dict:
+        ids = data.get('ids', []) or []
+        deleted = self._snapshots.delete_many([str(x) for x in ids])
+        return {'success': True, 'deleted': deleted}
 
 
 register_app_class(CodeHubApp)

@@ -1,0 +1,237 @@
+{
+  "app": {
+    "id_name": "skillbook",
+    "title": { "en": "Skillbook", "ko": "스킬북" },
+    "icon": "/app/b00k5k1l/icon.svg"
+  },
+  "scope": "iframe",
+
+  "scenes": [
+    {
+      "id": "settings-dialog",
+      "detect": { "present": "#settingsDialog[style*='flex']" },
+      "trap_within": "#settingsDialog",
+      "intro": {
+        "en": "Settings: change language and view keyboard shortcuts.",
+        "ko": "환경설정: 언어 변경 및 키보드 단축키를 확인합니다."
+      },
+      "steps": [
+        {
+          "id": "settings-lang",
+          "selector": "#settingsLangSelect",
+          "title": { "en": "Language", "ko": "언어" },
+          "body_md": {
+            "en": "Select the display language for function documentation.",
+            "ko": "함수 문서의 표시 언어를 선택합니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 0, "y": 0 }
+        },
+        {
+          "id": "settings-save",
+          "selector": "#settingsSaveBtn",
+          "title": { "en": "Save", "ko": "저장" },
+          "body_md": {
+            "en": "Apply and save the settings.",
+            "ko": "설정을 적용하고 저장합니다."
+          },
+          "tip_side": "top",
+          "grid": { "x": 0, "y": 1 }
+        }
+      ]
+    },
+    {
+      "id": "favorites-dialog",
+      "detect": { "present": "#favoritesDialog[style*='flex']" },
+      "trap_within": "#favoritesDialog",
+      "intro": {
+        "en": "Favorites: your pinned SKILL functions for quick access.",
+        "ko": "즐겨찾기: 빠른 접근을 위해 고정한 SKILL 함수 목록입니다."
+      },
+      "steps": [
+        {
+          "id": "favorites-list",
+          "selector": "#favoritesList",
+          "title": { "en": "Favorites List", "ko": "즐겨찾기 목록" },
+          "body_md": {
+            "en": "Click a function name to view its documentation. Click the trash icon to remove it from favorites.",
+            "ko": "함수 이름을 클릭하면 문서를 확인합니다. 삭제 아이콘을 클릭하면 즐겨찾기에서 제거됩니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 0, "y": 0 }
+        }
+      ]
+    },
+    {
+      "id": "history-dialog",
+      "detect": { "present": "#historyDialog[style*='flex']" },
+      "trap_within": "#historyDialog",
+      "intro": {
+        "en": "History: recently viewed SKILL functions.",
+        "ko": "히스토리: 최근에 조회한 SKILL 함수 목록입니다."
+      },
+      "steps": [
+        {
+          "id": "history-list",
+          "selector": "#historyList",
+          "title": { "en": "History List", "ko": "히스토리 목록" },
+          "body_md": {
+            "en": "Click a function name to navigate back to it. Use the delete button to remove individual entries.",
+            "ko": "함수 이름을 클릭하면 해당 문서로 이동합니다. 삭제 버튼으로 항목을 제거할 수 있습니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 0, "y": 0 }
+        }
+      ]
+    },
+    {
+      "id": "ranking-dialog",
+      "detect": { "present": "#rankingDialog[style*='flex']" },
+      "trap_within": "#rankingDialog",
+      "intro": {
+        "en": "Ranking: most-viewed SKILL functions in order of popularity.",
+        "ko": "인기 순위: 조회 수 기준으로 정렬된 SKILL 함수 순위입니다."
+      },
+      "steps": [
+        {
+          "id": "ranking-list",
+          "selector": "#rankingList",
+          "title": { "en": "Ranking List", "ko": "순위 목록" },
+          "body_md": {
+            "en": "Click a function name to open its documentation.",
+            "ko": "함수 이름을 클릭하면 문서를 엽니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 0, "y": 0 }
+        },
+        {
+          "id": "ranking-pagination",
+          "selector": "#rankingPagination",
+          "title": { "en": "Pagination", "ko": "페이지 이동" },
+          "body_md": {
+            "en": "Use the previous/next buttons to browse more results.",
+            "ko": "이전/다음 버튼으로 더 많은 결과를 탐색합니다."
+          },
+          "tip_side": "top",
+          "grid": { "x": 0, "y": 1 }
+        }
+      ]
+    },
+    {
+      "id": "filter-dialog",
+      "detect": { "present": "#filterDialog[style*='flex']" },
+      "trap_within": "#filterDialog",
+      "intro": {
+        "en": "Filter: limit search results to specific SKILL sections.",
+        "ko": "필터: 특정 SKILL 섹션으로 검색 결과를 제한합니다."
+      },
+      "steps": [
+        {
+          "id": "filter-list",
+          "selector": "#filterSectionList",
+          "title": { "en": "Section Filter", "ko": "섹션 필터" },
+          "body_md": {
+            "en": "Check or uncheck sections to include or exclude them from search results.",
+            "ko": "섹션을 체크/해제하여 검색 결과에 포함하거나 제외합니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 0, "y": 0 }
+        }
+      ]
+    },
+    {
+      "id": "main",
+      "detect": { "absent": "#settingsDialog[style*='flex'], #favoritesDialog[style*='flex'], #historyDialog[style*='flex'], #rankingDialog[style*='flex'], #filterDialog[style*='flex'], #hashtagDialog[style*='flex']" },
+      "intro": {
+        "en": "Skillbook is a reference browser for SKILL functions. Search, browse, and bookmark the API you need.",
+        "ko": "스킬북은 SKILL 함수 레퍼런스 브라우저입니다. 필요한 API를 검색하고, 탐색하고, 즐겨찾기에 추가하세요."
+      },
+      "steps": [
+        {
+          "id": "search-input",
+          "selector": "#searchInput",
+          "title": { "en": "Search", "ko": "검색" },
+          "body_md": {
+            "en": "Type a function name to search. Results appear in a dropdown as you type. Press **Enter** or click a result to view the documentation.",
+            "ko": "함수 이름을 입력하여 검색합니다. 입력하는 동안 드롭다운에 결과가 표시됩니다. **Enter** 키를 누르거나 결과를 클릭하면 문서를 확인합니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 0, "y": 0 },
+          "neighbors": { "right": "favorites-btn", "down": "content-area" }
+        },
+        {
+          "id": "favorites-btn",
+          "selector": "#favoritesBtn",
+          "title": { "en": "Favorites", "ko": "즐겨찾기" },
+          "body_md": {
+            "en": "Open your list of pinned functions. Pin a function from the heart icon in the content area.",
+            "ko": "고정한 함수 목록을 엽니다. 콘텐츠 영역의 하트 아이콘으로 함수를 고정합니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 1, "y": 0 },
+          "neighbors": { "left": "search-input", "right": "filter-btn" }
+        },
+        {
+          "id": "filter-btn",
+          "selector": "#filterBtn",
+          "title": { "en": "Filter", "ko": "필터" },
+          "body_md": {
+            "en": "Limit search results to specific SKILL sections.",
+            "ko": "특정 SKILL 섹션으로 검색 결과를 제한합니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 2, "y": 0 },
+          "neighbors": { "left": "favorites-btn", "right": "history-btn" }
+        },
+        {
+          "id": "history-btn",
+          "selector": "#historyBtn",
+          "title": { "en": "History", "ko": "히스토리" },
+          "body_md": {
+            "en": "View recently visited functions.",
+            "ko": "최근에 방문한 함수 목록을 확인합니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 3, "y": 0 },
+          "neighbors": { "left": "filter-btn", "right": "ranking-btn" }
+        },
+        {
+          "id": "ranking-btn",
+          "selector": "#rankingBtn",
+          "title": { "en": "Ranking", "ko": "인기 순위" },
+          "body_md": {
+            "en": "See the most-viewed SKILL functions ranked by popularity.",
+            "ko": "조회 수 기준으로 정렬된 SKILL 함수 인기 순위를 확인합니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 4, "y": 0 },
+          "neighbors": { "left": "history-btn", "right": "settings-btn" }
+        },
+        {
+          "id": "settings-btn",
+          "selector": "#settingsBtn",
+          "title": { "en": "Settings", "ko": "환경설정" },
+          "body_md": {
+            "en": "Change the documentation language and view keyboard shortcuts.",
+            "ko": "문서 언어를 변경하고 키보드 단축키를 확인합니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 5, "y": 0 },
+          "neighbors": { "left": "ranking-btn", "down": "content-area" }
+        },
+        {
+          "id": "content-area",
+          "selector": "#content",
+          "title": { "en": "Documentation", "ko": "함수 문서" },
+          "body_md": {
+            "en": "Displays the full documentation for the selected function, including arguments, return values, and description. Use **arrow keys** in the browser to scroll.",
+            "ko": "선택한 함수의 전체 문서를 표시합니다. 인수, 반환값, 설명이 포함됩니다. 브라우저 화살표 키로 스크롤할 수 있습니다."
+          },
+          "tip_side": "top",
+          "grid": { "x": 0, "y": 1 },
+          "neighbors": { "up": "search-input" }
+        }
+      ]
+    }
+  ]
+}

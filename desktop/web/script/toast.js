@@ -10,16 +10,16 @@ window.showToast = function(msg, options) {
     var bg = window.getComputedStyle(document.body).backgroundColor;
     var m = bg.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
     var isDark = m ? (parseInt(m[1]) + parseInt(m[2]) + parseInt(m[3])) / 3 < 128 : true;
-    var bgColor   = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)';
-    var textColor = isDark ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.65)';
+    var bgColor   = isDark ? '#f8f9fa' : '#2c2c2c';
+    var textColor = isDark ? '#212529' : '#e8e8e8';
     var errColor  = isErr ? 'var(--color-danger,#dc3545)' : textColor;
     var accent    = isErr ? 'var(--color-danger,#dc3545)' : 'var(--color-success,#198754)';
     // close button: normal/hover colors per dark/light mode
-    var closeFg        = isDark ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.65)';
-    var closeHoverBg   = isDark ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.70)';
-    var closeHoverFg   = isDark ? '#222' : '#fff';
+    var closeFg        = isDark ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.75)';
+    var closeHoverBg   = isDark ? 'rgba(0,0,0,0.70)' : 'rgba(255,255,255,0.85)';
+    var closeHoverFg   = isDark ? '#fff' : '#222';
     toastEl.className = 'toast align-items-center border';
-    toastEl.style.cssText = 'background:' + bgColor + ';border-color:var(--border-color,#ced4da)!important;color:' + errColor + ';width:220px;max-width:220px;margin-top:6px;pointer-events:auto';
+    toastEl.style.cssText = 'background:' + bgColor + ';border-color:var(--border-color,#ced4da)!important;color:' + errColor + ';width:max-content;max-width:360px;margin-top:6px;pointer-events:auto';
     toastEl.setAttribute('role', 'alert');
     toastEl.innerHTML =
         '<div class="d-flex align-items-center">' +

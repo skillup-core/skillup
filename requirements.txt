@@ -11,6 +11,10 @@
 #
 # If both are installed, PySide2 takes precedence.
 
+# ── Peerbus (peer RPC / E2EE) ─────────────────────────────────────────────────
+# Required for peerbus daemon (TCP peer communication, end-to-end encryption)
+PyNaCl>=1.4.0
+
 # ── Optional ──────────────────────────────────────────────────────────────────
 # Profile photo resize (64x64 and 320x320); falls back to original size if absent
 Pillow>=8.0.0

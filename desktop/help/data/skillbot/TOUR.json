@@ -1,0 +1,257 @@
+{
+  "app": {
+    "id_name": "skillbot",
+    "title": { "en": "SkillBot", "ko": "스킬 봇" },
+    "icon": "/app/sk1llb0t/icon.svg"
+  },
+  "scope": "iframe",
+
+  "scenes": [
+    {
+      "id": "ciw-select-modal",
+      "detect": { "present": "#ciwSelectOverlay[style*='block']" },
+      "trap_within": "#ciwSelectModal",
+      "intro": {
+        "en": "CIW Selection: multiple Virtuoso windows were found. Choose the one to use for this debug session.",
+        "ko": "CIW 선택: Virtuoso 창이 여러 개 발견되었습니다. 이 디버그 세션에 사용할 창을 선택하세요."
+      },
+      "steps": [
+        {
+          "id": "ciw-list",
+          "selector": "#ciwList",
+          "title": { "en": "CIW Window List", "ko": "CIW 창 목록" },
+          "body_md": {
+            "en": "Select the Virtuoso CIW (Command Input Window) to connect to for debugging.",
+            "ko": "디버깅에 연결할 Virtuoso CIW(Command Input Window)를 선택합니다."
+          },
+          "tip_side": "bottom"
+        }
+      ]
+    },
+    {
+      "id": "project-dialog",
+      "detect": { "present": "#prjOverlay.visible" },
+      "trap_within": "#prjDialog",
+      "intro": {
+        "en": "Projects: manage sets of files you work on together.",
+        "ko": "프로젝트: 함께 작업하는 파일 집합을 관리합니다."
+      },
+      "steps": [
+        {
+          "id": "prj-list",
+          "selector": "#prjList",
+          "title": { "en": "Project List", "ko": "프로젝트 목록" },
+          "body_md": {
+            "en": "Click a project to view or edit its details on the right.",
+            "ko": "프로젝트를 클릭하면 오른쪽에서 세부 정보를 확인하거나 편집합니다."
+          },
+          "tip_side": "right"
+        },
+        {
+          "id": "prj-new-btn",
+          "selector": "#prjNewBtn",
+          "title": { "en": "New Project", "ko": "새 프로젝트" },
+          "body_md": {
+            "en": "Create a new project. Fill in the name, description, and add open tabs as project files.",
+            "ko": "새 프로젝트를 만듭니다. 이름과 설명을 입력하고 열린 탭을 프로젝트 파일로 추가합니다."
+          },
+          "tip_side": "top"
+        },
+        {
+          "id": "prj-name-input",
+          "selector": "#prjNameInput",
+          "title": { "en": "Project Name", "ko": "프로젝트 이름" },
+          "body_md": {
+            "en": "Enter a name for this project.",
+            "ko": "프로젝트 이름을 입력합니다."
+          },
+          "tip_side": "bottom"
+        },
+        {
+          "id": "prj-file-list",
+          "selector": "#prjFileList",
+          "title": { "en": "Project Files", "ko": "프로젝트 파일" },
+          "body_md": {
+            "en": "Files belonging to this project. Use **+ Add Open Tabs** to add the currently open editor tabs.",
+            "ko": "이 프로젝트에 속한 파일들입니다. **+ 열린 탭 추가**를 사용하면 현재 열린 에디터 탭을 추가합니다."
+          },
+          "tip_side": "bottom"
+        },
+        {
+          "id": "prj-switch-btn",
+          "selector": "#prjSwitchBtn",
+          "title": { "en": "Switch Project", "ko": "프로젝트 전환" },
+          "body_md": {
+            "en": "Switch to this project. The editor opens all files in the project.",
+            "ko": "이 프로젝트로 전환합니다. 에디터에서 프로젝트의 모든 파일이 열립니다."
+          },
+          "tip_side": "top"
+        }
+      ]
+    },
+    {
+      "id": "debug-active",
+      "detect": { "present": "#debugToolbar[style*='flex']" },
+      "intro": {
+        "en": "Debug mode is active. Use the debug toolbar to step through your SKILL code.",
+        "ko": "디버그 모드가 활성화되었습니다. 디버그 툴바를 사용하여 SKILL 코드를 단계별로 실행합니다."
+      },
+      "steps": [
+        {
+          "id": "btn-debug-continue",
+          "selector": "#btnDbgContinue",
+          "title": { "en": "Continue (F5)", "ko": "계속 (F5)" },
+          "body_md": {
+            "en": "Resume execution until the next breakpoint.",
+            "ko": "다음 중단점까지 실행을 재개합니다."
+          },
+          "tip_side": "bottom"
+        },
+        {
+          "id": "btn-debug-next",
+          "selector": "#btnDbgNext",
+          "title": { "en": "Next (F10)", "ko": "다음 (F10)" },
+          "body_md": {
+            "en": "Execute the current line and move to the next line (step over).",
+            "ko": "현재 줄을 실행하고 다음 줄로 이동합니다 (단계 실행)."
+          },
+          "tip_side": "bottom"
+        },
+        {
+          "id": "btn-debug-stop",
+          "selector": "#btnDbgStop",
+          "title": { "en": "Stop (Shift+F5)", "ko": "중지 (Shift+F5)" },
+          "body_md": {
+            "en": "End the debug session and return to edit mode.",
+            "ko": "디버그 세션을 종료하고 편집 모드로 돌아옵니다."
+          },
+          "tip_side": "bottom"
+        },
+        {
+          "id": "debug-vars-panel",
+          "selector": "#debugVarsPanel",
+          "title": { "en": "Variables", "ko": "변수" },
+          "body_md": {
+            "en": "Shows the current values of local variables at the paused breakpoint.\n\nUse the **expression input** at the bottom to evaluate any SKILL expression in the current context.",
+            "ko": "중단점에서 멈춘 시점의 지역 변수 값을 표시합니다.\n\n하단의 **수식 입력란**에 현재 컨텍스트에서 평가할 SKILL 수식을 입력할 수 있습니다."
+          },
+          "tip_side": "left"
+        }
+      ]
+    },
+    {
+      "id": "preferences-dialog",
+      "detect": { "present": "#prefsFontSize" },
+      "trap_within": "#desktop-modal-overlay",
+      "scope": "desktop",
+      "intro": {
+        "en": "Preferences: configure the editor font size and auto-complete behavior.",
+        "ko": "환경설정: 편집기 글꼴 크기와 자동완성 동작을 설정합니다."
+      },
+      "steps": [
+        {
+          "id": "prefs-font-size",
+          "selector": "#prefsFontSize",
+          "scope": "desktop",
+          "title": { "en": "Editor Font Size", "ko": "편집기 글꼴 크기" },
+          "body_md": {
+            "en": "Select the font size for the code editor.",
+            "ko": "코드 에디터의 글꼴 크기를 선택합니다."
+          },
+          "tip_side": "bottom"
+        },
+        {
+          "id": "prefs-intellisense",
+          "selector": "#prefsIntellisense",
+          "scope": "desktop",
+          "title": { "en": "Auto-complete", "ko": "자동완성" },
+          "body_md": {
+            "en": "Enable or disable auto-complete suggestions while typing SKILL code.",
+            "ko": "SKILL 코드 입력 중 자동완성 제안을 사용하거나 끕니다."
+          },
+          "tip_side": "bottom"
+        }
+      ]
+    },
+    {
+      "id": "main",
+      "detect": { "absent": "#prjOverlay.visible, #ciwSelectOverlay[style*='block'], #prefsFontSize" },
+      "intro": {
+        "en": "SkillBot is a SKILL editor and debugger for Cadence Virtuoso. Write SKILL code, set breakpoints, and debug interactively with the Virtuoso CIW.",
+        "ko": "스킬 봇은 Cadence Virtuoso용 SKILL 편집기 및 디버거입니다. SKILL 코드를 작성하고, 중단점을 설정하며, Virtuoso CIW와 연동하여 대화형으로 디버그합니다."
+      },
+      "steps": [
+        {
+          "id": "btn-run",
+          "selector": "#btnRun",
+          "title": { "en": "Run (Ctrl+F5)", "ko": "실행 (Ctrl+F5)" },
+          "body_md": {
+            "en": "Send the current editor content to the Virtuoso CIW and execute it. SkillBot finds the CIW window automatically.",
+            "ko": "현재 에디터 내용을 Virtuoso CIW로 전송하여 실행합니다. CIW 창은 자동으로 연결됩니다."
+          },
+          "tip_side": "bottom"
+        },
+        {
+          "id": "btn-debug",
+          "selector": "#btnDebug",
+          "title": { "en": "Debug (F5)", "ko": "디버그 (F5)" },
+          "body_md": {
+            "en": "Start a debug session. Execution pauses at breakpoints. The **Variables** panel shows current values, and you can step through code line by line.\n\nFirst load the SKILL module in Cadence CIW — click the **?** icon next to the CIW button for setup instructions.",
+            "ko": "디버그 세션을 시작합니다. 중단점에서 실행이 멈추며, **변수** 패널에서 현재 값을 확인하고 코드를 한 줄씩 실행할 수 있습니다.\n\n먼저 Cadence CIW에서 SKILL 모듈을 로드하세요. CIW 버튼 옆 **?** 아이콘을 클릭하면 설정 방법을 확인합니다."
+          },
+          "tip_side": "bottom"
+        },
+        {
+          "id": "btn-breakpoint",
+          "selector": "#btnBreakpoint",
+          "title": { "en": "Toggle Breakpoint (F9)", "ko": "중단점 설정/해제 (F9)" },
+          "body_md": {
+            "en": "Set or clear a breakpoint at the current cursor line. During a debug session, execution pauses at breakpoints so you can inspect variable values.",
+            "ko": "현재 커서 줄에 중단점을 설정하거나 해제합니다. 디버그 세션 중 중단점에서 실행이 멈추어 변수 값을 확인할 수 있습니다."
+          },
+          "tip_side": "bottom"
+        },
+        {
+          "id": "ciw-combo",
+          "selector": "#ciwCombo",
+          "title": { "en": "CIW Connection", "ko": "CIW 연결" },
+          "body_md": {
+            "en": "Shows the currently connected Virtuoso CIW window. Click to select a different CIW if multiple Virtuoso instances are open.",
+            "ko": "현재 연결된 Virtuoso CIW 창을 표시합니다. 여러 Virtuoso 인스턴스가 열려 있으면 클릭하여 다른 CIW를 선택합니다."
+          },
+          "tip_side": "bottom"
+        },
+        {
+          "id": "explorer-panel",
+          "selector": "#explorerPanel",
+          "title": { "en": "File Explorer", "ko": "파일 탐색기" },
+          "body_md": {
+            "en": "Browse and open SKILL files from your filesystem. Click **the folder icon** in the header to open a folder.\n\nRight-click a file to rename or delete it.",
+            "ko": "파일 시스템에서 SKILL 파일을 탐색하고 엽니다. 헤더의 **폴더 아이콘**을 클릭하여 폴더를 엽니다.\n\n파일을 오른쪽 클릭하면 이름 변경 또는 삭제할 수 있습니다."
+          },
+          "tip_side": "right"
+        },
+        {
+          "id": "editor-panel",
+          "selector": "#editorPanel",
+          "title": { "en": "Code Editor", "ko": "코드 에디터" },
+          "body_md": {
+            "en": "Write and edit your SKILL code here. Features include:\n- **Syntax highlighting** for SKILL, Python, and more\n- **Auto-complete** and bracket matching\n- **Projects** (☰ button) — group related files together",
+            "ko": "여기에 SKILL 코드를 작성하고 편집합니다. 주요 기능:\n- SKILL, Python 등 **구문 강조**\n- **자동 완성** 및 괄호 매칭\n- **프로젝트** (☰ 버튼) — 관련 파일 묶기"
+          },
+          "tip_side": "bottom"
+        },
+        {
+          "id": "output-panel",
+          "selector": "#outputPanel",
+          "title": { "en": "Output", "ko": "출력" },
+          "body_md": {
+            "en": "Shows the result of running or debugging your code. Each entry is color-coded:\n- Normal text — info\n- Red — error\n- Yellow — warning\n\nClick the **trash** icon to clear, or **⊕** to toggle the layout between bottom and side panels.",
+            "ko": "코드 실행 또는 디버그 결과를 표시합니다. 색상으로 구분됩니다:\n- 일반 텍스트 — 정보\n- 빨간색 — 오류\n- 노란색 — 경고\n\n**휴지통** 아이콘으로 지우거나, **⊕** 로 패널 레이아웃(하단/측면)을 전환합니다."
+          },
+          "tip_side": "top"
+        }
+      ]
+    }
+  ]
+}

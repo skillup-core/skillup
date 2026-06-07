@@ -4,6 +4,7 @@ All connections use PRAGMA journal_mode=DELETE (NFS-safe) and PRAGMA foreign_key
 """
 
 import base64
+import json
 import os
 import sqlite3
 import threading
@@ -50,7 +51,9 @@ def init_db(db_path: str) -> None:
             name         TEXT    NOT NULL,
             created_at   INTEGER NOT NULL,
             last_chat_at INTEGER,
-            created_by   TEXT
+            created_by   TEXT,
+            room_type    TEXT    NOT NULL DEFAULT 'chat',
+            cmd_timeout  INTEGER NOT NULL DEFAULT 300
         );
 
         CREATE TABLE IF NOT EXISTS chatroom_member (
@@ -78,6 +81,14 @@ def init_db(db_path: str) -> None:
             ON chatroom_member(uid);
     """)
     conn.commit()
+    # migration: add columns if missing (existing DBs)
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(chatroom)")}
+    if 'room_type' not in cols:
+        conn.execute("ALTER TABLE chatroom ADD COLUMN room_type TEXT NOT NULL DEFAULT 'chat'")
+        conn.commit()
+    if 'cmd_timeout' not in cols:
+        conn.execute("ALTER TABLE chatroom ADD COLUMN cmd_timeout INTEGER NOT NULL DEFAULT 300")
+        conn.commit()
     conn.close()
 
 
@@ -103,6 +114,7 @@ class SkilltalkDB:
         with self._lock:
             rows = self._conn.execute("""
                 SELECT cr.id, cr.name, cr.created_at, cr.last_chat_at,
+                       cr.room_type,
                        COALESCE(cr.created_by, (
                            SELECT cm2.uid FROM chatroom_member cm2
                            WHERE cm2.chatroom_id = cr.id
@@ -111,17 +123,36 @@ class SkilltalkDB:
                        )) AS created_by
                 FROM chatroom cr
                 JOIN chatroom_member cm ON cm.chatroom_id = cr.id
-                WHERE cm.uid = ?
+                WHERE cm.uid = ? AND cr.room_type = 'chat'
                 ORDER BY COALESCE(cr.last_chat_at, cr.created_at) DESC
             """, (uid,)).fetchall()
         return [dict(r) for r in rows]
 
-    def create_room(self, name: str, member_uids: list, created_by: str = None) -> int:
+    def get_command_rooms_for_uid(self, uid: str) -> list:
+        """Return command rooms created by this uid."""
+        with self._lock:
+            rows = self._conn.execute("""
+                SELECT cr.id, cr.name, cr.created_at, cr.last_chat_at,
+                       cr.room_type, cr.cmd_timeout,
+                       COALESCE(cr.created_by, (
+                           SELECT cm2.uid FROM chatroom_member cm2
+                           WHERE cm2.chatroom_id = cr.id
+                           ORDER BY cm2.joined_at ASC, cm2.id ASC
+                           LIMIT 1
+                       )) AS created_by
+                FROM chatroom cr
+                JOIN chatroom_member cm ON cm.chatroom_id = cr.id
+                WHERE cm.uid = ? AND cr.room_type = 'command'
+                ORDER BY COALESCE(cr.last_chat_at, cr.created_at) DESC
+            """, (uid,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def create_room(self, name: str, member_uids: list, created_by: str = None, room_type: str = 'chat', cmd_timeout: int = 300) -> int:
         now = int(time.time())
         with self._lock:
             cur = self._conn.execute(
-                "INSERT INTO chatroom (name, created_at, created_by) VALUES (?, ?, ?)",
-                (name, now, created_by)
+                "INSERT INTO chatroom (name, created_at, created_by, room_type, cmd_timeout) VALUES (?, ?, ?, ?, ?)",
+                (name, now, created_by, room_type, cmd_timeout)
             )
             room_id = cur.lastrowid
             for uid in member_uids:
@@ -135,7 +166,7 @@ class SkilltalkDB:
     def get_room(self, room_id: int) -> dict:
         with self._lock:
             row = self._conn.execute("""
-                SELECT id, name, created_at, last_chat_at,
+                SELECT id, name, created_at, last_chat_at, room_type, cmd_timeout,
                        COALESCE(created_by, (
                            SELECT cm.uid FROM chatroom_member cm
                            WHERE cm.chatroom_id = chatroom.id
@@ -224,6 +255,28 @@ class SkilltalkDB:
         r['contents'] = _decode(r['contents'])
         return r
 
+    def get_cmd_results_by_cmd_chat_id(self, room_id: int, cmd_chat_id: int) -> list:
+        """Return all x-cmd-result rows for a room that match cmd_chat_id."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, sender_uid, sender_ip, contents, created_at FROM chat"
+                " WHERE chatroom_id = ? AND mimetype = 'application/x-cmd-result'",
+                (room_id,)
+            ).fetchall()
+        result = []
+        for row in rows:
+            r = dict(row)
+            r['contents'] = _decode(r['contents'])
+            try:
+                data = json.loads(r['contents'])
+            except Exception:
+                continue
+            if data.get('cmd_chat_id') == cmd_chat_id:
+                data['chat_id'] = r['id']
+                data['sender_uid'] = r['sender_uid']
+                result.append(data)
+        return result
+
     def delete_chat(self, chat_id: int, sender_uid: str) -> bool:
         with self._lock:
             cur = self._conn.execute(
@@ -236,6 +289,30 @@ class SkilltalkDB:
     # ------------------------------------------------------------------
     # Member leave
     # ------------------------------------------------------------------
+
+    def rename_room(self, room_id: int, name: str) -> None:
+        with self._lock:
+            self._conn.execute("UPDATE chatroom SET name = ? WHERE id = ?", (name, room_id))
+            self._conn.commit()
+
+    def add_members(self, room_id: int, uids: list) -> list:
+        """Add uids not already in the room. Returns list of actually added uids."""
+        now = int(time.time())
+        added = []
+        with self._lock:
+            existing = {r['uid'] for r in self._conn.execute(
+                "SELECT uid FROM chatroom_member WHERE chatroom_id = ?", (room_id,)
+            ).fetchall()}
+            for uid in uids:
+                if uid not in existing:
+                    self._conn.execute(
+                        "INSERT INTO chatroom_member (chatroom_id, uid, joined_at) VALUES (?, ?, ?)",
+                        (room_id, uid, now)
+                    )
+                    added.append(uid)
+            if added:
+                self._conn.commit()
+        return added
 
     def leave_room(self, room_id: int, uid: str) -> int:
         """Remove uid from room. Returns remaining member count."""

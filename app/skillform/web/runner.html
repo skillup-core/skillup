@@ -20,6 +20,8 @@
     <script src="/common/marked/16.x/marked.min.js" onerror="this.onerror=null;this.src='../../../../desktop/common/marked/16.x/marked.min.js';"></script>
     <link id="hljs-css" rel="stylesheet" href="/common/highlight.js/11.x/styles/github.min.css" onerror="this.onerror=null;this.href='../../../../desktop/common/highlight.js/11.x/styles/github.min.css';">
     <script src="/common/highlight.js/11.x/highlight.min.js" onerror="this.onerror=null;this.src='../../../../desktop/common/highlight.js/11.x/highlight.min.js';"></script>
+    <link rel="stylesheet" href="/common/style/md-control.css" onerror="this.onerror=null;this.href='../../../../desktop/common/style/md-control.css';">
+    <script src="/common/script/md-control.js" onerror="this.onerror=null;this.src='../../../../desktop/common/script/md-control.js';"></script>
 </head>
 <body>
 <link rel="stylesheet" href="skillform.css" onerror="this.onerror=null;this.href='/app/skillform/skillform.css';">
@@ -233,7 +235,7 @@ function renderForm(schema) {
         const minH = f.h * gridRowH;
         const layout = { fieldDef: f, wrapEl, gridRowH, formEl, allFieldEls, observer: null, minH };
         _commentLayouts.push(layout);
-        const mdPreviewEl = fieldEl.querySelector('.sfr-md-preview');
+        const mdPreviewEl = fieldEl.querySelector('.sk-md-preview');
         const syncMarkdownFieldHeight = () => {
             const labelEl = fieldEl.querySelector('.sfr-label');
             const labelH = labelEl ? labelEl.offsetHeight : 0;
@@ -404,171 +406,56 @@ function buildFieldWidget(f, rowH) {
 
         case 'textarea':
             if (f.markdown !== false && f.readonly) {
-                // Readonly markdown: render as preview-only div, no edit controls.
-                const roMdWrap = document.createElement('div');
-                roMdWrap.className = 'sfr-md-wrap';
-                const roMdPreview = document.createElement('div');
-                roMdPreview.className = 'sfr-md-preview';
-                roMdPreview.id = 'sfr-' + f.id;
-                roMdPreview.style.minHeight = (rowH * (f.h || 1)) + 'px';
-                const initVal = f.default || '';
-                if (initVal.trim()) {
-                    roMdPreview.innerHTML = _cmtRenderMd(initVal);
-                    roMdPreview.style.display = '';
-                } else {
-                    roMdPreview.style.display = 'none';
+                const roCtrl = SkMdControl.build({
+                    id: 'sfr-' + f.id,
+                    initialValue: f.default || '',
+                    minHeight: (rowH * (f.h || 1)) + 'px',
+                    readonly: true
+                });
+                formValues[f.id] = f.default || '';
+                // _refreshMdPreview: used by applySetValues to push external value updates into the preview
+                const roPreviewEl = roCtrl.element.querySelector('#sfr-' + f.id);
+                if (roPreviewEl) {
+                    roPreviewEl._refreshMdPreview = function() {
+                        roCtrl.setValue(formValues[f.id] || '');
+                    };
                 }
-                roMdPreview._refreshMdPreview = function() {
-                    const val = formValues[f.id] || '';
-                    if (val.trim()) {
-                        roMdPreview.innerHTML = _cmtRenderMd(val);
-                        roMdPreview.style.display = '';
-                    } else {
-                        roMdPreview.style.display = 'none';
-                    }
-                };
-                formValues[f.id] = initVal;
-                roMdWrap.appendChild(roMdPreview);
-                wrap.appendChild(roMdWrap);
+                wrap.appendChild(roCtrl.element);
                 return wrap;
             }
             if (f.markdown !== false && !f.readonly) {
-                const mdWrap = document.createElement('div');
-                mdWrap.className = 'sfr-md-wrap';
+                formValues[f.id] = f.default || '';
 
-                const mdTa = document.createElement('textarea');
-                mdTa.id = 'sfr-' + f.id;
-                mdTa.className = 'sfr-md-textarea';
-                mdTa.style.minHeight = (rowH * (f.h || 1)) + 'px';
-                if (f.placeholder) mdTa.placeholder = _loc(f, 'placeholder');
-                mdTa.value = f.default || '';
-
-                const mdPreview = document.createElement('div');
-                mdPreview.className = 'sfr-md-preview';
-                mdPreview.style.minHeight = (rowH * (f.h || 1)) + 'px';
-                mdPreview.style.display = 'none';
-
-                const mdEditBtn = document.createElement('button');
-                mdEditBtn.type = 'button';
-                mdEditBtn.className = 'sfr-md-edit-btn';
-                mdEditBtn.setAttribute('aria-label', 'Edit');
-                mdEditBtn.setAttribute('data-tooltip', _currentLang === 'ko' ? '편집' : 'Edit');
-                mdEditBtn.style.display = 'none';
-                mdEditBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5a1.414 1.414 0 0 1 2 2L5 13l-3 1 1-3 8.5-8.5z"/></svg>';
-
-                function _switchToEdit() {
-                    // Preserve only the markdown body height; fieldEl also includes the label block.
-                    const fieldEl = wrap.closest('.sfr-field');
-                    if (fieldEl) {
+                const mdCtrl = SkMdControl.build({
+                    id: 'sfr-' + f.id,
+                    placeholder: f.placeholder ? _loc(f, 'placeholder') : '',
+                    initialValue: f.default || '',
+                    minHeight: (rowH * (f.h || 1)) + 'px',
+                    lang: _currentLang,
+                    imagePaste: true,
+                    onChange: function() { formValues[f.id] = mdCtrl.getValue(); },
+                    measureEditHeight: function(preview) {
+                        const bodyH = Math.max(preview.offsetHeight || 0, preview.scrollHeight || 0);
+                        if (bodyH > 0) return bodyH;
+                        const fieldEl = wrap.closest('.sfr-field');
+                        if (!fieldEl) return 40;
                         const labelEl = fieldEl.querySelector('.sfr-label');
                         const labelH = labelEl ? labelEl.offsetHeight : 0;
                         const labelStyle = labelEl ? getComputedStyle(labelEl) : null;
                         const labelMarginTop = labelStyle ? parseFloat(labelStyle.marginTop) || 0 : 0;
                         const labelMarginBottom = labelStyle ? parseFloat(labelStyle.marginBottom) || 0 : 0;
-                        const bodyH = Math.max(mdPreview.offsetHeight || 0, mdPreview.scrollHeight || 0);
-                        const availableH = bodyH > 0
-                            ? bodyH
-                            : Math.max((parseFloat(fieldEl.style.height) || 0) - labelH - labelMarginTop - labelMarginBottom - 8, 0);
-                        mdTa.style.height = Math.max(availableH, 40) + 'px';
-                    }
-                    mdTa.style.display      = '';
-                    mdPreview.style.display = 'none';
-                    mdEditBtn.style.display = 'none';
-                    mdTa.focus({ preventScroll: true });
-                    mdTa.scrollTop = 0;
-                }
-
-                function _switchToView() {
-                    const val = mdTa.value;
-                    mdTa.style.height = '';  // clear height set by _switchToEdit
-                    if (val.trim() === '') {
-                        mdTa.style.display      = '';
-                        mdPreview.style.display = 'none';
-                        mdEditBtn.style.display = 'none';
-                        return;
-                    }
-                    mdPreview.innerHTML     = _cmtRenderMd(_imgExpand(val));
-                    mdTa.style.display      = 'none';
-                    mdPreview.style.display = '';
-                    mdEditBtn.style.display = '';
-                }
-
-                mdTa._refreshMdPreview = function() {
-                    _switchToView();
-                };
-
-                // imgMap: token -> dataUrl  (session-only; tokens are expanded on submit/render)
-                const imgMap = {};
-                let imgSeq = 0;
-
-                function _imgExpand(text) {
-                    return text.replace(/!\[([^\]]*)\]\(image:(\d+)\)/g, (_, alt, id) => {
-                        const data = imgMap[id];
-                        return data ? '![' + alt + '](' + data + ')' : '![' + alt + '](image:' + id + ')';
-                    });
-                }
-
-                function _imgTokenize(text) {
-                    return text.replace(/!\[([^\]]*)\]\((data:image\/[^)]+)\)/g, (_, alt, data) => {
-                        const id = ++imgSeq;
-                        imgMap[id] = data;
-                        return '![' + alt + '](image:' + id + ')';
-                    });
-                }
-
-                function _syncFormValue() {
-                    formValues[f.id] = _imgExpand(mdTa.value);
-                }
-
-                mdTa.addEventListener('input', () => { _syncFormValue(); });
-                mdTa.addEventListener('blur',  () => { _switchToView(); });
-                mdEditBtn.addEventListener('click', () => { _switchToEdit(); });
-
-                mdTa.addEventListener('paste', (e) => {
-                    const items = e.clipboardData && e.clipboardData.items;
-                    if (!items) return;
-                    for (let i = 0; i < items.length; i++) {
-                        if (!items[i].type.startsWith('image/')) continue;
-                        e.preventDefault();
-                        const file = items[i].getAsFile();
-                        const img = new Image();
-                        const url = URL.createObjectURL(file);
-                        img.onload = () => {
-                            URL.revokeObjectURL(url);
-                            const canvas = document.createElement('canvas');
-                            canvas.width  = img.naturalWidth;
-                            canvas.height = img.naturalHeight;
-                            canvas.getContext('2d').drawImage(img, 0, 0);
-                            const dataUrl = canvas.toDataURL('image/webp', 0.85);
-                            const id = ++imgSeq;
-                            imgMap[id] = dataUrl;
-                            const token = '![](image:' + id + ')';
-                            const start = mdTa.selectionStart;
-                            const end   = mdTa.selectionEnd;
-                            mdTa.value = mdTa.value.slice(0, start) + token + mdTa.value.slice(end);
-                            mdTa.selectionStart = mdTa.selectionEnd = start + token.length;
-                            _syncFormValue();
-                        };
-                        img.src = url;
-                        break;
+                        return Math.max((parseFloat(fieldEl.style.height) || 0) - labelH - labelMarginTop - labelMarginBottom - 8, 40);
                     }
                 });
 
-                const _initVal = _imgTokenize(f.default || '');
-                mdTa.value = _initVal;
-                formValues[f.id] = f.default || '';
-
-                mdWrap.appendChild(mdPreview);
-                mdWrap.appendChild(mdTa);
-                mdWrap.appendChild(mdEditBtn);
-                wrap.appendChild(mdWrap);
-
-                if ((f.default || '').trim() !== '') {
-                    _switchToView();
-                } else {
-                    _switchToEdit();
+                // Attach mdCtrl to the textarea so applySetValues can use setValue() (tokenizes data URLs)
+                const ta = mdCtrl.element.querySelector('#sfr-' + f.id);
+                if (ta) {
+                    ta._mdCtrl = mdCtrl;
+                    if (!(f.default || '').trim()) ta.style.height = '40px';
                 }
 
+                wrap.appendChild(mdCtrl.element);
                 return wrap;
             }
             input = document.createElement('textarea');
@@ -907,27 +794,8 @@ const _avatarCacheFull = {};  // user_id → data_uri | null | 'loading'
 let _infoFields = [];
 let _commentLayouts = []; // { fieldDef, wrapEl, gridRowH, formEl, allFieldEls, observer }
 
-// Initialize marked once
-if (window.marked) {
-    marked.setOptions({
-        gfm: true, breaks: true,
-        highlight: window.hljs
-            ? (code, lang) => {
-                const l = lang && hljs.getLanguage(lang) ? lang : null;
-                return l ? hljs.highlight(code, { language: l }).value
-                         : hljs.highlightAuto(code).value;
-              }
-            : null
-    });
-}
-
 function _cmtRenderMd(text) {
-    if (window.marked) {
-        return marked.parse(String(text || ''));
-    }
-    const div = document.createElement('div');
-    div.textContent = text || '';
-    return div.innerHTML.replace(/\n/g, '<br>');
+    return SkMdControl.renderMd(text);
 }
 let _listSchema = null;
 let _savedBoardPages = {};  // fieldDef.id → page number saved before nav to detail
@@ -1666,6 +1534,10 @@ function applySetValues(values) {
         } else if (f.type === 'number') {
             el.value = val;
             formValues[f.id] = Number(val);
+        } else if (el._mdCtrl) {
+            // markdown field with imagePaste: use setValue() to tokenize any data URLs
+            el._mdCtrl.setValue(val);
+            formValues[f.id] = el._mdCtrl.getValue();
         } else {
             el.value = val;
             formValues[f.id] = val;
@@ -2062,7 +1934,7 @@ function _applyCommentLayout(layout) {
     allFieldEls.forEach(el => {
         const fieldRow  = parseInt(el.dataset.fieldRow, 10);
         if (isNaN(fieldRow)) return;
-        const isComment = el.querySelector('.sfr-comment-wrap, .sfr-md-wrap') !== null;
+        const isComment = el.querySelector('.sfr-comment-wrap, .sk-md-wrap') !== null;
 
         let push = 0;
         if (isComment) {

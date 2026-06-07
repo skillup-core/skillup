@@ -48,6 +48,10 @@ class CodeHubDB:
             cols = [r[1] for r in conn.execute("PRAGMA table_info(projects)").fetchall()]
             if 'last_deployed_at' not in cols:
                 conn.execute("ALTER TABLE projects ADD COLUMN last_deployed_at TEXT")
+        try:
+            os.chmod(self.db_path, 0o666)
+        except OSError:
+            pass
 
     # ── projects ────────────────────────────────────────────────────────────
 

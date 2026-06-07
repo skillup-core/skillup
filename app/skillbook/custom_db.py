@@ -68,6 +68,16 @@ def init_db(db_path: str):
 
         CREATE INDEX IF NOT EXISTS idx_hashtags_tag
             ON hashtags(tag);
+
+        CREATE TABLE IF NOT EXISTS search_counts (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            function_name TEXT NOT NULL UNIQUE,
+            count         INTEGER NOT NULL DEFAULT 1,
+            last_searched TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_search_counts_count
+            ON search_counts(count DESC);
     ''')
     conn.commit()
     conn.close()
@@ -241,6 +251,39 @@ def remove_hashtag(db_path: str, function_name: str, tag: str) -> bool:
     removed = cur.rowcount > 0
     conn.close()
     return removed
+
+
+# ── Search Counts ──────────────────────────────────────────────────────────
+
+def increment_search_count(db_path: str, function_name: str):
+    """Increment search count for function_name (UPSERT)."""
+    now = datetime.utcnow().isoformat()
+    conn = _connect(db_path)
+    conn.execute(
+        '''INSERT INTO search_counts (function_name, count, last_searched)
+           VALUES (?, 1, ?)
+           ON CONFLICT(function_name) DO UPDATE SET
+               count = count + 1,
+               last_searched = excluded.last_searched''',
+        (function_name, now)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_popular_searches(db_path: str, offset: int = 0, limit: int = 20) -> dict:
+    """Return popular searches ordered by count desc. Returns {items, total}."""
+    conn = _connect(db_path)
+    total = conn.execute('SELECT COUNT(*) FROM search_counts').fetchone()[0]
+    rows = conn.execute(
+        'SELECT function_name, count FROM search_counts ORDER BY count DESC, last_searched DESC LIMIT ? OFFSET ?',
+        (limit, offset)
+    ).fetchall()
+    conn.close()
+    return {
+        'total': total,
+        'items': [{'name': r['function_name'], 'count': r['count']} for r in rows],
+    }
 
 
 def search_by_hashtag(db_path: str, tag: str) -> list:

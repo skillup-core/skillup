@@ -101,7 +101,14 @@ var i18n = {
         'update.warning': 'Unsaved work may be lost.',
         'update.restart': 'Restart',
         'update.confirm_title': 'Restart Skillup',
-        'update.confirm_text': 'Unsaved work may be lost. Restart now?'
+        'update.confirm_text': 'Unsaved work may be lost. Restart now?',
+        'help.start_tour': 'Start Tour',
+        'help.close': 'Close',
+        'help.tip': 'Tips',
+        'help.back': 'Back',
+        'help.no_help': 'No help available for this app.',
+        'help.no_scene': 'No help available for this screen.',
+        'help.legend': '←  →  ↑  ↓  Esc'
     },
     ko: {
         'sidebarSubtitle': '데스크탑',
@@ -202,7 +209,14 @@ var i18n = {
         'update.warning': '작업 중인 내용이 손상될 수 있습니다.',
         'update.restart': '재시작',
         'update.confirm_title': 'Skillup 재시작',
-        'update.confirm_text': '작업 중인 내용이 손상될 수 있습니다. 지금 재시작하시겠습니까?'
+        'update.confirm_text': '작업 중인 내용이 손상될 수 있습니다. 지금 재시작하시겠습니까?',
+        'help.start_tour': '투어 시작',
+        'help.close': '닫기',
+        'help.tip': '팁',
+        'help.back': '뒤로',
+        'help.no_help': '이 앱에 대한 도움말이 없습니다.',
+        'help.no_scene': '이 화면에 대한 도움말이 없습니다.',
+        'help.legend': '←  →  ↑  ↓  Esc'
     }
 };
 

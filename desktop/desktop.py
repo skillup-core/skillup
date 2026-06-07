@@ -731,6 +731,9 @@ class DesktopManager:
         self._pending_st_alerts: list = []
         self._desktop_js_ready: bool = False
         self._pending_st_alerts_lock = __import__('threading').Lock()
+        # command_result payloads received while skilltalk subprocess was not running
+        self._pending_command_results: list = []
+        self._pending_command_results_lock = __import__('threading').Lock()
 
         self._discover_apps()
         self._load_settings()
@@ -784,7 +787,15 @@ class DesktopManager:
         if not payload or app_id != 'skilltalk':
             return
         action = payload.get('action')
-        if action not in ('new_chat', 'room_created'):
+        if action not in ('new_chat', 'room_created', 'command_result'):
+            return
+
+        if action == 'command_result':
+            st_process = self.app_processes.get('sk1llt4k')
+            st_running = st_process is not None and st_process.poll() is None
+            if not st_running:
+                with self._pending_command_results_lock:
+                    self._pending_command_results.append(payload)
             return
 
         if action == 'room_created':
@@ -1327,11 +1338,29 @@ class DesktopManager:
                 return False
 
             log("info", message=f"Started subprocess for app: {app_id} (PID: {process.pid})", tag="desktop")
+
+            if app_id == 'sk1llt4k':
+                self._flush_pending_command_results(app_id)
+
             return True
 
         except Exception as e:
             log("error", message=f"Failed to start subprocess for {app_id}: {e}", tag="desktop")
             return False
+
+    def _flush_pending_command_results(self, app_id: str) -> None:
+        """Deliver buffered command_result payloads to the (re)started skilltalk subprocess."""
+        with self._pending_command_results_lock:
+            pending = list(self._pending_command_results)
+            self._pending_command_results.clear()
+        if not pending:
+            return
+        log("info", message=f"flushing {len(pending)} pending command_result(s) to subprocess", tag="desktop")
+        for payload in pending:
+            try:
+                self._call_app_subprocess(app_id, 'st_deliver_command_result', payload)
+            except Exception as e:
+                log("warn", message=f"flush command_result failed: {e}", tag="desktop")
 
     def _record_app_usage(self, app_id: str):
         """Write one app-usage entry if a start time was recorded for app_id."""
@@ -2430,6 +2459,11 @@ class DesktopManager:
         css_dir = os.path.join(desktop_dir, 'web', 'css')
         if os.path.exists(css_dir):
             self.engine.add_static_files(css_dir, prefix='desktop-web-css')
+
+        # desktop/help/data/ -> /desktop-help-data/ URL
+        help_data_dir = os.path.join(desktop_dir, 'help', 'data')
+        if os.path.exists(help_data_dir):
+            self.engine.add_static_files(help_data_dir, prefix='desktop-help-data')
 
         # Add app static files
         for app_id, app_info in self.apps.items():

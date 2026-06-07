@@ -1,0 +1,130 @@
+{
+  "app": {
+    "id_name": "skillform",
+    "title": { "en": "Skill Form", "ko": "스킬 폼" },
+    "icon": "/app/736b666f/icon.svg"
+  },
+  "scope": "iframe",
+
+  "scenes": [
+    {
+      "id": "designer-main",
+      "detect": { "absent": ".sfd-dialog-overlay[style*='block'], .sfd-modal[style*='block']" },
+      "intro": {
+        "en": "Skill Form Designer lets you build JSON forms for SKILL automation. Drag components from the palette, arrange them on the canvas, and configure their properties.",
+        "ko": "스킬 폼 디자이너는 SKILL 자동화를 위한 JSON 폼을 만들 수 있습니다. 팔레트에서 컴포넌트를 드래그하고 캔버스에 배치한 후 속성을 설정합니다."
+      },
+      "steps": [
+        {
+          "id": "palette-list",
+          "selector": "#palette-list",
+          "title": { "en": "Component Palette", "ko": "컴포넌트 팔레트" },
+          "body_md": {
+            "en": "Drag form components (text, checkbox, dropdown, list, etc.) from this panel onto the canvas to add them to your form.",
+            "ko": "텍스트, 체크박스, 드롭다운, 리스트 등의 폼 컴포넌트를 팔레트에서 드래그하여 캔버스에 추가합니다."
+          },
+          "tip_side": "right",
+          "grid": { "x": 0, "y": 1 }
+        },
+        {
+          "id": "sfd-canvas",
+          "selector": "#sfd-canvas",
+          "title": { "en": "Canvas", "ko": "캔버스" },
+          "body_md": {
+            "en": "Drop components here to create your form. Resize and reposition components by dragging their edges and corners. Click a component to select it and view its properties on the right.",
+            "ko": "여기에 컴포넌트를 드롭하여 폼을 만듭니다. 컴포넌트의 모서리를 드래그하여 크기를 조정하고 위치를 변경합니다. 컴포넌트를 클릭하면 선택되고 오른쪽에 속성이 표시됩니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 1, "y": 1 }
+        },
+        {
+          "id": "sfd-props",
+          "selector": "#sfd-props",
+          "title": { "en": "Properties Panel", "ko": "속성 패널" },
+          "body_md": {
+            "en": "Configure the selected component here. Change labels, set default values, add options for dropdowns/radio buttons, and adjust other properties specific to the component type.",
+            "ko": "선택한 컴포넌트를 여기서 설정합니다. 라벨 변경, 기본값 설정, 드롭다운/라디오 버튼의 옵션 추가, 컴포넌트 타입별 속성 조정 등을 할 수 있습니다."
+          },
+          "tip_side": "left",
+          "grid": { "x": 2, "y": 1 }
+        },
+        {
+          "id": "btn-save",
+          "selector": "#btn-save",
+          "title": { "en": "Save", "ko": "저장" },
+          "body_md": {
+            "en": "Save your form as a JSON file. Use this to store your form design for later editing or to share with others.",
+            "ko": "폼을 JSON 파일로 저장합니다. 나중에 편집하거나 다른 사람과 공유하기 위해 사용합니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 0, "y": 0 }
+        },
+        {
+          "id": "btn-run",
+          "selector": ".sfd-icon-btn-run",
+          "title": { "en": "Run", "ko": "실행" },
+          "body_md": {
+            "en": "Test your form by switching to Form Runner. View how your form looks and works with sample data entry.",
+            "ko": "폼 실행기로 전환하여 폼을 테스트합니다. 샘플 데이터를 입력했을 때 폼이 어떻게 보이고 작동하는지 확인합니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 1, "y": 0 }
+        },
+        {
+          "id": "btn-code",
+          "selector": ".sfd-icon-btn-code",
+          "title": { "en": "Code", "ko": "코드" },
+          "body_md": {
+            "en": "View code examples for running your form in different platforms. Tabs show Shell, Python, and SKILL execution code with proper paths and syntax.",
+            "ko": "다양한 플랫폼에서 폼을 실행하는 코드 예제를 봅니다. Shell, Python, SKILL 실행 코드를 탭으로 확인할 수 있습니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 2, "y": 0 }
+        }
+      ]
+    },
+    {
+      "id": "runner-main",
+      "detect": { "absent": "#sfr-result[style*='block'], #sfr-result[style*='flex']" },
+      "intro": {
+        "en": "Form Runner displays and executes your form. Fill in the form fields and submit to see the results as JSON.",
+        "ko": "폼 실행기는 폼을 표시하고 실행합니다. 폼 필드를 채우고 제출하면 결과가 JSON으로 표시됩니다."
+      },
+      "steps": [
+        {
+          "id": "sfr-form",
+          "selector": "#sfr-form",
+          "title": { "en": "Form Fields", "ko": "폼 필드" },
+          "body_md": {
+            "en": "Fill in the form fields with your data. The form layout and component types are determined by the JSON schema you designed.",
+            "ko": "폼 필드에 데이터를 입력합니다. 폼의 레이아웃과 컴포넌트 타입은 디자인한 JSON 스키마로 결정됩니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 0, "y": 0 }
+        }
+      ]
+    },
+    {
+      "id": "runner-result",
+      "detect": { "present": "#sfr-result[style*='block'], #sfr-result[style*='flex']" },
+      "trap_within": "#sfr-result",
+      "intro": {
+        "en": "Form Result: the data you submitted is displayed as JSON.",
+        "ko": "폼 결과: 제출한 데이터가 JSON으로 표시됩니다."
+      },
+      "steps": [
+        {
+          "id": "sfr-result-json",
+          "selector": "#sfr-result-json",
+          "title": { "en": "Result JSON", "ko": "결과 JSON" },
+          "body_md": {
+            "en": "This is the structured data from your form submission. Copy this JSON and use it in your SKILL automation scripts or other applications.",
+            "ko": "폼 제출 데이터의 구조화된 형식입니다. 이 JSON을 복사하여 SKILL 자동화 스크립트나 다른 애플리케이션에서 사용합니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 0, "y": 0 }
+        }
+      ]
+    }
+  ]
+}

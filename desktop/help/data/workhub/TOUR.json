@@ -1,0 +1,145 @@
+{
+  "app": {
+    "id_name": "workhub",
+    "title": { "en": "WorkHub", "ko": "워크허브" },
+    "icon": "/app/w0rkhub1/icon.svg"
+  },
+  "scope": "iframe",
+
+  "scenes": [
+    {
+      "id": "edit",
+      "detect": { "present": "#wh-list-view[style*='none']" },
+      "intro": {
+        "en": "Document editor: write and manage your note, command, TODO, or checklist.",
+        "ko": "문서 편집기: 메모, 커맨드 노트, TODO, 체크리스트를 작성하고 관리합니다."
+      },
+      "steps": [
+        {
+          "id": "back-btn",
+          "selector": ".wh-back-btn",
+          "title": { "en": "Back to List", "ko": "목록으로" },
+          "body_md": {
+            "en": "Return to the document list. Any unsaved changes are automatically saved before navigating back.",
+            "ko": "문서 목록으로 돌아갑니다. 미저장 변경은 자동으로 저장된 후 이동합니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 0, "y": 0 }
+        },
+        {
+          "id": "edit-header",
+          "selector": "#wh-edit-header",
+          "title": { "en": "Document Header", "ko": "문서 헤더" },
+          "body_md": {
+            "en": "Contains action buttons for the document. Click **[<]** to expand hidden buttons: tag, copy, link, and delete. The **Share** button controls who can see and edit this document.",
+            "ko": "문서 관련 버튼이 있습니다. **[<]** 를 클릭하면 숨겨진 버튼(태그, 복사, 연결, 삭제)이 펼쳐집니다. **공유** 버튼으로 문서 공개 범위를 설정합니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 1, "y": 0 }
+        },
+        {
+          "id": "title-input",
+          "selector": "#wh-title",
+          "title": { "en": "Title", "ko": "제목" },
+          "body_md": {
+            "en": "Enter the document title. Documents with no title are shown as *(untitled)* in the list.",
+            "ko": "문서 제목을 입력합니다. 제목이 없는 문서는 목록에서 *(제목 없음)* 으로 표시됩니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 0, "y": 1 }
+        },
+        {
+          "id": "edit-body",
+          "selector": "#wh-edit-body",
+          "title": { "en": "Document Body", "ko": "문서 본문" },
+          "body_md": {
+            "en": "The main editing area. Content is auto-saved as you type (1-second debounce). Hover over the text area to reveal the **Edit** button and switch to editing mode.",
+            "ko": "문서 본문 영역입니다. 입력 중 1초 후 자동 저장됩니다. 텍스트 위에 마우스를 올리면 **편집** 버튼이 나타납니다."
+          },
+          "tip_side": "top",
+          "grid": { "x": 0, "y": 2 }
+        },
+        {
+          "id": "share-btn",
+          "selector": "#wh-vis-btn",
+          "title": { "en": "Share", "ko": "공유" },
+          "body_md": {
+            "en": "Set who can view and edit this document: **Private** (only you), **Group** (selected team), or **Everyone**. Toggle **Owner-only editing** to allow or restrict edits by others.",
+            "ko": "문서 공개 범위를 설정합니다: **비공개**(나만), **그룹공유**(선택한 팀), **전체공유**. **나만 쓰기 가능** 토글로 다른 사람의 편집 여부를 제어합니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 2, "y": 0 }
+        },
+        {
+          "id": "history-btn",
+          "selector": "#wh-history-btn",
+          "title": { "en": "History", "ko": "최신" },
+          "body_md": {
+            "en": "Open the history panel to view and restore previous versions of this document. Each editing session is saved as a snapshot.",
+            "ko": "히스토리 패널을 열어 이 문서의 이전 버전을 확인하고 복원합니다. 편집 세션마다 스냅샷이 저장됩니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 3, "y": 0 }
+        }
+      ]
+    },
+    {
+      "id": "main",
+      "detect": { "absent": "#wh-list-view[style*='none']" },
+      "intro": {
+        "en": "WorkHub lets you capture and share design notes with your team. Write memos, command notes, TODOs, and checklists — and collaborate by sharing documents across accounts.",
+        "ko": "워크허브는 설계 작업 중 알게 된 내용을 메모하고 팀과 공유하는 협업 도구입니다. 메모, 커맨드 노트, TODO, 체크리스트를 작성하고, 문서를 공유해 함께 관리하세요."
+      },
+      "steps": [
+        {
+          "id": "template-btns",
+          "selector": ".wh-template-btns",
+          "title": { "en": "New Document", "ko": "새 문서" },
+          "body_md": {
+            "en": "Click a template to start a new document immediately:\n- **Memo** — free-form text with markdown\n- **Command Note** — store a shell command + description\n- **TODO** — checklist with completion toggle\n- **Checklist** — ordered steps with reset option",
+            "ko": "템플릿을 클릭하면 즉시 새 문서 작성이 시작됩니다:\n- **메모** — 자유 텍스트(마크다운 지원)\n- **커맨드 노트** — 셸 커맨드 + 설명 저장\n- **TODO** — 체크박스 항목 목록\n- **체크리스트** — 순서형 단계 목록"
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 0, "y": 0 },
+          "neighbors": { "right": "filter-btn", "down": "doc-list" }
+        },
+        {
+          "id": "filter-btn",
+          "selector": "#wh-filter-trigger",
+          "title": { "en": "Type Filter", "ko": "타입 필터" },
+          "body_md": {
+            "en": "Filter the document list by type. Click to open the dropdown and select: All / Memo / Command / TODO / Checklist.",
+            "ko": "문서 목록을 타입별로 필터링합니다. 클릭하면 드롭다운이 열리고 모두/메모/커맨드/TODO/체크리스트 중 선택합니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 1, "y": 0 },
+          "neighbors": { "left": "template-btns", "down": "doc-list" }
+        },
+        {
+          "id": "doc-list",
+          "selector": "#wh-list",
+          "title": { "en": "Document List", "ko": "문서 목록" },
+          "body_md": {
+            "en": "Recently modified documents, sorted newest first. Pinned documents appear at the top. Click a row to open the document. **Hover** a row to reveal the **pin button** (📌) on the right.",
+            "ko": "최근 수정 순으로 정렬된 문서 목록입니다. 고정된 문서는 상단에 표시됩니다. 행을 클릭하면 문서가 열립니다. 행에 **마우스를 올리면** 오른쪽에 **핀 버튼**이 나타납니다."
+          },
+          "tip_side": "top",
+          "grid": { "x": 0, "y": 1 },
+          "neighbors": { "up": "template-btns", "down": "search-input" }
+        },
+        {
+          "id": "search-input",
+          "selector": "#wh-search-input",
+          "title": { "en": "Search", "ko": "검색" },
+          "body_md": {
+            "en": "Search documents by keyword or tag. Type `#tagname` to filter by tag. Combine: `#cadence error` searches for tag *cadence* AND keyword *error*.\n\nSlash commands:\n- `/go <id>` — jump directly to a document by ID\n- `/my` — show only your documents\n- `/history` — view your action history",
+            "ko": "키워드나 태그로 문서를 검색합니다. `#태그명`을 입력하면 태그로 필터링합니다. 조합: `#cadence error`는 *cadence* 태그 AND *error* 키워드를 검색합니다.\n\n슬래시 명령:\n- `/go <id>` — 문서 ID로 바로 이동\n- `/my` — 내 문서만 표시\n- `/history` — 작업 이력 보기"
+          },
+          "tip_side": "top",
+          "grid": { "x": 0, "y": 2 },
+          "neighbors": { "up": "doc-list" }
+        }
+      ]
+    }
+  ]
+}

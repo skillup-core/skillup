@@ -39,7 +39,8 @@
 
 .close-app-btn,
 .minimize-app-btn,
-.popout-app-btn {
+.popout-app-btn,
+.help-btn {
     background: none;
     border: none;
     color: var(--text-secondary);
@@ -59,7 +60,8 @@
 
 .close-app-btn:focus,
 .minimize-app-btn:focus,
-.popout-app-btn:focus {
+.popout-app-btn:focus,
+.help-btn:focus {
     outline: none;
     box-shadow: none;
 }
@@ -67,7 +69,8 @@
 /* Show button when JavaScript sets display: block */
 .close-app-btn[style*="display: block"],
 .minimize-app-btn[style*="display: block"],
-.popout-app-btn[style*="display: block"] {
+.popout-app-btn[style*="display: block"],
+.help-btn[style*="display: block"] {
     display: flex !important;
 }
 
@@ -85,7 +88,8 @@
 }
 
 .minimize-app-btn:hover,
-.popout-app-btn:hover {
+.popout-app-btn:hover,
+.help-btn:hover {
     background: var(--bg-tertiary);
     color: var(--text-primary);
 }

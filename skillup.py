@@ -25,6 +25,9 @@ Examples:
     # Run skillverifier with options
     python3 skillup.py --app:skillverifier --define=defs.txt test.il
 
+    # Run SKILL code in Virtuoso CIW
+    python3 skillup.py --cmd:run_skill --target='CDS.log' --code='printf("%L\n" list(1 2 3))'
+
 Environment Variables:
     SKILLUP_CONFIG_HOME         Custom configuration directory path
                                 Default: $XDG_CONFIG_HOME/skillup or ~/.config/skillup
@@ -85,6 +88,7 @@ def print_usage():
     print("    python3 skillup.py --desktop                    # Start desktop GUI")
     print("    python3 skillup.py --desktop --verbose          # Start desktop GUI with debug logging")
     print("    python3 skillup.py --app:skillverifier test.il  # Run skillverifier app")
+    print("    python3 skillup.py --cmd:run_skill --target='CDS.log' --code='printf(\"%L\\n\" list(1 2 3))'  # Run SKILL in Virtuoso CIW")
 
 
 def main():
@@ -103,10 +107,30 @@ def main():
         set_verbose(True)
 
     # Check for explicit app specification
+    cmd_name = None
     for arg in sys.argv[1:]:
         if arg.startswith('--app:'):
             app_id = arg[6:]
             break
+        if arg.startswith('--cmd:'):
+            cmd_name = arg[6:]
+            break
+
+    # ========================================================================
+    # CMD MODE: Dispatch to cmd/<name>.py
+    # ========================================================================
+    if cmd_name:
+        import importlib
+        remaining = [
+            a for a in sys.argv[1:]
+            if not a.startswith('--cmd:') and a != '--verbose'
+        ]
+        try:
+            mod = importlib.import_module(f'cmd.{cmd_name}')
+        except ModuleNotFoundError:
+            print(f"unknown command: {cmd_name}", file=sys.stderr)
+            return 1
+        return mod.run(remaining)
 
     # ========================================================================
     # SHOW USAGE if no arguments provided or no app specified

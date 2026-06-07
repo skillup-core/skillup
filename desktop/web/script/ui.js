@@ -40,6 +40,7 @@ function showPage(pageName) {
     document.getElementById('close-app-btn').style.display = 'none';
     document.getElementById('minimize-app-btn').style.display = 'none';
     document.getElementById('popout-app-btn').style.display = 'none';
+    document.getElementById('help-btn').style.display = 'none';
 
     setTaskbarActive(null);
     document.querySelectorAll('#desktop-menu .menu-item').forEach(function(item) {

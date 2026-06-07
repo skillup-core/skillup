@@ -143,6 +143,44 @@ const i18n = {
         orphanCancel: 'Dismiss for 1 week',
         orphanDoneMsg: 'Deleted {n} directory/directories.',
         orphanFailMsg: 'Failed to delete: {list}',
+        snapshot: 'Snapshot',
+        snapshotManage: 'Manage Snapshots',
+        snapshotSave: 'Save',
+        snapshotRestore: 'Restore',
+        snapshotDelete: 'Delete',
+        snapshotName: 'Snapshot name',
+        snapshotNamePlaceholder: 'e.g. before experiment',
+        snapshotEmpty: 'No snapshots yet.',
+        snapshotUsage: 'Used: {used} / {limit} ({pct}%)',
+        snapshotColType: 'Type',
+        snapshotColName: 'Name',
+        snapshotColDate: 'Date',
+        snapshotColSize: 'Size',
+        snapshotColActions: 'Command',
+        snapshotSaveNew: 'Save Snapshot',
+        snapshotIncludeAuto: 'Include auto',
+        snapshotTypeManual: 'manual',
+        snapshotTypeAuto: 'auto',
+        snapshotConfirmRestoreTitle: 'Restore snapshot',
+        snapshotConfirmRestoreMsg: 'Restore working copy to "{name}"? Current files will be overwritten.',
+        snapshotConfirmRestoreDirtyMsg: 'Working copy has uncommitted changes. They will be saved to an auto snapshot before restore.',
+        snapshotConfirmDeleteTitle: 'Delete snapshots',
+        snapshotConfirmDeleteMsg: 'Delete {n} snapshot(s)? This cannot be undone.',
+        snapshotSaved: 'Snapshot saved.',
+        snapshotRestored: 'Snapshot restored.',
+        snapshotDeleted: 'Snapshot(s) deleted.',
+        snapshotNameRequired: 'Please enter a snapshot name.',
+        snapshotTooLarge: 'Snapshot ({size}) alone exceeds the quota ({limit}). Raise the quota or clean up files.',
+        snapshotQuotaTitle: 'Storage quota exceeded',
+        snapshotQuotaDesc: 'New snapshot is {size}. Need to free {need} more. Select snapshots to delete:',
+        snapshotQuotaSelected: 'Selected: {sel} / Need: {need}',
+        snapshotSortOldest: 'Oldest first',
+        snapshotSortLargest: 'Largest first',
+        snapshotApply: 'Apply',
+        snapshotAutoBackupFailed: 'Cannot create auto-backup: current WC exceeds the quota. Raise the quota or clean up files.',
+        snapshotQuotaExceeded: 'Storage quota exceeded. Delete some snapshots first.',
+        snapshotRevModeDisabled: 'Disabled in rev mode',
+        snapshotRestoreUndo: 'Undo (restore auto-backup)',
     },
     ko: {
         projects: '프로젝트',
@@ -279,6 +317,44 @@ const i18n = {
         orphanCancel: '1주일간 보지 않기',
         orphanDoneMsg: '{n}개 디렉토리를 삭제했습니다.',
         orphanFailMsg: '삭제 실패: {list}',
+        snapshot: '스냅샷',
+        snapshotManage: '스냅샷 관리',
+        snapshotSave: '저장',
+        snapshotRestore: '복원',
+        snapshotDelete: '삭제',
+        snapshotName: '스냅샷 이름',
+        snapshotNamePlaceholder: '예: 실험 시작 전',
+        snapshotEmpty: '스냅샷이 없습니다.',
+        snapshotUsage: '사용량: {used} / {limit} ({pct}%)',
+        snapshotColType: '종류',
+        snapshotColName: '이름',
+        snapshotColDate: '시각',
+        snapshotColSize: '크기',
+        snapshotColActions: '명령',
+        snapshotSaveNew: '스냅샷 저장',
+        snapshotIncludeAuto: '자동 포함',
+        snapshotTypeManual: '수동',
+        snapshotTypeAuto: '자동',
+        snapshotConfirmRestoreTitle: '스냅샷 복원',
+        snapshotConfirmRestoreMsg: '작업 디렉토리를 "{name}"으로 복원하시겠습니까? 현재 파일이 덮어쓰여집니다.',
+        snapshotConfirmRestoreDirtyMsg: '현재 변경 사항은 자동 스냅샷에 보관 후 진행됩니다.',
+        snapshotConfirmDeleteTitle: '스냅샷 삭제',
+        snapshotConfirmDeleteMsg: '{n}개 스냅샷을 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.',
+        snapshotSaved: '스냅샷이 저장되었습니다.',
+        snapshotRestored: '스냅샷이 복원되었습니다.',
+        snapshotDeleted: '스냅샷이 삭제되었습니다.',
+        snapshotNameRequired: '스냅샷 이름을 입력하세요.',
+        snapshotTooLarge: '스냅샷({size})이 한도({limit})를 단독 초과합니다. 한도를 늘리거나 파일을 정리하세요.',
+        snapshotQuotaTitle: '저장 용량 초과',
+        snapshotQuotaDesc: '신규 스냅샷은 {size}이며 {need}만큼 더 확보해야 합니다. 삭제할 스냅샷을 선택하세요:',
+        snapshotQuotaSelected: '선택: {sel} / 필요: {need}',
+        snapshotSortOldest: '오래된 순',
+        snapshotSortLargest: '큰 순',
+        snapshotApply: '적용',
+        snapshotAutoBackupFailed: '자동 백업 생성 실패: 현재 WC가 한도를 초과합니다. 한도를 늘리거나 파일을 정리한 후 다시 시도하세요.',
+        snapshotQuotaExceeded: '저장 용량이 부족합니다. 스냅샷을 먼저 삭제하세요.',
+        snapshotRevModeDisabled: 'rev 모드에서는 사용할 수 없습니다',
+        snapshotRestoreUndo: '되돌리기 (자동 백업 복원)',
     }
 };
 
@@ -310,6 +386,14 @@ function navigateTo(url) {
     if (window.isInIframe) {
         window.parent.postMessage({ action: 'navigateIframe', url: url }, '*');
     } else {
+        // In Qt standalone mode, preserve standalone=1 and lang params across navigation
+        if (window.isInQtWindow) {
+            var sep = url.indexOf('?') >= 0 ? '&' : '?';
+            var params = 'standalone=1';
+            var lang = new URLSearchParams(window.location.search).get('lang');
+            if (lang) params += '&lang=' + encodeURIComponent(lang);
+            url = url + sep + params;
+        }
         window.location.href = url;
     }
 }
