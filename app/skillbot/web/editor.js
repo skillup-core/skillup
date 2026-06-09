@@ -1,5 +1,7 @@
 // ── State ────────────────────────────────────────────────────────────────────
 let editor;
+let editor2 = null;          // secondary split pane CodeMirror (null when no split)
+let _activePane = 1;         // 1 = primary, 2 = secondary (set on focus)
 let ilPath = "";
 let currentLanguage = 'en'; // 'en' or 'ko'
 let currentLayout = 'bottom'; // 'bottom' or 'right'
@@ -261,7 +263,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }, true);
 
     ISK.initWithEditor(editor);
-    editor.on('change', (cm) => { if (EXP.isILFile()) ISK.onChange(cm); EXP.onEditorChange(); });
+    editor.on('focus', () => { _activePane = 1; });
+    editor.on('change', (cm) => { if (EXP.isILFile()) ISK.onChange(cm); EXP.onEditorChange(); SPLIT.mirrorFromMain(cm); });
     editor.on('cursorActivity', (cm) => { if (EXP.isILFile()) ISK.onCursorActivity(cm); });
     editor.on('keydown', (cm, e) => { if (EXP.isILFile()) ISK.onKeyDown(cm, e); });
     editor.on('mousemove', (cm, e) => { if (EXP.isILFile()) ISK.onHover(cm, e); });
@@ -1047,7 +1050,9 @@ function copyCiwCmd(type) {
 // ── Theme ─────────────────────────────────────────────────────────────────────
 function applyEditorTheme(skillupTheme) {
     if (!editor) return;
-    editor.setOption('theme', skillupTheme === 'white' ? 'eclipse' : 'dracula');
+    const cmTheme = skillupTheme === 'white' ? 'eclipse' : 'dracula';
+    editor.setOption('theme', cmTheme);
+    if (editor2) editor2.setOption('theme', cmTheme);
     document.body.classList.toggle('theme-white', skillupTheme === 'white');
     const iconTheme = skillupTheme === 'white' ? 'light' : 'dark';
     EXP.loadIconTheme(iconTheme);
@@ -4418,6 +4423,8 @@ const EXP = (() => {
 
     function _openFile(filePath) {
         if (_debugActive) return Promise.resolve(); // Block new file opens during debug
+        // Route to secondary pane when it has focus
+        if (_activePane === 2 && editor2) { SPLIT.openFile(filePath); return Promise.resolve(); }
         // If already open in a tab, just switch to it
         const existing = _tabs.find(t => t.path === filePath);
         if (existing) { _switchTab(existing.id); return Promise.resolve(); }
@@ -4501,6 +4508,8 @@ const EXP = (() => {
                 _setDirty(false);
                 _hideDiskChangeBar(tab.id);
                 appendOutput('info', 'Saved: ' + tab.name);
+                // Clear dirty on matching split tab
+                SPLIT.updateSaved(tab.path, savedValue, res.mtime || null);
             } else {
                 appendOutput('err', 'Save failed: ' + (res && res.error));
             }
@@ -4786,6 +4795,8 @@ const EXP = (() => {
             }
             _setDirty(false);
             _renderTabs();
+            // Sync split pane if it has the same file open
+            SPLIT.syncContent(tab.path, content, res.mtime || null);
         }).catch(e => appendOutput('err', 'Reload error: ' + e));
     }
 
@@ -4802,6 +4813,48 @@ const EXP = (() => {
     function _checkDiskChangeBannerOnSwitch(tab) {
         _hideDiskChangeBar(tab.id);
         if (tab.changedOnDisk && !_diskChangeDismissed[tab.id]) _showDiskChangeBar(tab);
+    }
+
+    // Called by SPLIT after disk-change reload: update main tab content silently
+    function syncContent(filePath, content, mtime) {
+        const tab = _tabs.find(t => t.path === filePath);
+        if (!tab) return;
+        tab.content = content;
+        tab.savedContent = content;
+        if (mtime !== null) tab.mtime = mtime;
+        tab.changedOnDisk = false;
+        tab.dirty = false;
+        delete _diskChangeDismissed[tab.id];
+        if (tab.id === _activeTabId && editor) {
+            const cur = editor.getCursor();
+            const scroll = editor.getScrollInfo();
+            _suppressDirty = true;
+            ISK.setEditorValue(editor, content, tab.id);
+            setTimeout(() => { _suppressDirty = false; }, 0);
+            editor.setCursor(cur);
+            editor.scrollTo(scroll.left, scroll.top);
+            _setDirty(false);
+            _hideDiskChangeBar(tab.id);
+        }
+        _renderTabs();
+    }
+
+    // Called after split saves: update mtime on matching main tab to prevent disk-change poll
+    function updateMtime(filePath, mtime) {
+        if (mtime === null) return;
+        const tab = _tabs.find(t => t.path === filePath);
+        if (tab) tab.mtime = mtime;
+    }
+
+    // Called after split saves: clear dirty on matching main tab
+    function updateSaved(filePath, savedContent, mtime) {
+        const tab = _tabs.find(t => t.path === filePath);
+        if (!tab) return;
+        tab.savedContent = savedContent;
+        tab.dirty = false;
+        if (mtime !== null) tab.mtime = mtime;
+        if (tab.id === _activeTabId) _setDirty(false);
+        else _renderTabs();
     }
 
     function openNewTab() {
@@ -4826,7 +4879,7 @@ const EXP = (() => {
         editor.focus();
     }
 
-    return { init, reloadRoot, onEditorChange, saveCurrentFile, saveCurrentFileOrAs, saveAs, openFileDialog, promptNewFile, openNewTab, openFile: _openFile, closeTab: _closeTab, ctxRename, ctxDelete, hideCtxMenu, tabCtxClose, tabCtxCopyPath, tabCtxToggleDebug, isILFile, renderIcons: _render, loadIconTheme: _loadIconThemeOverrides, getActiveTab: _getActiveTab, getTabs: () => _tabs, switchTab: _switchTab, renderTabs: _renderTabs, startDiskChangePolling: _startDiskChangePolling, stopDiskChangePolling: _stopDiskChangePolling };
+    return { init, reloadRoot, onEditorChange, saveCurrentFile, saveCurrentFileOrAs, saveAs, openFileDialog, promptNewFile, openNewTab, openFile: _openFile, closeTab: _closeTab, ctxRename, ctxDelete, hideCtxMenu, tabCtxClose, tabCtxCopyPath, tabCtxToggleDebug, isILFile, renderIcons: _render, loadIconTheme: _loadIconThemeOverrides, getActiveTab: _getActiveTab, getTabs: () => _tabs, switchTab: _switchTab, renderTabs: _renderTabs, startDiskChangePolling: _startDiskChangePolling, stopDiskChangePolling: _stopDiskChangePolling, syncContent, updateMtime, updateSaved };
 })();
 
 // ── Explorer open folder ───────────────────────────────────────────────────────
@@ -4912,8 +4965,9 @@ function setLayout(layout) {
     // Save preference to Python config (only when callPython is available)
     if (typeof callPython === 'function') callPython('save_layout', {layout: layout}).catch(() => {});
 
-    // Refresh editor
+    // Refresh editors
     if (editor) editor.refresh();
+    if (editor2) editor2.refresh();
 }
 
 // ── SBNav: Navigation History (Alt+Left / Alt+Right) ─────────────────────────
@@ -5478,4 +5532,442 @@ const PRJ = (function() {
         deleteProject,
         switchProject,
     };
+})();
+
+// ── SPLIT: secondary editor pane ─────────────────────────────────────────────
+const SPLIT = (function() {
+    let _mode = null;   // null | 'horizontal' | 'vertical'
+
+    // Tab state for secondary pane
+    let _tabs = [];
+    let _activeTabId = null;
+    let _nextTabId = 1;
+
+    function _modeForFile(name) {
+        const ext = (name || '').split('.').pop().toLowerCase();
+        const map = {
+            'py': 'python',
+            'html': 'htmlmixed', 'htm': 'htmlmixed',
+            'css': 'css', 'js': 'javascript',
+            'md': 'markdown', 'markdown': 'markdown',
+            'xml': 'xml', 'svg': 'xml',
+            'json': 'javascript',
+        };
+        return map[ext] || 'skill';
+    }
+
+    function _makeTab(path, name, content) {
+        return { id: _nextTabId++, path: path || null, name: name || 'untitled.il', dirty: false, content: content || '', savedContent: content || '', cursor: null, scrollInfo: null, history: null };
+    }
+
+    function _getActiveTab() {
+        return _tabs.find(t => t.id === _activeTabId) || null;
+    }
+
+    function _renderTabs() {
+        const bar = document.getElementById('editorTabBar2');
+        if (!bar) return;
+        bar.innerHTML = _tabs.map(tab => {
+            const active = tab.id === _activeTabId ? ' active' : '';
+            const dirty = tab.dirty ? ' dirty' : '';
+            return `<div class="sb-tab${active}${dirty}" data-tabid2="${tab.id}">` +
+                `<span class="sb-tab-name">${_esc(tab.name)}</span>` +
+                `<span class="sb-tab-dirty"></span>` +
+                `<span class="sb-tab-close2" data-tabid2="${tab.id}">&#x2715;</span>` +
+                `</div>`;
+        }).join('');
+        bar.querySelectorAll('.sb-tab').forEach(el => {
+            el.addEventListener('click', e => {
+                if (e.target.classList.contains('sb-tab-close2')) return;
+                _switchTab(parseInt(el.dataset.tabid2));
+            });
+            el.addEventListener('mousedown', e => {
+                if (e.button === 1) { e.preventDefault(); _closeTab(parseInt(el.dataset.tabid2)); }
+            });
+        });
+        bar.querySelectorAll('.sb-tab-close2').forEach(el => {
+            el.addEventListener('click', e => {
+                e.stopPropagation();
+                _closeTab(parseInt(el.dataset.tabid2));
+            });
+        });
+    }
+
+    function _esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    function _switchTab(tabId) {
+        if (!editor2) return;
+        const tab = _tabs.find(t => t.id === tabId);
+        if (!tab || tab.id === _activeTabId) return;
+        const cur = _getActiveTab();
+        if (cur) {
+            cur.content = editor2.getValue();
+            cur.cursor = editor2.getCursor();
+            cur.scrollInfo = editor2.getScrollInfo();
+            cur.history = editor2.getHistory();
+        }
+        _activeTabId = tabId;
+        editor2.setValue(tab.content);
+        if (tab.history) editor2.setHistory(tab.history);
+        if (tab.cursor) editor2.setCursor(tab.cursor);
+        if (tab.scrollInfo) editor2.scrollTo(tab.scrollInfo.left, tab.scrollInfo.top);
+        editor2.setOption('mode', _modeForFile(tab.name));
+        _renderTabs();
+        editor2.refresh();
+    }
+
+    function _closeTab(tabId) {
+        const idx = _tabs.findIndex(t => t.id === tabId);
+        if (idx < 0) return;
+        const tab = _tabs[idx];
+        if (tab.dirty) {
+            const msg = currentLanguage === 'ko'
+                ? `'${tab.name}' 저장하지 않은 변경사항이 있습니다. 닫으시겠습니까?`
+                : `'${tab.name}' has unsaved changes. Close anyway?`;
+            const title = currentLanguage === 'ko' ? '저장하지 않은 변경사항' : 'Unsaved Changes';
+            parent.showConfirmDialog(title, msg).then(ok => { if (ok) _doCloseTab(tabId); });
+            return;
+        }
+        _doCloseTab(tabId);
+    }
+
+    function _doCloseTab(tabId) {
+        if (!editor2) return;
+        const idx = _tabs.findIndex(t => t.id === tabId);
+        if (idx < 0) return;
+        _tabs.splice(idx, 1);
+        if (_tabs.length === 0) {
+            // Last tab closed — remove the split entirely
+            toggle(_mode);
+            return;
+        }
+        if (tabId === _activeTabId) {
+            const next = _tabs[Math.min(idx, _tabs.length - 1)];
+            _activeTabId = next.id;
+        }
+        const active = _getActiveTab();
+        if (active) {
+            editor2.setValue(active.content);
+            editor2.setOption('mode', _modeForFile(active.name));
+        }
+        _renderTabs();
+    }
+
+    function _openFile(filePath) {
+        if (!editor2 || typeof callPython !== 'function') return;
+        // Check if already open
+        const existing = _tabs.find(t => t.path === filePath);
+        if (existing) { _switchTab(existing.id); return; }
+        callPython('file_read', { path: filePath }).then(res => {
+            if (res && res.error) return;
+            const name = filePath.split('/').pop();
+            const content = res.content || '';
+            const mtime = res.mtime || null;
+            const cur = _getActiveTab();
+            let tab;
+            if (cur && cur.path === null && !cur.dirty && cur.content === '') {
+                cur.path = filePath;
+                cur.name = name;
+                cur.content = content;
+                cur.savedContent = content;
+                cur.mtime = mtime;
+                tab = cur;
+            } else {
+                tab = _makeTab(filePath, name, content);
+                tab.mtime = mtime;
+                _tabs.push(tab);
+            }
+            _activeTabId = tab.id;
+            editor2.setValue(tab.content);
+            editor2.setOption('mode', _modeForFile(name));
+            _renderTabs();
+            editor2.refresh();
+            editor2.focus();
+        }).catch(() => {});
+    }
+
+    function _initEditor2(theme) {
+        const textarea = document.getElementById('codeEditor2');
+        if (!textarea || editor2) return;
+        editor2 = CodeMirror.fromTextArea(textarea, {
+            mode: 'skill',
+            theme: theme || 'dracula',
+            lineNumbers: true,
+            matchBrackets: true,
+            autoCloseBrackets: false,
+            styleActiveLine: true,
+            indentUnit: 4,
+            tabSize: 4,
+            indentWithTabs: false,
+            lineWrapping: false,
+            gutters: ['CodeMirror-linenumbers'],
+            extraKeys: { 'Ctrl-S': function() { _saveActive(); } },
+        });
+        editor2.on('focus', () => { _activePane = 2; });
+        editor2.on('change', () => {
+            const tab = _getActiveTab();
+            if (tab) tab.dirty = (editor2.getValue() !== tab.savedContent);
+            _renderTabs();
+            _mirrorToMain();
+        });
+        const untitled = _makeTab(null, 'untitled.il', '');
+        _tabs = [untitled];
+        _activeTabId = untitled.id;
+        _renderTabs();
+        // Make editor2 visible
+        const wrap = document.getElementById('editorPanel2').querySelector('.sb-editor-wrap');
+        if (wrap) wrap.style.visibility = 'visible';
+        _initResizer();
+    }
+
+    function _saveActive() {
+        if (!editor2) return;
+        const tab = _getActiveTab();
+        if (!tab || tab.path === null || typeof callPython !== 'function') return;
+        const savedValue = editor2.getValue();
+        callPython('file_save', { path: tab.path, content: savedValue }).then(res => {
+            if (res && res.success) {
+                tab.content = savedValue;
+                tab.savedContent = savedValue;
+                if (res.mtime) tab.mtime = res.mtime;
+                tab.dirty = false;
+                _renderTabs();
+                // Clear dirty on matching main tab
+                EXP.updateSaved(tab.path, savedValue, res.mtime || null);
+            }
+        }).catch(() => {});
+    }
+
+    function _initResizer() {
+        const resizer = document.getElementById('splitResizer');
+        if (!resizer || resizer._splitBound) return;
+        resizer._splitBound = true;
+        resizer.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            const container = document.getElementById('sbSplitContainer');
+            const panel2 = document.getElementById('editorPanel2');
+            const isH = _mode === 'horizontal';
+            const startPos = isH ? e.clientY : e.clientX;
+            const startSize = isH ? panel2.offsetHeight : panel2.offsetWidth;
+            function onMove(ev) {
+                const delta = (isH ? ev.clientY : ev.clientX) - startPos;
+                const newSize = Math.max(80, startSize - delta);
+                if (isH) {
+                    panel2.style.setProperty('flex-basis', newSize + 'px', 'important');
+                    panel2.style.setProperty('flex-grow', '0', 'important');
+                    panel2.style.setProperty('flex-shrink', '0', 'important');
+                } else {
+                    panel2.style.setProperty('flex-basis', newSize + 'px', 'important');
+                    panel2.style.setProperty('flex-grow', '0', 'important');
+                    panel2.style.setProperty('flex-shrink', '0', 'important');
+                }
+                if (editor2) editor2.refresh();
+                if (editor) editor.refresh();
+            }
+            function onUp() {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            }
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+    }
+
+    function _updateButtons() {
+        const btnH = document.getElementById('btnSplitH');
+        const btnV = document.getElementById('btnSplitV');
+        if (btnH) btnH.classList.toggle('active', _mode === 'horizontal');
+        if (btnV) btnV.classList.toggle('active', _mode === 'vertical');
+    }
+
+    function _loadMainFile() {
+        if (!editor2) return;
+        const mainTab = EXP.getActiveTab();
+        if (!mainTab || !mainTab.path) {
+            // Main has untitled — reset split to a blank untitled tab
+            let tab = _tabs[0];
+            if (!tab) {
+                tab = _makeTab(null, 'untitled.il', '');
+                _tabs.push(tab);
+            } else {
+                tab.path = null;
+                tab.name = 'untitled.il';
+                tab.content = '';
+                tab.savedContent = '';
+                tab.mtime = null;
+                tab.dirty = false;
+            }
+            _tabs.splice(1); // remove any extra tabs
+            _activeTabId = tab.id;
+            editor2.setValue('');
+            editor2.setOption('mode', _modeForFile('untitled.il'));
+            _renderTabs();
+            return;
+        }
+        // If already open in split, just switch to it
+        const existing = _tabs.find(t => t.path === mainTab.path);
+        if (existing) {
+            _switchTab(existing.id);
+            // Sync cursor
+            if (editor) {
+                const cur = editor.getCursor();
+                editor2.setCursor(cur);
+                editor2.scrollTo(null, editor.getScrollInfo().top);
+            }
+            return;
+        }
+        // Replace the initial untitled tab (or create one) with main's current file
+        const content = mainTab.content || (editor ? editor.getValue() : '');
+        let tab = _tabs[0];
+        if (!tab) {
+            tab = _makeTab(null, 'untitled.il', '');
+            _tabs.push(tab);
+        }
+        tab.path = mainTab.path;
+        tab.name = mainTab.name;
+        tab.content = content;
+        tab.savedContent = mainTab.savedContent || content;
+        tab.mtime = mainTab.mtime || null;
+        tab.dirty = false;
+        _activeTabId = tab.id;
+        editor2.setValue(content);
+        editor2.setOption('mode', _modeForFile(tab.name));
+        _renderTabs();
+        // Sync cursor and scroll
+        if (editor) {
+            const cur = editor.getCursor();
+            editor2.setCursor(cur);
+            editor2.scrollTo(null, editor.getScrollInfo().top);
+        }
+    }
+
+    function toggle(direction) {
+        if (_mode === direction) {
+            // Remove split
+            _mode = null;
+            _apply();
+        } else {
+            _mode = direction;
+            _apply();
+        }
+    }
+
+    function _apply() {
+        const container = document.getElementById('sbSplitContainer');
+        if (!container) return;
+        container.classList.remove('sb-split-none', 'sb-split-horizontal', 'sb-split-vertical');
+        if (!_mode) {
+            container.classList.add('sb-split-none');
+            _activePane = 1;
+            _updateButtons();
+            if (editor) editor.refresh();
+            return;
+        }
+        // Init editor2 if first time
+        if (!editor2) {
+            let theme = 'dracula';
+            try {
+                const ts = window.parent.document.getElementById('theme-select');
+                if (ts && ts.value === 'white') theme = 'eclipse';
+            } catch(e) {}
+            if (document.body.classList.contains('theme-white')) theme = 'eclipse';
+            _initEditor2(theme);
+        }
+        container.classList.add('sb-split-' + _mode);
+        // Reset panel2 flex-basis to default
+        const panel2 = document.getElementById('editorPanel2');
+        if (panel2) {
+            panel2.style.removeProperty('flex-basis');
+            panel2.style.removeProperty('flex-grow');
+            panel2.style.removeProperty('flex-shrink');
+        }
+        _updateButtons();
+        if (editor) editor.refresh();
+        if (editor2) editor2.refresh();
+        // Load current main file when split has no real files open (first open or after all tabs closed)
+        if (_tabs.every(t => !t.path)) _loadMainFile();
+    }
+
+    let _syncing = false;   // re-entrancy guard for cross-pane mirroring
+
+    // Allow external code to open a file in the split pane
+    function openFile(path) { _openFile(path); }
+
+    // Called on every main editor change: mirror to the matching split tab
+    function mirrorFromMain(cm) {
+        if (_syncing || !editor2) return;
+        const mainTab = EXP.getActiveTab();
+        if (!mainTab || !mainTab.path) return;
+        const splitTab = _tabs.find(t => t.path === mainTab.path);
+        if (!splitTab || splitTab.id !== _activeTabId) return;
+        const newVal = cm.getValue();
+        if (editor2.getValue() === newVal) return;
+        _syncing = true;
+        const cur = editor2.getCursor();
+        const scroll = editor2.getScrollInfo();
+        editor2.setValue(newVal);
+        editor2.setCursor(cur);
+        editor2.scrollTo(scroll.left, scroll.top);
+        splitTab.content = newVal;
+        _syncing = false;
+    }
+
+    // Called on every editor2 change: mirror to the matching main tab
+    function _mirrorToMain() {
+        if (_syncing || !editor2) return;
+        const splitTab = _getActiveTab();
+        if (!splitTab || !splitTab.path) return;
+        const mainTabs = EXP.getTabs();
+        const mainTab = mainTabs.find(t => t.path === splitTab.path);
+        if (!mainTab) return;
+        const newVal = editor2.getValue();
+        if (editor && editor.getValue() === newVal) return;
+        _syncing = true;
+        const cur = editor.getCursor();
+        const scroll = editor.getScrollInfo();
+        // Only update if this is the active main tab; otherwise just update tab.content
+        if (mainTab === EXP.getActiveTab()) {
+            editor.setValue(newVal);
+            editor.setCursor(cur);
+            editor.scrollTo(scroll.left, scroll.top);
+        }
+        mainTab.content = newVal;
+        mainTab.dirty = (newVal !== mainTab.savedContent);
+        EXP.renderTabs();
+        _syncing = false;
+    }
+
+    // Called after main saves: clear dirty on matching split tab
+    function updateSaved(filePath, savedContent, mtime) {
+        if (!editor2) return;
+        const tab = _tabs.find(t => t.path === filePath);
+        if (!tab) return;
+        tab.savedContent = savedContent;
+        tab.dirty = false;
+        if (mtime !== null) tab.mtime = mtime;
+        _renderTabs();
+    }
+
+    // Called by EXP after disk-change reload: update content of matching split tab
+    function syncContent(filePath, content, mtime) {
+        if (!editor2) return;
+        const tab = _tabs.find(t => t.path === filePath);
+        if (!tab) return;
+        tab.content = content;
+        tab.savedContent = content;
+        if (mtime !== null) tab.mtime = mtime;
+        tab.dirty = false;
+        if (tab.id === _activeTabId) {
+            const cur = editor2.getCursor();
+            const scroll = editor2.getScrollInfo();
+            _syncing = true;
+            editor2.setValue(content);
+            _syncing = false;
+            editor2.setCursor(cur);
+            editor2.scrollTo(scroll.left, scroll.top);
+        }
+        _renderTabs();
+    }
+
+    return { toggle, openFile, mirrorFromMain, updateSaved, syncContent };
 })();

@@ -72,7 +72,10 @@
 <!-- Main layout -->
 <div class="sb-main layout-bottom" id="sbMain">
 
-    <!-- Editor panel -->
+<!-- Split container (wraps primary + secondary editor panes) -->
+<div class="sb-split-container sb-split-none" id="sbSplitContainer">
+
+    <!-- Editor panel (primary) -->
     <div class="sb-editor-panel" id="editorPanel">
         <div class="sb-tab-bar-wrap">
             <button class="sb-project-btn" id="prjBtn" onclick="PRJ.openDialog()"
@@ -84,6 +87,21 @@
                 </svg>
             </button>
             <div class="sb-tab-bar" id="editorTabBar"></div>
+            <!-- Split buttons (right side of tab bar) -->
+            <div class="sb-split-btns" id="splitBtns">
+                <button class="sb-split-btn" id="btnSplitH" onclick="SPLIT.toggle('horizontal')" aria-label="Split Horizontal">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="1" y="1" width="12" height="5.5" rx="1" stroke="currentColor" stroke-width="1.2"/>
+                        <rect x="1" y="7.5" width="12" height="5.5" rx="1" stroke="currentColor" stroke-width="1.2"/>
+                    </svg>
+                </button>
+                <button class="sb-split-btn" id="btnSplitV" onclick="SPLIT.toggle('vertical')" aria-label="Split Vertical">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="1" y="1" width="5.5" height="12" rx="1" stroke="currentColor" stroke-width="1.2"/>
+                        <rect x="7.5" y="1" width="5.5" height="12" rx="1" stroke="currentColor" stroke-width="1.2"/>
+                    </svg>
+                </button>
+            </div>
         </div>
         <!-- File-changed-on-disk notification bar (hidden by default) -->
         <div class="sb-disk-change-bar" id="diskChangeBar" style="display:none;">
@@ -100,7 +118,22 @@
         </div>
     </div>
 
-    <!-- Resizer -->
+    <!-- Split resizer (between primary and secondary editor panes) -->
+    <div class="sb-split-resizer" id="splitResizer"></div>
+
+    <!-- Editor panel (secondary / split pane) -->
+    <div class="sb-editor-panel sb-editor-panel2" id="editorPanel2">
+        <div class="sb-tab-bar-wrap">
+            <div class="sb-tab-bar" id="editorTabBar2"></div>
+        </div>
+        <div class="sb-editor-wrap">
+            <textarea id="codeEditor2"></textarea>
+        </div>
+    </div>
+
+</div><!-- /.sb-split-container -->
+
+    <!-- Resizer (editor vs output) -->
     <div class="sb-resizer" id="resizer"></div>
 
     <!-- Output panel -->

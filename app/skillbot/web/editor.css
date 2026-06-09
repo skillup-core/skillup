@@ -248,6 +248,11 @@
             flex: 1;
             overflow: hidden;
             position: relative;
+            visibility: hidden;   /* made visible by JS after CodeMirror init */
+        }
+
+        /* Secondary pane: not hidden before init (CodeMirror init sets visibility) */
+        .sb-editor-panel2 .sb-editor-wrap {
             visibility: hidden;
         }
 
@@ -839,7 +844,7 @@
             opacity: 0;
         }
         .sb-tab.dirty .sb-tab-dirty { opacity: 1; }
-        .sb-tab-close {
+        .sb-tab-close, .sb-tab-close2 {
             margin-left: 6px;
             width: 14px;
             height: 14px;
@@ -853,12 +858,14 @@
             line-height: 1;
         }
         .sb-tab:hover .sb-tab-close,
-        .sb-tab.active .sb-tab-close { color: #aaa; }
-        .sb-tab-close:hover { background: rgba(255,255,255,0.15); color: #fff !important; }
+        .sb-tab.active .sb-tab-close,
+        .sb-tab:hover .sb-tab-close2,
+        .sb-tab.active .sb-tab-close2 { color: #aaa; }
+        .sb-tab-close:hover, .sb-tab-close2:hover { background: rgba(255,255,255,0.15); color: #fff !important; }
         .theme-white .sb-tab { background: #e8e8e8; color: #888; border-color: #ccc; }
         .theme-white .sb-tab.active { background: #fff; color: #333; border-top-color: #3b82f6; }
         .theme-white .sb-tab:hover { color: #333; }
-        .theme-white .sb-tab-close:hover { background: rgba(0,0,0,0.1); color: #333 !important; }
+        .theme-white .sb-tab-close:hover, .theme-white .sb-tab-close2:hover { background: rgba(0,0,0,0.1); color: #333 !important; }
         .sb-tab.drag-over { border-left: 2px solid #3b82f6; }
         .sb-tab.drag-over-end { border-right: 2px solid #3b82f6; }
         .sb-tab.dragging { opacity: 0.4; }
@@ -920,6 +927,122 @@
         }
         .sb-layout-toggle:hover { background: var(--accent-color, #3b82f6); color: #fff; }
         .sb-layout-toggle:disabled { opacity: 0.4; cursor: default; }
+
+        /* ── Split container ── */
+        .sb-split-container {
+            display: flex;
+            flex: 1;
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        /* In layout-bottom: split container takes order 0 slot (editor panel was order 0) */
+        .sb-main.layout-bottom .sb-split-container {
+            order: 0;
+            border-bottom: 1px solid var(--border-color, #373c47);
+            flex-shrink: 1;
+        }
+        /* Remove border-bottom from editor panel nested inside split container */
+        .sb-main.layout-bottom .sb-split-container .sb-editor-panel {
+            border-bottom: none;
+        }
+
+        /* No split: secondary pane and resizer hidden */
+        .sb-split-container.sb-split-none .sb-editor-panel2,
+        .sb-split-container.sb-split-none .sb-split-resizer {
+            display: none;
+        }
+        .sb-split-container.sb-split-none .sb-editor-panel {
+            flex: 1;
+        }
+
+        /* Horizontal split: primary top, secondary bottom */
+        .sb-split-container.sb-split-horizontal {
+            flex-direction: column;
+        }
+        .sb-split-container.sb-split-horizontal .sb-editor-panel {
+            flex: 1;
+            min-height: 80px;
+        }
+        .sb-split-container.sb-split-horizontal .sb-editor-panel2 {
+            flex: 0 0 200px;
+            min-height: 80px;
+        }
+        .sb-split-container.sb-split-horizontal .sb-split-resizer {
+            width: 100%;
+            height: 5px;
+            cursor: row-resize;
+        }
+
+        /* Vertical split: primary left, secondary right */
+        .sb-split-container.sb-split-vertical {
+            flex-direction: row;
+        }
+        .sb-split-container.sb-split-vertical .sb-editor-panel {
+            flex: 1;
+            min-width: 80px;
+        }
+        .sb-split-container.sb-split-vertical .sb-editor-panel2 {
+            flex: 0 0 380px;
+            min-width: 80px;
+        }
+        .sb-split-container.sb-split-vertical .sb-split-resizer {
+            width: 5px;
+            height: auto;
+            cursor: col-resize;
+        }
+
+        /* Split resizer shared style */
+        .sb-split-resizer {
+            flex-shrink: 0;
+            background: transparent;
+            transition: background 0.1s;
+            z-index: 10;
+        }
+        .sb-split-resizer:hover { background: var(--accent-color, #3b82f6); }
+
+        /* Secondary editor pane */
+        .sb-editor-panel2 {
+            border-left: 1px solid var(--border-color, #373c47);
+        }
+        .sb-split-container.sb-split-horizontal .sb-editor-panel2 {
+            border-left: none;
+            border-top: 1px solid var(--border-color, #373c47);
+        }
+
+        /* Split buttons in tab bar */
+        .sb-split-btns {
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+            position: relative;
+            z-index: 1;
+            margin-bottom: -1px;
+            padding-bottom: 1px;
+            background: var(--bg-primary, #1a1d23);
+        }
+
+        .sb-split-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            border-radius: 4px;
+            border: none;
+            background: none;
+            color: var(--text-secondary, #888);
+            cursor: pointer;
+            margin: 0 1px;
+            transition: background 0.15s, color 0.15s;
+        }
+        .sb-split-btn:focus { outline: none; }
+        .sb-split-btn:hover { background: var(--bg-tertiary, #2a2f38); color: var(--text-primary, #e0e0e0); }
+        .sb-split-btn.active { background: var(--accent-color, #3b82f6); color: #fff; }
+        .theme-white .sb-split-btn { color: #666; }
+        .theme-white .sb-split-btn:hover { background: rgba(0,0,0,0.08); color: #333; }
+        .theme-white .sb-split-btn.active { background: #3b82f6; color: #fff; }
 
         /* ── Bootstrap Tooltip customization ── */
         .tooltip-inner {
