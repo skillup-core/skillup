@@ -1023,6 +1023,12 @@ class DesktopManager:
         # Determine current user from $USER env
         self.current_user = os.environ.get('USER', os.environ.get('USERNAME', 'user'))
 
+        # Auto-register current user on first run so account DB always has a record
+        try:
+            upsert_account(self.account_db_path, self.current_user)
+        except Exception as e:
+            log("warn", message=f"Failed to auto-register current user: {e}", tag="desktop")
+
     def _load_wayland_ime_dismissed_time(self):
         """Load wayland IME dismissed timestamp, handling migration from old boolean format"""
         # Try new timestamp format first
