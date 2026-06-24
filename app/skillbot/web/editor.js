@@ -1,5 +1,243 @@
 // ── State ────────────────────────────────────────────────────────────────────
 let editor;
+
+// ── Function Fold ─────────────────────────────────────────────────────────────
+// Each FOLD.init(cm) call creates an independent instance so both the primary
+// editor and editor2 (split pane) are supported simultaneously.
+const FOLD = (function() {
+    // Shared singleton context menu — only one visible across all instances
+    let _ctxMenu = null;
+    function _hideCtxMenu() {
+        if (_ctxMenu) { _ctxMenu.remove(); _ctxMenu = null; }
+    }
+
+    function _attach(cm) {
+        let _foldRanges = [];
+        let _activeFolds = [];
+        let _hoverLine = -1;
+        let _scanTimer = null;
+
+        function _scanRanges() {
+            const lineCount = cm.lineCount();
+            let depth = 0, inBlockCmt = false, inStr = false;
+            const openLine = {};
+            const raw = [];
+
+            for (let ln = 0; ln < lineCount; ln++) {
+                const text = cm.getLine(ln) || '';
+                for (let i = 0; i < text.length; i++) {
+                    const ch = text[i];
+                    if (inBlockCmt) {
+                        if (ch === '*' && text[i + 1] === '/') { inBlockCmt = false; i++; }
+                        continue;
+                    }
+                    if (!inStr && ch === '/' && text[i + 1] === '*') { inBlockCmt = true; i++; continue; }
+                    if (inStr) {
+                        if (ch === '\\') { i++; continue; }
+                        if (ch === '"') inStr = false;
+                        continue;
+                    }
+                    if (ch === '"') { inStr = true; continue; }
+                    if (ch === ';') break;
+                    if (ch === '(') {
+                        depth++;
+                        openLine[depth] = ln;
+                    } else if (ch === ')' && depth > 0) {
+                        const startLn = openLine[depth];
+                        if (startLn !== undefined && startLn !== ln) {
+                            raw.push({ from: startLn, to: ln });
+                        }
+                        delete openLine[depth];
+                        depth--;
+                    }
+                }
+            }
+
+            const best = {};
+            for (const r of raw) {
+                if (best[r.from] === undefined || r.to > best[r.from]) best[r.from] = r.to;
+            }
+            const ranges = Object.keys(best).map(k => ({ from: +k, to: best[k] }));
+            ranges.sort((a, b) => a.from - b.from);
+            _foldRanges = ranges;
+
+            _activeFolds = _activeFolds.filter(f => !!f.mark.find());
+
+            if (_hoverLine >= 0 && !_isFoldable(_hoverLine)) {
+                cm.setGutterMarker(_hoverLine, 'sb-fold-gutter', null);
+                _hoverLine = -1;
+            }
+        }
+
+        function _isFoldable(ln) {
+            return _foldRanges.some(r => r.from === ln);
+        }
+
+        function _getFoldAtLine(ln) {
+            return _activeFolds.find(f => {
+                const pos = f.mark.find();
+                return pos && pos.from.line === ln;
+            }) || null;
+        }
+
+        function _makeArrow(collapsed) {
+            const el = document.createElement('span');
+            el.className = 'sb-fold-marker';
+            el.style.height = cm.defaultTextHeight() + 'px';
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('viewBox', '0 0 16 16');
+            svg.setAttribute('width', '9');
+            svg.setAttribute('height', '9');
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', collapsed ? 'M 4 2 L 12 8 L 4 14' : 'M 2 4 L 8 12 L 14 4');
+            path.setAttribute('fill', 'none');
+            path.setAttribute('stroke', 'currentColor');
+            path.setAttribute('stroke-width', '2.5');
+            path.setAttribute('stroke-linecap', 'round');
+            path.setAttribute('stroke-linejoin', 'round');
+            svg.appendChild(path);
+            el.appendChild(svg);
+            return el;
+        }
+
+        function _showHover(ln) {
+            if (ln === _hoverLine) return;
+            _hideHover();
+            if (_isFoldable(ln) && !_getFoldAtLine(ln)) {
+                cm.setGutterMarker(ln, 'sb-fold-gutter', _makeArrow(false));
+                _hoverLine = ln;
+            }
+        }
+
+        function _hideHover() {
+            if (_hoverLine >= 0) {
+                cm.setGutterMarker(_hoverLine, 'sb-fold-gutter', null);
+                _hoverLine = -1;
+            }
+        }
+
+        function _fold(ln) {
+            const range = _foldRanges.find(r => r.from === ln);
+            if (!range || _getFoldAtLine(ln)) return;
+
+            const fromPos = { line: range.from, ch: (cm.getLine(range.from) || '').length };
+            const toPos   = { line: range.to,   ch: (cm.getLine(range.to)   || '').length };
+
+            const ph = document.createElement('span');
+            ph.className = 'sb-fold-placeholder';
+            ph.textContent = ' ··· ';
+
+            const fold = {};
+            fold.mark = cm.markText(fromPos, toPos, {
+                collapsed: true,
+                replacedWith: ph,
+                clearOnEnter: false,
+            });
+            ph.addEventListener('click', function() {
+                const pos = fold.mark.find();
+                if (pos) _unfold(fold, pos.from.line);
+            });
+
+            cm.setGutterMarker(ln, 'sb-fold-gutter', _makeArrow(true));
+            _activeFolds.push(fold);
+            if (_hoverLine === ln) _hoverLine = -1;
+        }
+
+        function _unfold(fold, ln) {
+            fold.mark.clear();
+            if (ln !== undefined) cm.setGutterMarker(ln, 'sb-fold-gutter', null);
+            const idx = _activeFolds.indexOf(fold);
+            if (idx >= 0) _activeFolds.splice(idx, 1);
+        }
+
+        function _onGutterClick(_, ln, gutter, e) {
+            if (gutter !== 'sb-fold-gutter') return;
+            if (e && e.button !== 0) return; // right-click handled by contextmenu
+            const fold = _getFoldAtLine(ln);
+            if (fold) _unfold(fold, ln);
+            else if (_isFoldable(ln)) _fold(ln);
+        }
+
+        function _onMousemove(e) {
+            const wrapper = cm.getWrapperElement();
+            const rect = wrapper.getBoundingClientRect();
+            if (e.clientY < rect.top || e.clientY > rect.bottom) { _hideHover(); return; }
+            const pos = cm.coordsChar({ left: rect.left + rect.width / 2, top: e.clientY }, 'client');
+            _showHover(pos.line);
+        }
+
+        function _scheduleScan() {
+            clearTimeout(_scanTimer);
+            _scanTimer = setTimeout(_scanRanges, 500);
+        }
+
+        function _foldAll() {
+            _foldRanges.forEach(r => { if (!_getFoldAtLine(r.from)) _fold(r.from); });
+        }
+
+        function _unfoldAll() {
+            [..._activeFolds].forEach(f => {
+                const pos = f.mark.find();
+                if (pos) _unfold(f, pos.from.line);
+            });
+        }
+
+        function _showCtxMenu(e) {
+            e.preventDefault();
+            e.stopPropagation(); // prevent bubbling to doc-level once-listener from previous show
+            _hideCtxMenu();
+
+            const menu = document.createElement('div');
+            menu.className = 'sb-fold-ctx-menu';
+            menu.style.left = e.clientX + 'px';
+            menu.style.top  = e.clientY + 'px';
+
+            const isKo = currentLanguage === 'ko';
+            [[isKo ? '전체 접기' : 'Fold All', _foldAll],
+             [isKo ? '전체 풀기' : 'Unfold All', _unfoldAll]].forEach(function(pair) {
+                const el = document.createElement('div');
+                el.className = 'sb-fold-ctx-label';
+                el.textContent = pair[0];
+                el.addEventListener('mousedown', function(ev) { ev.stopPropagation(); });
+                el.addEventListener('click', function() { _hideCtxMenu(); pair[1](); });
+                menu.appendChild(el);
+            });
+
+            document.body.appendChild(menu);
+            _ctxMenu = menu;
+
+            function _onOutside(ev) {
+                if (!_ctxMenu) return;
+                if (!_ctxMenu.contains(ev.target)) {
+                    _hideCtxMenu();
+                    document.removeEventListener('mousedown', _onOutside);
+                    document.removeEventListener('keydown',   _onOutside);
+                }
+            }
+            setTimeout(function() {
+                document.addEventListener('mousedown', _onOutside);
+                document.addEventListener('keydown',   _onOutside);
+            }, 0);
+        }
+
+        function _onContextmenu(e) {
+            const foldGutter = cm.getWrapperElement().querySelector('.sb-fold-gutter');
+            if (!foldGutter) return;
+            const gr = foldGutter.getBoundingClientRect();
+            if (e.clientX < gr.left || e.clientX > gr.right) return;
+            _showCtxMenu(e);
+        }
+
+        _scanRanges();
+        cm.on('gutterClick', _onGutterClick);
+        cm.on('change', _scheduleScan);
+        cm.getWrapperElement().addEventListener('mousemove',    _onMousemove);
+        cm.getWrapperElement().addEventListener('mouseleave',   _hideHover);
+        cm.getWrapperElement().addEventListener('contextmenu',  _onContextmenu);
+    }
+
+    return { init: _attach };
+})();
 let editor2 = null;          // secondary split pane CodeMirror (null when no split)
 let _activePane = 1;         // 1 = primary, 2 = secondary (set on focus)
 let ilPath = "";
@@ -56,7 +294,7 @@ document.addEventListener('DOMContentLoaded', function() {
         tabSize: 4,
         indentWithTabs: false,
         lineWrapping: false,
-        gutters: ["CodeMirror-linenumbers", "sb-breakpoint-gutter"],
+        gutters: ["sb-breakpoint-gutter", "CodeMirror-linenumbers", "sb-fold-gutter"],
         extraKeys: {
             "Ctrl-Up": function(cm) {
                 const lh = cm.defaultTextHeight();
@@ -680,6 +918,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     initResizer();
     initExplorerResizer();
+    FOLD.init(editor);
 
     function loadLayoutFromConfig() {
         if (typeof callPython !== 'function') {
@@ -2106,6 +2345,8 @@ const ISK = (() => {
     let _dropdownOpenX = null, _dropdownOpenY = null; // mouse coords when dropdown was opened
     let _sigOpenX = null, _sigOpenY = null; // mouse coords when sigBox was opened
     let _cursorMovedByKeyboard = false; // true if cursor last moved via keyboard (not mouse)
+    let _dismissedWordStart = null;    // {line, ch} of word-start when ESC dismissed dropdown
+    let _fetchGen = 0;                 // incremented on ESC; invalidates in-flight fetches
 
     // ── Local symbol cache ──
     // _localFuncs: { name -> { params: [string], startOffset, endOffset } }  — active tab only
@@ -3491,7 +3732,9 @@ const ISK = (() => {
     function _fetchComplete(cm, word, sigVisible) {
         if (!word || word.length < 2) { hideDropdown(); return; }
         clearTimeout(_completeTimer);
+        const myGen = _fetchGen;
         _completeTimer = setTimeout(() => {
+            if (_fetchGen !== myGen) return;
             // Gather local symbols that match the prefix
             const offset = _cursorOffset(cm);
             const localAll = _getLocalSymbolsAtOffset(offset);
@@ -3515,6 +3758,7 @@ const ISK = (() => {
                 return;
             }
             callPython('intellisense_complete', { q: word, limit: 15 }).then(res => {
+                if (_fetchGen !== myGen) return;
                 const dbResults = (res && res.success && res.results) ? res.results : [];
                 // Merge: local first, then DB (skip duplicates, excluded names, and non-prefix matches)
                 const seen = new Set(localHits.map(s => s.name));
@@ -3530,6 +3774,7 @@ const ISK = (() => {
                 if (merged.length) _showDropdown(cm, merged);
                 else hideDropdown();
             }).catch(() => {
+                if (_fetchGen !== myGen) return;
                 if (localHits.length) _showDropdown(cm, localHits);
                 else hideDropdown();
             });
@@ -3611,9 +3856,18 @@ const ISK = (() => {
     function onCursorActivity(cm) {
         _updateOccurrenceHighlight(cm);
         if (!_enabled) return;
+        const typedRecently = (Date.now() - _lastChangeTime) < 500;
+        // If ESC dismissed intellisense and user is still typing in the dismissed zone,
+        // suppress signature too. Arrow-key navigation (typedRecently=false) is allowed.
+        if (_dismissedWordStart && typedRecently) {
+            const cur = cm.getCursor();
+            if (cur.line === _dismissedWordStart.line && cur.ch >= _dismissedWordStart.ch) {
+                hideSig();
+                return;
+            }
+        }
         // Update signature arg highlight when cursor moves inside a call
         const ctx = _parseFuncContext(cm);
-        const typedRecently = (Date.now() - _lastChangeTime) < 500;
         if (ctx) {
             if (_sigData && _sigData.name === ctx.funcName) {
                 // Already have signature data — if shown by cursor-idle, close on next move
@@ -3720,14 +3974,21 @@ const ISK = (() => {
                 }
                 return;
             }
-            if (e.key === 'Escape' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
                 hideDropdown();
                 return;
             }
         }
-        if (e.key === 'Escape' && _sigBox && _sigBox.style.display !== 'none') {
-            e.preventDefault();
-            hideSig();
+        if (e.key === 'Escape') {
+            const { cur } = _currentWordAndPos(cm);
+            _dismissedWordStart = { line: cur.line, ch: cur.ch };
+            clearTimeout(_completeTimer);
+            _fetchGen++;
+            if (_dropdown.style.display !== 'none') hideDropdown();
+            if (_sigBox && _sigBox.style.display !== 'none') {
+                e.preventDefault();
+                hideSig();
+            }
             return;
         }
     }
@@ -3800,7 +4061,7 @@ const ISK = (() => {
             return;
         }
 
-        const { word } = _currentWordAndPos(cm);
+        const { word, cur, start } = _currentWordAndPos(cm);
         if (word !== _lastWord) {
             _lastWord = word;
             const startsWithDigit = word.length > 0 && /^[0-9]/.test(word);
@@ -3809,10 +4070,21 @@ const ISK = (() => {
             // Once the call spans to a new line, _parseFuncContext returns null and
             // the signature is hidden, so completion becomes available again.
             const sigVisible = _sigBox && _sigBox.style.display !== 'none';
-            if (word.length >= 2 && !_isInString(cm) && !_isInComment(cm) && !startsWithDigit) {
-                _fetchComplete(cm, word, sigVisible);
-            } else if (!_isInString(cm)) {
-                hideDropdown();
+
+            // If ESC was pressed, suppress re-opening while cursor stays at or past the dismiss point.
+            // Clear suppression only when cursor moves before the ESC position or to a different line.
+            if (_dismissedWordStart) {
+                if (cur.line !== _dismissedWordStart.line || cur.ch < _dismissedWordStart.ch) {
+                    _dismissedWordStart = null;
+                }
+            }
+
+            if (!_dismissedWordStart) {
+                if (word.length >= 2 && !_isInString(cm) && !_isInComment(cm) && !startsWithDigit) {
+                    _fetchComplete(cm, word, sigVisible);
+                } else if (!_isInString(cm)) {
+                    hideDropdown();
+                }
             }
             // When inside a string, keep the current dropdown as-is (don't close, don't fetch)
         }
@@ -4123,10 +4395,10 @@ const EXP = (() => {
         const btnDebug = document.getElementById('btnDebug');
         if (btnRun)   btnRun.disabled   = !il;
         if (btnDebug) btnDebug.disabled = !il;
-        // F9 breakpoint gutter: show only for IL files
+        // F9 breakpoint gutter: show only for IL files; fold gutter always present
         editor.setOption('gutters', il
-            ? ['CodeMirror-linenumbers', 'sb-breakpoint-gutter']
-            : ['CodeMirror-linenumbers']);
+            ? ['sb-breakpoint-gutter', 'CodeMirror-linenumbers', 'sb-fold-gutter']
+            : ['CodeMirror-linenumbers', 'sb-fold-gutter']);
     }
 
     function _restoreDebugVisuals(tab) {
@@ -5700,9 +5972,10 @@ const SPLIT = (function() {
             tabSize: 4,
             indentWithTabs: false,
             lineWrapping: false,
-            gutters: ['CodeMirror-linenumbers'],
+            gutters: ['CodeMirror-linenumbers', 'sb-fold-gutter'],
             extraKeys: { 'Ctrl-S': function() { _saveActive(); } },
         });
+        FOLD.init(editor2);
         editor2.on('focus', () => { _activePane = 2; });
         editor2.on('change', () => {
             const tab = _getActiveTab();
