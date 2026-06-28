@@ -111,6 +111,25 @@
             actionHistoryToday: 'Today',
             actionHistoryYesterday: 'Yesterday',
             actionHistoryDaysAgo: '{n} days ago',
+            channelPublic: 'Public Channel',
+            channelCreate: '+ New Channel',
+            channelManage: 'Manage Channel',
+            channelCreateTitle: 'New Channel',
+            channelCreateMsg: 'Enter channel name:',
+            channelNamePlaceholder: 'Channel name',
+            channelName: 'Channel Name',
+            channelAdmin: '[Admin]',
+            channelMembers: 'Members',
+            channelAddMember: 'Add Member',
+            channelMemberIdPlaceholder: 'Account ID or group name',
+            channelSetAdmin: 'Set Admin',
+            channelScopeLabel: 'Channel',
+            channelDelete: 'Delete Channel',
+            channelDeleteConfirm: 'Delete this channel? All documents in the channel will also be permanently deleted.',
+            user: 'User',
+            group: 'Group',
+            add: 'Add',
+            remove: 'Remove',
         },
         ko: {
             newDoc: '새 작업',
@@ -218,6 +237,25 @@
             actionHistoryToday: '오늘',
             actionHistoryYesterday: '어제',
             actionHistoryDaysAgo: '{n}일 전',
+            channelPublic: '공개 채널',
+            channelCreate: '+ 새 채널',
+            channelManage: '채널 관리',
+            channelCreateTitle: '새 채널',
+            channelCreateMsg: '채널 이름을 입력하세요:',
+            channelNamePlaceholder: '채널 이름',
+            channelName: '채널 이름',
+            channelAdmin: '[관리자]',
+            channelMembers: '구성 인원',
+            channelAddMember: '인원 추가',
+            channelMemberIdPlaceholder: '계정 ID 또는 그룹 이름',
+            channelSetAdmin: '관리자 변경',
+            channelScopeLabel: '채널',
+            channelDelete: '채널 삭제',
+            channelDeleteConfirm: '이 채널을 삭제합니까? 채널 내 모든 문서도 영구적으로 삭제됩니다.',
+            user: '계정',
+            group: '그룹',
+            add: '추가',
+            remove: '제거',
         },
     };
 
@@ -301,6 +339,11 @@
         searchHistory: [],
         // sticky (pinned) document IDs (persisted to config)
         stickyIds: [],
+        // channel state
+        activeChannelId: null,
+        activeChannelName: '',
+        currentChannelId: null,  // channel_id of the currently open doc
+        channelList: [],          // [{id, name, admin_id}, ...]
     };
 
     var PIN_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>';
@@ -394,7 +437,21 @@
                 state.currentUserId = res.user_id;
                 state.currentUserGroups = res.groups || [];
             }
-            stickyPromise.then(loadList);
+            // Load saved active channel then channel list
+            callPython('channel_active_load', {}).then(function (cfg) {
+                var savedChannelId = (cfg && cfg.success) ? (cfg.channel_id || null) : null;
+                loadChannelList(function () {
+                    if (savedChannelId) {
+                        var found = state.channelList.find(function (c) { return c.id === savedChannelId; });
+                        if (found) {
+                            state.activeChannelId = found.id;
+                            state.activeChannelName = found.name;
+                        }
+                    }
+                    updateChannelBadge();
+                    stickyPromise.then(loadList);
+                });
+            });
         });
         callPython('account_list', {}).then(function (res) {
             if (!res || !res.success) return;
@@ -403,6 +460,13 @@
                 map[a.id] = { display_name: a.display_name, avatar_small: a.avatar_small, avatar_mime: a.avatar_mime };
             });
             state.mentionMap = map;
+        });
+    }
+
+    function loadChannelList(callback) {
+        callPython('channel_list', {}).then(function (res) {
+            state.channelList = (res && res.success) ? (res.channels || []) : [];
+            if (callback) callback();
         });
     }
 
@@ -431,9 +495,14 @@
 
     function buildListHeader() {
         var header = el('div', { className: 'wh-header' });
-        var label = el('h6');
-        label.textContent = t('newDoc');
-        header.appendChild(label);
+
+        var channelBadge = el('button', { className: 'wh-channel-badge', id: 'wh-channel-badge' });
+        renderChannelBadgeContent(channelBadge);
+        channelBadge.addEventListener('click', function (e) {
+            e.stopPropagation();
+            openChannelSwitcher(channelBadge);
+        });
+        header.appendChild(channelBadge);
 
         var btnRow = el('div', { className: 'wh-template-btns' });
         [['note', t('tmplNote')], ['command', t('tmplCommand')], ['todo', t('tmplTodo')], ['checklist', t('tmplChecklist')]].forEach(function (pair) {
@@ -447,6 +516,315 @@
         });
         header.appendChild(btnRow);
         return header;
+    }
+
+    function renderChannelBadgeContent(badge) {
+        badge.innerHTML = '';
+        var nameSpan = el('span', { className: 'wh-channel-name' });
+        nameSpan.textContent = state.activeChannelId ? (state.activeChannelName || '') : t('channelPublic');
+        badge.appendChild(nameSpan);
+        var chevron = el('span', { className: 'wh-channel-chevron' });
+        chevron.textContent = '▾';
+        badge.appendChild(chevron);
+    }
+
+    function updateChannelBadge() {
+        var badge = document.getElementById('wh-channel-badge');
+        if (badge) renderChannelBadgeContent(badge);
+    }
+
+    function openChannelSwitcher(triggerEl) {
+        var existing = document.getElementById('wh-channel-menu');
+        if (existing) { existing.remove(); return; }
+
+        var menu = el('div', { className: 'wh-channel-menu', id: 'wh-channel-menu' });
+
+        var pubItem = el('button', { className: 'wh-channel-item' + (!state.activeChannelId ? ' active' : '') });
+        pubItem.textContent = t('channelPublic');
+        pubItem.addEventListener('click', function () {
+            menu.remove();
+            setActiveChannel(null, '');
+        });
+        menu.appendChild(pubItem);
+
+        state.channelList.forEach(function (ch) {
+            var item = el('button', { className: 'wh-channel-item' + (state.activeChannelId === ch.id ? ' active' : '') });
+            var nameTxt = document.createTextNode(ch.name);
+            item.appendChild(nameTxt);
+            if (ch.admin_id === state.currentUserId) {
+                var adminTag = el('span', { className: 'wh-channel-admin-star' });
+                adminTag.textContent = t('channelAdmin');
+                item.appendChild(adminTag);
+            }
+            item.addEventListener('click', function () {
+                menu.remove();
+                setActiveChannel(ch.id, ch.name);
+            });
+            menu.appendChild(item);
+        });
+
+        var hr = document.createElement('hr');
+        hr.className = 'wh-channel-divider';
+        menu.appendChild(hr);
+
+        var createBtn = el('button', { className: 'wh-channel-item wh-channel-action' });
+        createBtn.textContent = t('channelCreate');
+        createBtn.addEventListener('click', function () {
+            menu.remove();
+            openChannelCreateDialog();
+        });
+        menu.appendChild(createBtn);
+
+        if (state.activeChannelId) {
+            var activeChannel = state.channelList.find(function (c) { return c.id === state.activeChannelId; });
+            if (activeChannel && activeChannel.admin_id === state.currentUserId) {
+                var manageBtn = el('button', { className: 'wh-channel-item wh-channel-action' });
+                manageBtn.textContent = t('channelManage');
+                manageBtn.addEventListener('click', function () {
+                    menu.remove();
+                    openChannelManagementDialog(state.activeChannelId);
+                });
+                menu.appendChild(manageBtn);
+            }
+        }
+
+        var rect = triggerEl.getBoundingClientRect();
+        menu.style.top = rect.bottom + 'px';
+        menu.style.left = rect.left + 'px';
+        document.body.appendChild(menu);
+
+        function onOutside(e) {
+            if (!menu.contains(e.target) && e.target !== triggerEl) {
+                menu.remove();
+                document.removeEventListener('click', onOutside);
+            }
+        }
+        setTimeout(function () { document.addEventListener('click', onOutside); }, 0);
+    }
+
+    function setActiveChannel(channelId, channelName) {
+        state.activeChannelId = channelId;
+        state.activeChannelName = channelName;
+        updateChannelBadge();
+        callPython('channel_active_save', { channel_id: channelId || '' });
+        loadList();
+    }
+
+    function openChannelCreateDialog() {
+        var inputFn = window.parent && typeof window.parent.showInputDialog === 'function'
+            ? window.parent.showInputDialog : null;
+        if (!inputFn) return;
+        inputFn(t('channelCreateTitle'), '').then(function (name) {
+            if (!name || !name.trim()) return;
+            callPython('channel_create', { name: name.trim() }).then(function (res) {
+                if (!res || !res.success) return;
+                var newId = res.id;
+                loadChannelList(function () {
+                    var ch = state.channelList.find(function (c) { return c.id === newId; });
+                    setActiveChannel(newId, ch ? ch.name : name.trim());
+                });
+            });
+        });
+    }
+
+    function openChannelManagementDialog(channelId) {
+        callPython('channel_get', { channel_id: channelId }).then(function (res) {
+            if (!res || !res.success) return;
+            var ch = res.channel;
+            var members = (res.members || []).slice();
+            var isAdmin = (ch.admin_id === state.currentUserId);
+
+            var modal = window.parent && window.parent.desktopModal;
+            if (!modal) return;
+
+            var dlg = document.createElement('div');
+            dlg.style.cssText = 'padding:4px 0;font-size:13px;';
+
+            // Channel name row
+            var nameRow = document.createElement('div');
+            nameRow.style.cssText = 'margin-bottom:12px;';
+            var nameLbl = document.createElement('div');
+            nameLbl.style.cssText = 'font-size:12px;color:var(--text-secondary,#8b8f9b);margin-bottom:4px;';
+            nameLbl.textContent = t('channelName');
+            var nameInput = document.createElement('input');
+            nameInput.type = 'text';
+            nameInput.value = ch.name;
+            nameInput.readOnly = !isAdmin;
+            var baseInputStyle = 'width:100%;background:var(--bg-secondary,#20242b);border:1px solid var(--border-color,#373c47);color:var(--text-primary,#eceef2);border-radius:4px;padding:5px 8px;font-size:13px;box-sizing:border-box;outline:none;';
+            nameInput.style.cssText = baseInputStyle + (!isAdmin ? 'opacity:0.6;cursor:default;' : '');
+            nameRow.appendChild(nameLbl);
+            nameRow.appendChild(nameInput);
+            dlg.appendChild(nameRow);
+
+            // Members list
+            var membersLbl = document.createElement('div');
+            membersLbl.style.cssText = 'font-size:12px;color:var(--text-secondary,#8b8f9b);margin-bottom:6px;';
+            membersLbl.textContent = t('channelMembers');
+            dlg.appendChild(membersLbl);
+
+            var membersWrap = document.createElement('div');
+            membersWrap.style.cssText = 'margin-bottom:10px;max-height:200px;overflow-y:auto;';
+
+            function renderMembers() {
+                membersWrap.innerHTML = '';
+                members.forEach(function (m) {
+                    var row = document.createElement('div');
+                    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border-color,#373c47);';
+                    var infoSpan = document.createElement('span');
+                    infoSpan.style.cssText = 'color:var(--text-primary,#eceef2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;';
+                    var prefix = m.member_type === 'group' ? '[' + t('group') + '] ' : '';
+                    var adminMark = (m.member_type === 'user' && m.member_id === ch.admin_id) ? ' (' + t('channelAdmin') + ')' : '';
+                    infoSpan.textContent = prefix + (m.display_name || m.member_id) + adminMark;
+                    row.appendChild(infoSpan);
+                    if (isAdmin) {
+                        var btnWrap = document.createElement('span');
+                        btnWrap.style.cssText = 'display:flex;flex-shrink:0;margin-left:6px;';
+                        var btnStyle = 'font-size:11px;padding:2px 7px;background:transparent;border:1px solid var(--border-color,#373c47);color:var(--text-secondary,#8b8f9b);border-radius:4px;cursor:pointer;white-space:nowrap;margin-left:4px;outline:none;';
+                        if (m.member_type === 'user' && m.member_id !== ch.admin_id) {
+                            var setAdminBtn = document.createElement('button');
+                            setAdminBtn.style.cssText = btnStyle;
+                            setAdminBtn.textContent = t('channelSetAdmin');
+                            ;(function (mid) {
+                                setAdminBtn.addEventListener('click', function () {
+                                    callPython('channel_set_admin', { channel_id: channelId, new_admin_id: mid }).then(function (r) {
+                                        if (r && r.success) { ch.admin_id = mid; renderMembers(); }
+                                    });
+                                });
+                            })(m.member_id);
+                            btnWrap.appendChild(setAdminBtn);
+                        }
+                        var isSelfAdmin = (m.member_type === 'user' && m.member_id === state.currentUserId);
+                        if (!isSelfAdmin) {
+                            var rmBtn = document.createElement('button');
+                            rmBtn.style.cssText = btnStyle;
+                            rmBtn.textContent = t('remove');
+                            ;(function (mtype, mid) {
+                                rmBtn.addEventListener('click', function () {
+                                    callPython('channel_member_remove', { channel_id: channelId, member_type: mtype, member_id: mid }).then(function (r) {
+                                        if (r && r.success) {
+                                            members = members.filter(function (x) {
+                                                return !(x.member_type === mtype && x.member_id === mid);
+                                            });
+                                            renderMembers();
+                                        }
+                                    });
+                                });
+                            })(m.member_type, m.member_id);
+                            btnWrap.appendChild(rmBtn);
+                        }
+                        row.appendChild(btnWrap);
+                    }
+                    membersWrap.appendChild(row);
+                });
+            }
+            renderMembers();
+            dlg.appendChild(membersWrap);
+
+            if (isAdmin) {
+                var addLbl = document.createElement('div');
+                addLbl.style.cssText = 'font-size:12px;color:var(--text-secondary,#8b8f9b);margin-bottom:4px;margin-top:4px;';
+                addLbl.textContent = t('channelAddMember');
+                dlg.appendChild(addLbl);
+
+                var addRow = document.createElement('div');
+                addRow.style.cssText = 'display:flex;';
+
+                var typeSel = document.createElement('select');
+                typeSel.style.cssText = 'background:var(--bg-secondary,#20242b);border:1px solid var(--border-color,#373c47);color:var(--text-primary,#eceef2);border-radius:4px;padding:4px 6px;font-size:12px;margin-right:4px;outline:none;flex-shrink:0;';
+                [['user', t('user')], ['group', t('group')]].forEach(function (pair) {
+                    var opt = document.createElement('option');
+                    opt.value = pair[0];
+                    opt.textContent = pair[1];
+                    typeSel.appendChild(opt);
+                });
+
+                var memberInput = document.createElement('input');
+                memberInput.type = 'text';
+                memberInput.style.cssText = 'flex:1;min-width:0;background:var(--bg-secondary,#20242b);border:1px solid var(--border-color,#373c47);color:var(--text-primary,#eceef2);border-radius:4px;padding:4px 8px;font-size:12px;box-sizing:border-box;outline:none;margin-right:4px;';
+                memberInput.placeholder = t('channelMemberIdPlaceholder');
+
+                var addBtn = document.createElement('button');
+                addBtn.style.cssText = 'font-size:12px;padding:4px 10px;background:var(--bg-secondary,#20242b);border:1px solid var(--border-color,#373c47);color:var(--text-primary,#eceef2);border-radius:4px;cursor:pointer;white-space:nowrap;outline:none;flex-shrink:0;';
+                addBtn.textContent = t('add');
+                addBtn.addEventListener('click', function () {
+                    var mtype = typeSel.value;
+                    var mid = memberInput.value.trim();
+                    if (!mid) return;
+                    callPython('channel_member_add', { channel_id: channelId, member_type: mtype, member_id: mid }).then(function (r) {
+                        if (r && r.success) {
+                            members.push({ member_type: mtype, member_id: mid, display_name: mid });
+                            memberInput.value = '';
+                            renderMembers();
+                        }
+                    });
+                });
+
+                addRow.appendChild(typeSel);
+                addRow.appendChild(memberInput);
+                addRow.appendChild(addBtn);
+                dlg.appendChild(addRow);
+            }
+
+            // Inject CSS once into parent so delete button is left-aligned from first render
+            if (!window.parent.document.getElementById('wh-modal-delete-style')) {
+                var styleEl = window.parent.document.createElement('style');
+                styleEl.id = 'wh-modal-delete-style';
+                styleEl.textContent = '#wh-channel-delete-btn{margin-right:auto!important;margin-left:0!important;}';
+                window.parent.document.head.appendChild(styleEl);
+            }
+
+            var buttons = [{ label: t('close'), onClick: function () { modal.close(); } }];
+            if (isAdmin) {
+                buttons.unshift({
+                    label: t('confirm'),
+                    primary: true,
+                    onClick: function () {
+                        var newName = nameInput.value.trim();
+                        if (newName && newName !== ch.name) {
+                            callPython('channel_update', { channel_id: channelId, name: newName }).then(function (r) {
+                                if (r && r.success) {
+                                    state.channelList = state.channelList.map(function (c) {
+                                        return c.id === channelId ? { id: c.id, name: newName, admin_id: c.admin_id } : c;
+                                    });
+                                    if (state.activeChannelId === channelId) {
+                                        state.activeChannelName = newName;
+                                        updateChannelBadge();
+                                    }
+                                }
+                            });
+                        }
+                        modal.close();
+                    },
+                });
+                buttons.unshift({
+                    label: t('channelDelete'),
+                    danger: true,
+                    id: 'wh-channel-delete-btn',
+                    onClick: function () {
+                        modal.close();
+                        window.parent.showConfirmDialog(t('channelDelete'), t('channelDeleteConfirm'), { yesStyle: 'danger', yesLabel: t('channelDelete') }).then(function (confirmed) {
+                            if (!confirmed) return;
+                            callPython('channel_delete', { channel_id: channelId }).then(function (r) {
+                                if (!r || !r.success) return;
+                                state.channelList = state.channelList.filter(function (c) { return c.id !== channelId; });
+                                if (state.activeChannelId === channelId) {
+                                    setActiveChannel(null, '');
+                                } else {
+                                    loadChannelList(null);
+                                }
+                            });
+                        });
+                    },
+                });
+            }
+
+            modal.open({
+                title: t('channelManage'),
+                element: dlg,
+                width: '380px',
+                buttons: buttons,
+            });
+        });
     }
 
     function buildColumnHeader() {
@@ -733,7 +1111,9 @@
     // List view
     // -----------------------------------------------------------------------
     function loadList() {
-        callPython('work_list', {}).then(function (res) {
+        var payload = {};
+        if (state.activeChannelId) payload.channel_id = state.activeChannelId;
+        callPython('work_list', payload).then(function (res) {
             if (!res || !res.success) return;
             if (res.current_user_id) state.currentUserId = res.current_user_id;
             state.listItems = res.items || [];
@@ -878,6 +1258,7 @@
         state.currentVisibility = 'all';
         state.currentGroupId = null;
         state.ownerWriteOnly = 1;
+        state.currentChannelId = state.activeChannelId || null;
         state.isOwner = true;
         state.isNewDraft = false;
         state.isDirty = false;
@@ -929,6 +1310,7 @@
             state.currentGroupId = item.group_id || null;
             state.ownerWriteOnly = (item.owner_write_only !== undefined) ? item.owner_write_only : 1;
             state.isOwner = !!item.is_owner;
+            state.currentChannelId = item.channel_id || null;
             state.isNewDraft = false;
             state.isDirty = false;
             state.dirtyTitle = false;
@@ -1588,6 +1970,7 @@
         var modal = window.parent && window.parent.desktopModal;
         if (!modal) return;
 
+        var isChannelDoc = !!state.currentChannelId;
         var groups = state.currentUserGroups || [];
         var selStyle = 'width:100%;background:var(--bg-secondary,#20242b);border:1px solid var(--border-color,#373c47);color:var(--text-primary,#eceef2);border-radius:4px;padding:5px 8px;font-size:13px;box-sizing:border-box;outline:none;';
         var selDisabledStyle = selStyle + 'opacity:0.4;cursor:not-allowed;';
@@ -1596,6 +1979,25 @@
         var dlg = document.createElement('div');
         dlg.style.cssText = 'padding:4px 0;';
 
+        // Channel doc: show channel name (readonly), disable visibility/group
+        if (isChannelDoc) {
+            var chInfo = state.channelList.find(function (c) { return c.id === state.currentChannelId; });
+            var chDisplayName = chInfo ? chInfo.name : (state.currentChannelId || '');
+            var chRow = document.createElement('div');
+            chRow.style.cssText = 'margin-bottom:12px;';
+            var chLabel = document.createElement('div');
+            chLabel.style.cssText = 'font-size:12px;color:var(--text-secondary,#8b8f9b);margin-bottom:4px;';
+            chLabel.textContent = t('channelScopeLabel');
+            var chNameEl = document.createElement('input');
+            chNameEl.type = 'text';
+            chNameEl.readOnly = true;
+            chNameEl.value = chDisplayName;
+            chNameEl.style.cssText = selDisabledStyle;
+            chRow.appendChild(chLabel);
+            chRow.appendChild(chNameEl);
+            dlg.appendChild(chRow);
+        }
+
         // Row 1: visibility combobox
         var visRow = document.createElement('div');
         visRow.style.cssText = 'margin-bottom:12px;';
@@ -1603,7 +2005,8 @@
         visLabel.style.cssText = 'font-size:12px;color:var(--text-secondary,#8b8f9b);margin-bottom:4px;';
         visLabel.textContent = t('visibilityLabel');
         var visSel = document.createElement('select');
-        visSel.style.cssText = selStyle;
+        visSel.style.cssText = isChannelDoc ? selDisabledStyle : selStyle;
+        visSel.disabled = isChannelDoc;
         [['me', t('visMe')], ['group', t('visGroup')], ['all', t('visAll')]].forEach(function (pair) {
             var opt = document.createElement('option');
             opt.value = pair[0];
@@ -1616,14 +2019,14 @@
         visRow.appendChild(visSel);
         dlg.appendChild(visRow);
 
-        // Row 2: group selector (always visible, enabled only when visibility = group)
+        // Row 2: group selector (always visible, enabled only when visibility = group and not channel doc)
         var groupRow = document.createElement('div');
         groupRow.style.cssText = 'margin-bottom:4px;';
         var groupLabel = document.createElement('div');
         groupLabel.style.cssText = 'font-size:12px;color:var(--text-secondary,#8b8f9b);margin-bottom:4px;';
         groupLabel.textContent = t('selectGroup');
         var groupSel = document.createElement('select');
-        var isGroupActive = (state.currentVisibility === 'group') && groups.length > 0;
+        var isGroupActive = !isChannelDoc && (state.currentVisibility === 'group') && groups.length > 0;
 
         function setGroupSelActive(active) {
             groupSel.disabled = !active;
@@ -1650,7 +2053,7 @@
         groupRow.appendChild(groupSel);
         dlg.appendChild(groupRow);
 
-        // Row 3: 나만 쓰기 가능 toggle
+        // Row 3: 나만 쓰기 가능 toggle (always editable by owner)
         var ownerWriteRow = document.createElement('div');
         ownerWriteRow.style.cssText = 'margin-top:10px;display:flex;align-items:center;justify-content:space-between;';
         var ownerWriteLabel = document.createElement('span');
@@ -1662,13 +2065,20 @@
 
         var _isInitialRender = true;
         function applyOwnerWriteDefaults(vis) {
+            if (isChannelDoc) {
+                // Channel docs: owner_write_only always editable, no auto-lock
+                ownerWriteChk.checked = (state.ownerWriteOnly === 1);
+                ownerWriteChk.disabled = false;
+                ownerWriteChk.style.opacity = '';
+                ownerWriteChk.style.cursor = 'pointer';
+                return;
+            }
             if (vis === 'me') {
                 ownerWriteChk.checked = true;
                 ownerWriteChk.disabled = true;
                 ownerWriteChk.style.opacity = '0.4';
                 ownerWriteChk.style.cursor = 'not-allowed';
             } else if (vis === 'group') {
-                // 초기 렌더(현재 설정)는 기존 값 유지, visibility 변경 시 OFF가 기본
                 ownerWriteChk.checked = _isInitialRender ? (state.ownerWriteOnly === 1) : false;
                 ownerWriteChk.disabled = false;
                 ownerWriteChk.style.opacity = '';
@@ -1732,10 +2142,12 @@
             dlg.appendChild(docIdRow);
         }
 
-        visSel.addEventListener('change', function () {
-            setGroupSelActive((visSel.value === 'group') && groups.length > 0);
-            applyOwnerWriteDefaults(visSel.value);
-        });
+        if (!isChannelDoc) {
+            visSel.addEventListener('change', function () {
+                setGroupSelActive((visSel.value === 'group') && groups.length > 0);
+                applyOwnerWriteDefaults(visSel.value);
+            });
+        }
 
         modal.open({
             title: t('shareTitle'),
@@ -2351,13 +2763,15 @@
         if (!state.hasInserted) {
             if (state.createInFlight) return;
             state.createInFlight = true;
-            callPython('work_create', {
+            var createPayload = {
                 template: state.currentTemplate,
                 title: title,
                 body: body,
                 tags: tags,
                 history_body: '',
-            }).then(function (res) {
+            };
+            if (state.currentChannelId) createPayload.channel_id = state.currentChannelId;
+            callPython('work_create', createPayload).then(function (res) {
                 state.createInFlight = false;
                 if (res && res.success) {
                     state.currentId = res.id;

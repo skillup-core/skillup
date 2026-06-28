@@ -7,7 +7,9 @@ import json
 import os
 import re
 import sqlite3
+import sys
 import threading
+import uuid
 import zlib
 from datetime import datetime
 from pathlib import Path
@@ -78,19 +80,35 @@ def _now() -> str:
     return datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
-def _access_cond(user_id: str, group_ids: list, alias: str = 'w') -> tuple:
-    """Returns (WHERE fragment, params list) for access control."""
+def _access_cond(user_id: str, group_ids: list, alias: str = 'w',
+                 channel_ids: list = None) -> tuple:
+    """Returns (WHERE fragment, params list) for access control.
+
+    Public docs (channel_id IS NULL): visibility-based check as before.
+    Channel docs: user must be a member of the channel (channel_id IN channel_ids).
+    """
     a = alias + '.'
     if group_ids:
         ph = ','.join('?' * len(group_ids))
-        cond = (
+        pub_cond = (
             f"({a}owner_id = ? OR {a}visibility = 'all' "
             f"OR ({a}visibility = 'group' AND {a}group_id IN ({ph})))"
         )
-        params = [user_id] + list(group_ids)
+        pub_params = [user_id] + list(group_ids)
     else:
-        cond = f"({a}owner_id = ? OR {a}visibility = 'all')"
-        params = [user_id]
+        pub_cond = f"({a}owner_id = ? OR {a}visibility = 'all')"
+        pub_params = [user_id]
+
+    pub_full = f"({a}channel_id IS NULL AND {pub_cond})"
+
+    if channel_ids:
+        ch_ph = ','.join('?' * len(channel_ids))
+        cond = f"({pub_full} OR {a}channel_id IN ({ch_ph}))"
+        params = pub_params + list(channel_ids)
+    else:
+        cond = pub_full
+        params = pub_params
+
     return cond, params
 
 
@@ -110,19 +128,33 @@ def init_db(db_path: str, current_user_id: str = '') -> bool:
                     visibility       TEXT NOT NULL DEFAULT 'all',
                     group_id         TEXT,
                     owner_write_only INTEGER NOT NULL DEFAULT 1,
+                    channel_id       TEXT,
                     version          INTEGER NOT NULL DEFAULT 1,
                     created_at       TEXT NOT NULL,
                     updated_at       TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS channels (
+                    id         TEXT PRIMARY KEY,
+                    name       TEXT NOT NULL,
+                    admin_id   TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS channel_members (
+                    channel_id  TEXT NOT NULL,
+                    member_type TEXT NOT NULL,
+                    member_id   TEXT NOT NULL,
+                    PRIMARY KEY (channel_id, member_type, member_id)
+                );
             """)
 
-            # Migrate: add 2차 columns if missing
+            # Migrate: add columns if missing
             existing = {row[1] for row in conn.execute("PRAGMA table_info(works)")}
             migrations = [
                 ('owner_id',         "ALTER TABLE works ADD COLUMN owner_id TEXT NOT NULL DEFAULT ''"),
                 ('visibility',       "ALTER TABLE works ADD COLUMN visibility TEXT NOT NULL DEFAULT 'me'"),
                 ('group_id',         "ALTER TABLE works ADD COLUMN group_id TEXT"),
                 ('owner_write_only', "ALTER TABLE works ADD COLUMN owner_write_only INTEGER NOT NULL DEFAULT 1"),
+                ('channel_id',       "ALTER TABLE works ADD COLUMN channel_id TEXT"),
                 ('version',          "ALTER TABLE works ADD COLUMN version INTEGER NOT NULL DEFAULT 1"),
             ]
             for col, sql in migrations:
@@ -165,6 +197,10 @@ def init_db(db_path: str, current_user_id: str = '') -> bool:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_works_history_work_id "
                 "ON works_history(work_id, id DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_works_channel_id "
+                "ON works(channel_id)"
             )
             # Migrate: add title column if missing
             hist_cols = {row[1] for row in conn.execute("PRAGMA table_info(works_history)")}
@@ -236,17 +272,38 @@ def init_db(db_path: str, current_user_id: str = '') -> bool:
     return fts5_ok
 
 
-def work_list(db_path: str, user_id: str, group_ids: list, limit: int = 50) -> list:
-    cond, params = _access_cond(user_id, group_ids)
+_WORK_SELECT = (
+    "SELECT w.id, w.title, w.template, w.tags, "
+    "w.owner_id, w.visibility, w.group_id, w.owner_write_only, w.channel_id, w.created_at, w.updated_at "
+    "FROM works w "
+)
+
+
+def work_list(db_path: str, user_id: str, group_ids: list, limit: int = 50,
+              channel_id: str = None, channel_ids: list = None) -> list:
+    if channel_ids is None:
+        channel_ids = []
     with _lock:
         conn = _connect(db_path)
         try:
-            sql = (
-                "SELECT w.id, w.title, w.template, w.tags, "
-                "w.owner_id, w.visibility, w.group_id, w.owner_write_only, w.created_at, w.updated_at "
-                f"FROM works w WHERE {cond} ORDER BY w.updated_at DESC LIMIT ?"
-            )
-            rows = conn.execute(sql, params + [limit]).fetchall()
+            if channel_id is not None:
+                # Private channel: verify membership then filter by channel
+                if channel_id not in channel_ids:
+                    return []
+                sql = (
+                    _WORK_SELECT +
+                    "WHERE w.channel_id=? ORDER BY w.updated_at DESC LIMIT ?"
+                )
+                rows = conn.execute(sql, [channel_id, limit]).fetchall()
+            else:
+                # Public channel: visibility-based access, channel_id IS NULL
+                pub_cond, pub_params = _access_cond(user_id, group_ids)
+                # pub_cond already includes channel_id IS NULL
+                sql = (
+                    _WORK_SELECT +
+                    f"WHERE {pub_cond} ORDER BY w.updated_at DESC LIMIT ?"
+                )
+                rows = conn.execute(sql, pub_params + [limit]).fetchall()
             return [dict(r) for r in rows]
         finally:
             conn.close()
@@ -257,9 +314,8 @@ def work_list_my(db_path: str, user_id: str, limit: int = 50) -> list:
         conn = _connect(db_path)
         try:
             sql = (
-                "SELECT w.id, w.title, w.template, w.tags, "
-                "w.owner_id, w.visibility, w.group_id, w.owner_write_only, w.created_at, w.updated_at "
-                "FROM works w WHERE w.owner_id = ? ORDER BY w.updated_at DESC LIMIT ?"
+                _WORK_SELECT +
+                "WHERE w.owner_id = ? ORDER BY w.updated_at DESC LIMIT ?"
             )
             rows = conn.execute(sql, [user_id, limit]).fetchall()
             return [dict(r) for r in rows]
@@ -267,9 +323,12 @@ def work_list_my(db_path: str, user_id: str, limit: int = 50) -> list:
             conn.close()
 
 
-def work_get(db_path: str, work_id: int, user_id: str, group_ids: list) -> tuple:
+def work_get(db_path: str, work_id: int, user_id: str, group_ids: list,
+             channel_ids: list = None) -> tuple:
     """Returns (item_dict, None) or (None, error_string)."""
-    cond, params = _access_cond(user_id, group_ids)
+    if channel_ids is None:
+        channel_ids = []
+    cond, params = _access_cond(user_id, group_ids, channel_ids=channel_ids)
     with _lock:
         conn = _connect(db_path)
         try:
@@ -285,11 +344,14 @@ def work_get(db_path: str, work_id: int, user_id: str, group_ids: list) -> tuple
             conn.close()
 
 
-def work_get_titles(db_path: str, ids: list, user_id: str, group_ids: list) -> list:
+def work_get_titles(db_path: str, ids: list, user_id: str, group_ids: list,
+                    channel_ids: list = None) -> list:
     """Return [{id, title, template}] for each accessible id. Missing/forbidden ids are omitted."""
     if not ids:
         return []
-    cond, params = _access_cond(user_id, group_ids)
+    if channel_ids is None:
+        channel_ids = []
+    cond, params = _access_cond(user_id, group_ids, channel_ids=channel_ids)
     placeholders = ','.join('?' for _ in ids)
     sql = f"SELECT w.id, w.title, w.template FROM works w WHERE w.id IN ({placeholders}) AND {cond}"
     with _lock:
@@ -303,16 +365,17 @@ def work_get_titles(db_path: str, ids: list, user_id: str, group_ids: list) -> l
 
 def work_create(db_path: str, template: str, owner_id: str,
                 title: str = '', body: str = '', tags: str = '',
-                history_body: str = '', action_history_limit: int = 200) -> tuple:
+                history_body: str = '', action_history_limit: int = 200,
+                channel_id: str = None) -> tuple:
     now = _now()
     with _lock:
         conn = _connect(db_path)
         try:
             cur = conn.execute(
                 "INSERT INTO works "
-                "(title, template, body, tags, owner_id, visibility, group_id, version, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, 'all', NULL, 1, ?, ?)",
-                (title, template, body, tags, owner_id, now, now)
+                "(title, template, body, tags, owner_id, visibility, group_id, channel_id, version, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, 'all', NULL, ?, 1, ?, ?)",
+                (title, template, body, tags, owner_id, channel_id, now, now)
             )
             new_id = cur.lastrowid
             try:
@@ -342,24 +405,32 @@ def work_save(db_path: str, work_id: int, user_id: str, group_ids: list,
               skip_body: bool = False,
               history_body: str = '', history_title: str = '',
               autosave_count: int = 10,
-              action_history_limit: int = 200) -> dict:
+              action_history_limit: int = 200,
+              channel_ids: list = None) -> dict:
+    if channel_ids is None:
+        channel_ids = []
     now = _now()
     with _lock:
         conn = _connect(db_path)
         try:
             row = conn.execute(
-                "SELECT owner_id, visibility, group_id, owner_write_only, version, body, tags, template FROM works WHERE id=?",
+                "SELECT owner_id, visibility, group_id, owner_write_only, channel_id, version, body, tags, template FROM works WHERE id=?",
                 (work_id,)
             ).fetchone()
             if row is None:
                 return {'success': False, 'error': 'not_found'}
 
             is_owner = (row['owner_id'] == user_id)
-            has_access = (
-                is_owner
-                or row['visibility'] == 'all'
-                or (row['visibility'] == 'group' and row['group_id'] in group_ids)
-            )
+            row_channel_id = row['channel_id']
+            if row_channel_id:
+                # Channel doc: access via channel membership
+                has_access = is_owner or row_channel_id in channel_ids
+            else:
+                has_access = (
+                    is_owner
+                    or row['visibility'] == 'all'
+                    or (row['visibility'] == 'group' and row['group_id'] in group_ids)
+                )
             if not has_access:
                 return {'success': False, 'error': 'forbidden'}
 
@@ -367,19 +438,25 @@ def work_save(db_path: str, work_id: int, user_id: str, group_ids: list,
             if not is_owner and row['owner_write_only'] == 1:
                 return {'success': False, 'error': 'forbidden'}
 
-            # Only owner can change visibility/group_id/owner_write_only
+            # Only owner can change sharing settings
             if is_owner:
-                new_visibility = visibility if visibility in ('me', 'group', 'all') else row['visibility']
-                new_group_id = group_id if new_visibility == 'group' else None
-                # Validate group membership
-                if new_visibility == 'group':
-                    if not new_group_id or new_group_id not in group_ids:
-                        return {'success': False, 'error': 'invalid_group'}
-                # visibility='me' always forces owner_write_only=1
-                if new_visibility == 'me':
-                    new_owner_write_only = 1
-                else:
+                if row_channel_id:
+                    # Channel doc: visibility/group_id are fixed; only owner_write_only changes
+                    new_visibility = row['visibility']
+                    new_group_id = row['group_id']
                     new_owner_write_only = 1 if owner_write_only else 0
+                else:
+                    new_visibility = visibility if visibility in ('me', 'group', 'all') else row['visibility']
+                    new_group_id = group_id if new_visibility == 'group' else None
+                    # Validate group membership
+                    if new_visibility == 'group':
+                        if not new_group_id or new_group_id not in group_ids:
+                            return {'success': False, 'error': 'invalid_group'}
+                    # visibility='me' always forces owner_write_only=1
+                    if new_visibility == 'me':
+                        new_owner_write_only = 1
+                    else:
+                        new_owner_write_only = 1 if owner_write_only else 0
             else:
                 new_visibility = row['visibility']
                 new_group_id = row['group_id']
@@ -500,9 +577,11 @@ def _make_copy_title(title: str) -> str:
 
 
 def work_copy(db_path: str, work_id: int, user_id: str, group_ids: list,
-              action_history_limit: int = 200) -> dict:
+              action_history_limit: int = 200, channel_ids: list = None) -> dict:
     """Copy a document the caller can access. Returns {success, id, updated_at} or {success, error}."""
-    cond, params = _access_cond(user_id, group_ids)
+    if channel_ids is None:
+        channel_ids = []
+    cond, params = _access_cond(user_id, group_ids, channel_ids=channel_ids)
     now = _now()
     with _lock:
         conn = _connect(db_path)
@@ -515,8 +594,8 @@ def work_copy(db_path: str, work_id: int, user_id: str, group_ids: list,
             new_title = _make_copy_title(row['title'] or '')
             cur = conn.execute(
                 "INSERT INTO works "
-                "(title, template, body, tags, owner_id, visibility, group_id, version, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, 'me', NULL, 1, ?, ?)",
+                "(title, template, body, tags, owner_id, visibility, group_id, channel_id, version, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, 'me', NULL, NULL, 1, ?, ?)",
                 (new_title, row['template'], row['body'], row['tags'], user_id, now, now)
             )
             new_id = cur.lastrowid
@@ -602,9 +681,12 @@ def work_history_save(db_path: str, work_id: int, body: str, saved_by: str,
             conn.close()
 
 
-def work_history_list(db_path: str, work_id: int, user_id: str, group_ids: list) -> tuple:
+def work_history_list(db_path: str, work_id: int, user_id: str, group_ids: list,
+                      channel_ids: list = None) -> tuple:
     """Returns (list_of_entries, None) or (None, error_string)."""
-    cond, params = _access_cond(user_id, group_ids)
+    if channel_ids is None:
+        channel_ids = []
+    cond, params = _access_cond(user_id, group_ids, channel_ids=channel_ids)
     with _lock:
         conn = _connect(db_path)
         try:
@@ -623,9 +705,12 @@ def work_history_list(db_path: str, work_id: int, user_id: str, group_ids: list)
             conn.close()
 
 
-def work_history_get(db_path: str, history_id: int, user_id: str, group_ids: list) -> tuple:
+def work_history_get(db_path: str, history_id: int, user_id: str, group_ids: list,
+                     channel_ids: list = None) -> tuple:
     """Returns (entry_dict_with_body, None) or (None, error_string)."""
-    cond, params = _access_cond(user_id, group_ids)
+    if channel_ids is None:
+        channel_ids = []
+    cond, params = _access_cond(user_id, group_ids, channel_ids=channel_ids)
     with _lock:
         conn = _connect(db_path)
         try:
@@ -647,8 +732,11 @@ def work_history_get(db_path: str, history_id: int, user_id: str, group_ids: lis
             conn.close()
 
 
-def tag_list(db_path: str, user_id: str, group_ids: list) -> list:
-    cond, params = _access_cond(user_id, group_ids)
+def tag_list(db_path: str, user_id: str, group_ids: list,
+             channel_ids: list = None) -> list:
+    if channel_ids is None:
+        channel_ids = []
+    cond, params = _access_cond(user_id, group_ids, channel_ids=channel_ids)
     with _lock:
         conn = _connect(db_path)
         try:
@@ -699,13 +787,16 @@ def sync_inline_links(db_path: str, work_id: int, prev_body: str, new_body: str,
 # Document links
 # -----------------------------------------------------------------------
 
-def link_list(db_path: str, work_id: int, user_id: str, group_ids: list) -> tuple:
+def link_list(db_path: str, work_id: int, user_id: str, group_ids: list,
+              channel_ids: list = None) -> tuple:
     """Returns (list_of_linked_items, None) or (None, error_string).
 
     Each item includes id, title, template, owner_id, visibility fields.
     Only returns linked documents the caller can access.
     """
-    cond, params = _access_cond(user_id, group_ids)
+    if channel_ids is None:
+        channel_ids = []
+    cond, params = _access_cond(user_id, group_ids, channel_ids=channel_ids)
     with _lock:
         conn = _connect(db_path)
         try:
@@ -743,11 +834,14 @@ def link_list(db_path: str, work_id: int, user_id: str, group_ids: list) -> tupl
 
 def link_add(db_path: str, work_id: int, linked_id: int,
              user_id: str, group_ids: list,
-             action_history_limit: int = 200) -> dict:
+             action_history_limit: int = 200,
+             channel_ids: list = None) -> dict:
     """Create a bidirectional link between work_id and linked_id."""
     if work_id == linked_id:
         return {'success': False, 'error': 'self_link'}
-    cond, params = _access_cond(user_id, group_ids)
+    if channel_ids is None:
+        channel_ids = []
+    cond, params = _access_cond(user_id, group_ids, channel_ids=channel_ids)
     now = _now()
     # Normalise so smaller id is always work_id
     a, b = (work_id, linked_id) if work_id < linked_id else (linked_id, work_id)
@@ -783,9 +877,12 @@ def link_add(db_path: str, work_id: int, linked_id: int,
 
 def link_remove(db_path: str, work_id: int, linked_id: int,
                 user_id: str, group_ids: list,
-                action_history_limit: int = 200) -> dict:
+                action_history_limit: int = 200,
+                channel_ids: list = None) -> dict:
     """Remove the link between work_id and linked_id."""
-    cond, params = _access_cond(user_id, group_ids)
+    if channel_ids is None:
+        channel_ids = []
+    cond, params = _access_cond(user_id, group_ids, channel_ids=channel_ids)
     a, b = (work_id, linked_id) if work_id < linked_id else (linked_id, work_id)
     with _lock:
         conn = _connect(db_path)
@@ -873,13 +970,16 @@ def action_log_list(db_path: str, user_id: str, limit: int = 200) -> list:
             conn.close()
 
 
-def link_resolve(db_path: str, target_id: int, user_id: str, group_ids: list) -> tuple:
+def link_resolve(db_path: str, target_id: int, user_id: str, group_ids: list,
+                 channel_ids: list = None) -> tuple:
     """Fetch minimal info about a document for link-add preview.
 
     Returns (item_dict, None) or (None, error_string).
     item_dict contains id, title, template, owner_id.
     """
-    cond, params = _access_cond(user_id, group_ids)
+    if channel_ids is None:
+        channel_ids = []
+    cond, params = _access_cond(user_id, group_ids, channel_ids=channel_ids)
     with _lock:
         conn = _connect(db_path)
         try:
@@ -889,5 +989,221 @@ def link_resolve(db_path: str, target_id: int, user_id: str, group_ids: list) ->
                 exists = conn.execute("SELECT id FROM works WHERE id=?", (target_id,)).fetchone()
                 return None, ('not_found' if not exists else 'forbidden')
             return dict(row), None
+        finally:
+            conn.close()
+
+
+# -----------------------------------------------------------------------
+# Channel management
+# -----------------------------------------------------------------------
+
+def get_user_channel_ids(db_path: str, user_id: str, group_ids: list,
+                         group_names: list = None) -> list:
+    """Return list of channel IDs the user can access (direct or via group membership).
+
+    group_ids: UUIDs of groups the user belongs to.
+    group_names: names of those same groups (for backward compat with records stored by name).
+    """
+    # Combine UUIDs and names so both old (name-stored) and new (UUID-stored) records match
+    group_refs = list(group_ids)
+    if group_names:
+        for n in group_names:
+            if n not in group_refs:
+                group_refs.append(n)
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            if group_refs:
+                ph = ','.join('?' * len(group_refs))
+                rows = conn.execute(
+                    f"SELECT DISTINCT channel_id FROM channel_members "
+                    f"WHERE (member_type='user' AND member_id=?) "
+                    f"OR (member_type='group' AND member_id IN ({ph}))",
+                    [user_id] + group_refs
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT DISTINCT channel_id FROM channel_members "
+                    "WHERE member_type='user' AND member_id=?",
+                    [user_id]
+                ).fetchall()
+            return [r['channel_id'] for r in rows]
+        finally:
+            conn.close()
+
+
+def channel_list(db_path: str, user_id: str, group_ids: list,
+                 group_names: list = None) -> list:
+    """Return channels accessible to the user, with admin_id."""
+    channel_ids = get_user_channel_ids(db_path, user_id, group_ids, group_names=group_names)
+    if not channel_ids:
+        return []
+    ph = ','.join('?' * len(channel_ids))
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            rows = conn.execute(
+                f"SELECT id, name, admin_id, created_at FROM channels WHERE id IN ({ph}) ORDER BY name",
+                channel_ids
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+
+def channel_create(db_path: str, name: str, admin_id: str) -> dict:
+    """Create a new channel. Creator becomes admin and first member."""
+    channel_id = str(uuid.uuid4())
+    now = _now()
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            conn.execute(
+                "INSERT INTO channels(id, name, admin_id, created_at) VALUES (?, ?, ?, ?)",
+                (channel_id, name, admin_id, now)
+            )
+            conn.execute(
+                "INSERT INTO channel_members(channel_id, member_type, member_id) VALUES (?, 'user', ?)",
+                (channel_id, admin_id)
+            )
+            conn.commit()
+            return {'success': True, 'id': channel_id}
+        finally:
+            conn.close()
+
+
+def channel_get(db_path: str, channel_id: str, user_id: str, group_ids: list,
+                group_names: list = None) -> dict:
+    """Return channel info + member list. User must be a member."""
+    channel_ids = get_user_channel_ids(db_path, user_id, group_ids, group_names=group_names)
+    if channel_id not in channel_ids:
+        return {'success': False, 'error': 'forbidden'}
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            ch = conn.execute(
+                "SELECT id, name, admin_id, created_at FROM channels WHERE id=?",
+                (channel_id,)
+            ).fetchone()
+            if ch is None:
+                return {'success': False, 'error': 'not_found'}
+            members = conn.execute(
+                "SELECT member_type, member_id FROM channel_members "
+                "WHERE channel_id=? ORDER BY member_type, member_id",
+                (channel_id,)
+            ).fetchall()
+            return {
+                'success': True,
+                'channel': dict(ch),
+                'members': [dict(m) for m in members],
+            }
+        finally:
+            conn.close()
+
+
+def channel_update(db_path: str, channel_id: str, actor_id: str, name: str) -> dict:
+    """Update channel name. Admin only."""
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            ch = conn.execute("SELECT admin_id FROM channels WHERE id=?", (channel_id,)).fetchone()
+            if ch is None:
+                return {'success': False, 'error': 'not_found'}
+            if ch['admin_id'] != actor_id:
+                return {'success': False, 'error': 'not_admin'}
+            conn.execute("UPDATE channels SET name=? WHERE id=?", (name, channel_id))
+            conn.commit()
+            return {'success': True}
+        finally:
+            conn.close()
+
+
+def channel_member_add(db_path: str, channel_id: str, actor_id: str,
+                       member_type: str, member_id: str) -> dict:
+    """Add a user or group to a channel. Admin only."""
+    if member_type not in ('user', 'group'):
+        return {'success': False, 'error': 'invalid_type'}
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            ch = conn.execute("SELECT admin_id FROM channels WHERE id=?", (channel_id,)).fetchone()
+            if ch is None:
+                return {'success': False, 'error': 'not_found'}
+            if ch['admin_id'] != actor_id:
+                return {'success': False, 'error': 'not_admin'}
+            conn.execute(
+                "INSERT OR IGNORE INTO channel_members(channel_id, member_type, member_id) "
+                "VALUES (?, ?, ?)",
+                (channel_id, member_type, member_id)
+            )
+            conn.commit()
+            return {'success': True}
+        finally:
+            conn.close()
+
+
+def channel_member_remove(db_path: str, channel_id: str, actor_id: str,
+                          member_type: str, member_id: str) -> dict:
+    """Remove a member from a channel. Admin only; admin cannot remove themselves."""
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            ch = conn.execute("SELECT admin_id FROM channels WHERE id=?", (channel_id,)).fetchone()
+            if ch is None:
+                return {'success': False, 'error': 'not_found'}
+            if ch['admin_id'] != actor_id:
+                return {'success': False, 'error': 'not_admin'}
+            if member_type == 'user' and member_id == actor_id:
+                return {'success': False, 'error': 'cannot_remove_admin'}
+            conn.execute(
+                "DELETE FROM channel_members WHERE channel_id=? AND member_type=? AND member_id=?",
+                (channel_id, member_type, member_id)
+            )
+            conn.commit()
+            return {'success': True}
+        finally:
+            conn.close()
+
+
+def channel_delete(db_path: str, channel_id: str, actor_id: str) -> dict:
+    """Delete a channel and all its works. Admin only."""
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            ch = conn.execute("SELECT admin_id FROM channels WHERE id=?", (channel_id,)).fetchone()
+            if ch is None:
+                return {'success': False, 'error': 'not_found'}
+            if ch['admin_id'] != actor_id:
+                return {'success': False, 'error': 'not_admin'}
+            conn.execute("DELETE FROM works_history WHERE work_id IN "
+                         "(SELECT id FROM works WHERE channel_id=?)", (channel_id,))
+            conn.execute("DELETE FROM works WHERE channel_id=?", (channel_id,))
+            conn.execute("DELETE FROM channel_members WHERE channel_id=?", (channel_id,))
+            conn.execute("DELETE FROM channels WHERE id=?", (channel_id,))
+            conn.commit()
+            return {'success': True}
+        finally:
+            conn.close()
+
+
+def channel_set_admin(db_path: str, channel_id: str, actor_id: str, new_admin_id: str) -> dict:
+    """Transfer admin role to a channel member. Current admin only."""
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            ch = conn.execute("SELECT admin_id FROM channels WHERE id=?", (channel_id,)).fetchone()
+            if ch is None:
+                return {'success': False, 'error': 'not_found'}
+            if ch['admin_id'] != actor_id:
+                return {'success': False, 'error': 'not_admin'}
+            member = conn.execute(
+                "SELECT 1 FROM channel_members WHERE channel_id=? AND member_type='user' AND member_id=?",
+                (channel_id, new_admin_id)
+            ).fetchone()
+            if member is None:
+                return {'success': False, 'error': 'not_member'}
+            conn.execute("UPDATE channels SET admin_id=? WHERE id=?", (new_admin_id, channel_id))
+            conn.commit()
+            return {'success': True}
         finally:
             conn.close()

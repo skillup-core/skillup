@@ -20,18 +20,30 @@ def _fts5_quote(token: str) -> str:
     return '"' + token.replace('"', '""') + '"*'
 
 
-def _access_cond(user_id: str, group_ids: list, alias: str = 'w') -> tuple:
+def _access_cond(user_id: str, group_ids: list, alias: str = 'w',
+                 channel_ids: list = None) -> tuple:
     a = alias + '.'
     if group_ids:
         ph = ','.join('?' * len(group_ids))
-        cond = (
+        pub_cond = (
             f"({a}owner_id = ? OR {a}visibility = 'all' "
             f"OR ({a}visibility = 'group' AND {a}group_id IN ({ph})))"
         )
-        params = [user_id] + list(group_ids)
+        pub_params = [user_id] + list(group_ids)
     else:
-        cond = f"({a}owner_id = ? OR {a}visibility = 'all')"
-        params = [user_id]
+        pub_cond = f"({a}owner_id = ? OR {a}visibility = 'all')"
+        pub_params = [user_id]
+
+    pub_full = f"({a}channel_id IS NULL AND {pub_cond})"
+
+    if channel_ids:
+        ch_ph = ','.join('?' * len(channel_ids))
+        cond = f"({pub_full} OR {a}channel_id IN ({ch_ph}))"
+        params = pub_params + list(channel_ids)
+    else:
+        cond = pub_full
+        params = pub_params
+
     return cond, params
 
 
@@ -47,12 +59,15 @@ def parse_query(query: str) -> tuple:
     return tags, tokens
 
 
-def search(db_path: str, query: str, user_id: str, group_ids: list, limit: int = 50) -> list:
+def search(db_path: str, query: str, user_id: str, group_ids: list, limit: int = 50,
+           channel_ids: list = None) -> list:
     tags, tokens = parse_query(query)
     if not tags and not tokens:
         return []
+    if channel_ids is None:
+        channel_ids = []
 
-    acc_cond, acc_params = _access_cond(user_id, group_ids)
+    acc_cond, acc_params = _access_cond(user_id, group_ids, channel_ids=channel_ids)
 
     _SELECT = (
         "SELECT w.id, w.title, w.template, w.tags, "
@@ -97,7 +112,7 @@ def search(db_path: str, query: str, user_id: str, group_ids: list, limit: int =
         except sqlite3.OperationalError:
             # FTS5 not available - fall back to LIKE search
             like_conds = [acc_cond]
-            like_p = list(acc_params)
+            like_p = list(acc_params)  # acc_params already includes channel_ids
             for t in tokens:
                 like_conds.append("(w.title LIKE ? OR w.tags LIKE ?)")
                 patt = f'%{t}%'

@@ -64,8 +64,8 @@
           "selector": "#wh-vis-btn",
           "title": { "en": "Share", "ko": "공유" },
           "body_md": {
-            "en": "Set who can view and edit this document: **Private** (only you), **Group** (selected team), or **Everyone**. Toggle **Owner-only editing** to allow or restrict edits by others.",
-            "ko": "문서 공개 범위를 설정합니다: **비공개**(나만), **그룹공유**(선택한 팀), **전체공유**. **나만 쓰기 가능** 토글로 다른 사람의 편집 여부를 제어합니다."
+            "en": "Set who can view and edit this document: **Private** (only you), **Group** (selected team), or **Everyone**. Toggle **Owner-only editing** to allow or restrict edits by others.\n\nFor documents inside a **private channel**, the visibility and group fields are fixed (read-only) — access is determined by channel membership. Only **Owner-only editing** remains configurable.",
+            "ko": "문서 공개 범위를 설정합니다: **비공개**(나만), **그룹공유**(선택한 팀), **전체공유**. **나만 쓰기 가능** 토글로 다른 사람의 편집 여부를 제어합니다.\n\n**일반 채널** 소속 문서는 공개범위·그룹 항목이 고정(읽기 전용)되며, 접근 권한은 채널 구성원으로 결정됩니다. **나만 쓰기 가능**은 항상 설정 가능합니다."
           },
           "tip_side": "bottom",
           "grid": { "x": 2, "y": 0 }
@@ -92,6 +92,18 @@
       },
       "steps": [
         {
+          "id": "channel-badge",
+          "selector": ".wh-channel-badge",
+          "title": { "en": "Channel", "ko": "채널" },
+          "body_md": {
+            "en": "Shows the currently active channel. Click to switch channels or create a new one.\n\n- **Public Channel** — documents visible based on share settings (private / group / everyone)\n- **Private Channel** — a closed workspace shared only with designated members or groups; documents are accessible only within that channel\n\nThe channel admin (marked **[Admin]**) can add/remove members, transfer admin rights, and delete the channel.",
+            "ko": "현재 활성 채널을 표시합니다. 클릭하면 채널 목록이 열리고, 채널을 전환하거나 새로 만들 수 있습니다.\n\n- **공개 채널** — 문서별 공유 설정(비공개 / 그룹 / 전체)에 따라 공개 범위가 결정됩니다.\n- **일반 채널** — 지정된 구성원·그룹만 접근 가능한 폐쇄형 공간으로, 해당 채널 안에서만 문서를 열람할 수 있습니다.\n\n채널 관리자(**[관리자]** 표시)는 구성원 추가·제거, 관리자 변경, 채널 삭제를 할 수 있습니다."
+          },
+          "tip_side": "bottom",
+          "grid": { "x": 0, "y": 0 },
+          "neighbors": { "right": "filter-btn", "down": "template-btns" }
+        },
+        {
           "id": "template-btns",
           "selector": ".wh-template-btns",
           "title": { "en": "New Document", "ko": "새 문서" },
@@ -100,8 +112,8 @@
             "ko": "템플릿을 클릭하면 즉시 새 문서 작성이 시작됩니다:\n- **메모** — 자유 텍스트(마크다운 지원)\n- **커맨드 노트** — 셸 커맨드 + 설명 저장\n- **TODO** — 체크박스 항목 목록\n- **체크리스트** — 순서형 단계 목록"
           },
           "tip_side": "bottom",
-          "grid": { "x": 0, "y": 0 },
-          "neighbors": { "right": "filter-btn", "down": "doc-list" }
+          "grid": { "x": 0, "y": 1 },
+          "neighbors": { "up": "channel-badge", "right": "filter-btn", "down": "doc-list" }
         },
         {
           "id": "filter-btn",
@@ -112,7 +124,7 @@
             "ko": "문서 목록을 타입별로 필터링합니다. 클릭하면 드롭다운이 열리고 모두/메모/커맨드/TODO/체크리스트 중 선택합니다."
           },
           "tip_side": "bottom",
-          "grid": { "x": 1, "y": 0 },
+          "grid": { "x": 1, "y": 1 },
           "neighbors": { "left": "template-btns", "down": "doc-list" }
         },
         {

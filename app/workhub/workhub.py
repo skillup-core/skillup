@@ -85,6 +85,17 @@ class WorkHubApp(BaseApp):
             'search_history_save':    self._handle_search_history_save,
             'sticky_load':            self._handle_sticky_load,
             'sticky_save':            self._handle_sticky_save,
+            'channel_list':           self._handle_channel_list,
+            'channel_create':         self._handle_channel_create,
+            'channel_get':            self._handle_channel_get,
+            'channel_update':         self._handle_channel_update,
+            'channel_member_add':     self._handle_channel_member_add,
+            'channel_member_remove':  self._handle_channel_member_remove,
+            'channel_set_admin':      self._handle_channel_set_admin,
+            'channel_delete':         self._handle_channel_delete,
+            'channel_active_load':    self._handle_channel_active_load,
+            'channel_active_save':    self._handle_channel_active_save,
+            'group_list_all':         self._handle_group_list_all,
         })
         return 0
 
@@ -164,7 +175,10 @@ class WorkHubApp(BaseApp):
         account_db_path = self._get_account_db_path()
         groups = _group_mod.list_groups(account_db_path, user_id)
         group_ids = [g['id'] for g in groups]
-        return user_id, group_ids, account_db_path, groups
+        group_names = [g['name'] for g in groups]
+        channel_ids = _db.get_user_channel_ids(self._db_path(), user_id, group_ids,
+                                               group_names=group_names)
+        return user_id, group_ids, account_db_path, groups, channel_ids
 
     def _enrich_items(self, items: list, user_id: str, account_db_path: str) -> list:
         """Add is_owner, owner_display_name, owner_avatar_small, owner_avatar_mime to each item."""
@@ -194,7 +208,7 @@ class WorkHubApp(BaseApp):
     # ------------------------------------------------------------------
 
     def _handle_user_info(self, data: dict, language: str) -> dict:
-        user_id, group_ids, account_db_path, groups = self._get_user_context()
+        user_id, group_ids, account_db_path, groups, channel_ids = self._get_user_context()
         info = enrich_user_info(account_db_path, user_id)
         return {
             'success': True,
@@ -206,13 +220,18 @@ class WorkHubApp(BaseApp):
         }
 
     def _handle_work_list(self, data: dict, language: str) -> dict:
-        user_id, group_ids, account_db_path, _ = self._get_user_context()
-        items = _db.work_list(self._db_path(), user_id, group_ids)
+        user_id, group_ids, account_db_path, _, channel_ids = self._get_user_context()
+        channel_id = data.get('channel_id') or None
+        # Verify client-supplied channel_id is accessible
+        if channel_id and channel_id not in channel_ids:
+            channel_id = None
+        items = _db.work_list(self._db_path(), user_id, group_ids,
+                              channel_id=channel_id, channel_ids=channel_ids)
         items = self._enrich_items(items, user_id, account_db_path)
         return {'success': True, 'items': items, 'current_user_id': user_id}
 
     def _handle_work_list_my(self, data: dict, language: str) -> dict:
-        user_id, _, account_db_path, _ = self._get_user_context()
+        user_id, _, account_db_path, _, _ = self._get_user_context()
         items = _db.work_list_my(self._db_path(), user_id)
         items = self._enrich_items(items, user_id, account_db_path)
         return {'success': True, 'items': items, 'current_user_id': user_id}
@@ -221,8 +240,9 @@ class WorkHubApp(BaseApp):
         work_id = data.get('id')
         if not work_id:
             return {'success': False, 'error': 'missing_id'}
-        user_id, group_ids, account_db_path, _ = self._get_user_context()
-        item, err = _db.work_get(self._db_path(), int(work_id), user_id, group_ids)
+        user_id, group_ids, account_db_path, _, channel_ids = self._get_user_context()
+        item, err = _db.work_get(self._db_path(), int(work_id), user_id, group_ids,
+                                 channel_ids=channel_ids)
         if err:
             return {'success': False, 'error': err}
         item['is_owner'] = (item.get('owner_id') == user_id)
@@ -235,16 +255,21 @@ class WorkHubApp(BaseApp):
         return {'success': True, 'item': item}
 
     def _handle_work_create(self, data: dict, language: str) -> dict:
-        user_id = get_current_user_id()
+        user_id, _, _, _, channel_ids = self._get_user_context()
         template = data.get('template', 'note')
         title = data.get('title', '')
         body = data.get('body', '')
         tags = data.get('tags', '')
         history_body = data.get('history_body', '')
+        channel_id = data.get('channel_id') or None
+        # Verify client-supplied channel_id is accessible
+        if channel_id and channel_id not in channel_ids:
+            channel_id = None
         new_id, updated_at = _db.work_create(
             self._db_path(), template, user_id, title, body, tags,
             history_body=history_body,
-            action_history_limit=self._action_history_limit()
+            action_history_limit=self._action_history_limit(),
+            channel_id=channel_id,
         )
         return {'success': True, 'id': new_id, 'version': 1, 'updated_at': updated_at}
 
@@ -252,7 +277,7 @@ class WorkHubApp(BaseApp):
         work_id = data.get('id')
         if not work_id:
             return {'success': False, 'error': 'missing_id'}
-        user_id, group_ids, account_db_path, _ = self._get_user_context()
+        user_id, group_ids, account_db_path, _, channel_ids = self._get_user_context()
         title = data.get('title', '')
         body = data.get('body', '')
         tags = data.get('tags', '')
@@ -275,7 +300,8 @@ class WorkHubApp(BaseApp):
             skip_body=skip_body,
             history_body=history_body, history_title=history_title,
             autosave_count=autosave_count,
-            action_history_limit=self._action_history_limit()
+            action_history_limit=self._action_history_limit(),
+            channel_ids=channel_ids,
         )
         if result.get('success'):
             self._touch_notify(int(work_id), user_id)
@@ -298,8 +324,9 @@ class WorkHubApp(BaseApp):
         work_id = data.get('id')
         if not work_id:
             return {'success': False, 'error': 'missing_id'}
-        user_id, group_ids, account_db_path, _ = self._get_user_context()
-        _, err = _db.work_get(self._db_path(), int(work_id), user_id, group_ids)
+        user_id, group_ids, account_db_path, _, channel_ids = self._get_user_context()
+        _, err = _db.work_get(self._db_path(), int(work_id), user_id, group_ids,
+                              channel_ids=channel_ids)
         if err == 'not_found':
             return {'success': False, 'error': 'not_found'}
         known_mtime = data.get('mtime', 0)
@@ -358,23 +385,25 @@ class WorkHubApp(BaseApp):
         work_id = data.get('id')
         if not work_id:
             return {'success': False, 'error': 'missing_id'}
-        user_id, group_ids, _, _ = self._get_user_context()
+        user_id, group_ids, _, _, channel_ids = self._get_user_context()
         result = _db.work_copy(self._db_path(), int(work_id), user_id, group_ids,
-                               action_history_limit=self._action_history_limit())
+                               action_history_limit=self._action_history_limit(),
+                               channel_ids=channel_ids)
         return result
 
     def _handle_work_search(self, data: dict, language: str) -> dict:
         query = data.get('query', '').strip()
         if not query:
             return {'success': True, 'items': []}
-        user_id, group_ids, account_db_path, _ = self._get_user_context()
-        items = _search.search(self._db_path(), query, user_id, group_ids)
+        user_id, group_ids, account_db_path, _, channel_ids = self._get_user_context()
+        items = _search.search(self._db_path(), query, user_id, group_ids,
+                               channel_ids=channel_ids)
         items = self._enrich_items(items, user_id, account_db_path)
         return {'success': True, 'items': items}
 
     def _handle_tag_list(self, data: dict, language: str) -> dict:
-        user_id, group_ids, _, _ = self._get_user_context()
-        tags = _db.tag_list(self._db_path(), user_id, group_ids)
+        user_id, group_ids, _, _, channel_ids = self._get_user_context()
+        tags = _db.tag_list(self._db_path(), user_id, group_ids, channel_ids=channel_ids)
         return {'success': True, 'tags': tags}
 
     def _handle_history_save(self, data: dict, language: str) -> dict:
@@ -401,8 +430,9 @@ class WorkHubApp(BaseApp):
         work_id = data.get('id')
         if not work_id:
             return {'success': False, 'error': 'missing_id'}
-        user_id, group_ids, account_db_path, _ = self._get_user_context()
-        entries, err = _db.work_history_list(self._db_path(), int(work_id), user_id, group_ids)
+        user_id, group_ids, account_db_path, _, channel_ids = self._get_user_context()
+        entries, err = _db.work_history_list(self._db_path(), int(work_id), user_id, group_ids,
+                                             channel_ids=channel_ids)
         if err:
             return {'success': False, 'error': err}
         info_cache = {}
@@ -420,8 +450,9 @@ class WorkHubApp(BaseApp):
         history_id = data.get('history_id')
         if not history_id:
             return {'success': False, 'error': 'missing_history_id'}
-        user_id, group_ids, _, _ = self._get_user_context()
-        entry, err = _db.work_history_get(self._db_path(), int(history_id), user_id, group_ids)
+        user_id, group_ids, _, _, channel_ids = self._get_user_context()
+        entry, err = _db.work_history_get(self._db_path(), int(history_id), user_id, group_ids,
+                                          channel_ids=channel_ids)
         if err:
             return {'success': False, 'error': err}
         return {'success': True, 'entry': entry}
@@ -519,16 +550,18 @@ class WorkHubApp(BaseApp):
         ids = [int(i) for i in ids if str(i).isdigit() or (isinstance(i, int) and i > 0)]
         if not ids:
             return {'success': True, 'items': []}
-        user_id, group_ids, _, _ = self._get_user_context()
-        items = _db.work_get_titles(self._db_path(), ids, user_id, group_ids)
+        user_id, group_ids, _, _, channel_ids = self._get_user_context()
+        items = _db.work_get_titles(self._db_path(), ids, user_id, group_ids,
+                                    channel_ids=channel_ids)
         return {'success': True, 'items': items}
 
     def _handle_link_list(self, data: dict, language: str) -> dict:
         work_id = data.get('id')
         if not work_id:
             return {'success': False, 'error': 'missing_id'}
-        user_id, group_ids, account_db_path, _ = self._get_user_context()
-        items, err = _db.link_list(self._db_path(), int(work_id), user_id, group_ids)
+        user_id, group_ids, account_db_path, _, channel_ids = self._get_user_context()
+        items, err = _db.link_list(self._db_path(), int(work_id), user_id, group_ids,
+                                   channel_ids=channel_ids)
         if err:
             return {'success': False, 'error': err}
         items = self._enrich_items(items, user_id, account_db_path)
@@ -539,18 +572,20 @@ class WorkHubApp(BaseApp):
         linked_id = data.get('linked_id')
         if not work_id or not linked_id:
             return {'success': False, 'error': 'missing_id'}
-        user_id, group_ids, _, _ = self._get_user_context()
+        user_id, group_ids, _, _, channel_ids = self._get_user_context()
         return _db.link_add(self._db_path(), int(work_id), int(linked_id), user_id, group_ids,
-                            action_history_limit=self._action_history_limit())
+                            action_history_limit=self._action_history_limit(),
+                            channel_ids=channel_ids)
 
     def _handle_link_remove(self, data: dict, language: str) -> dict:
         work_id = data.get('id')
         linked_id = data.get('linked_id')
         if not work_id or not linked_id:
             return {'success': False, 'error': 'missing_id'}
-        user_id, group_ids, _, _ = self._get_user_context()
+        user_id, group_ids, _, _, channel_ids = self._get_user_context()
         return _db.link_remove(self._db_path(), int(work_id), int(linked_id), user_id, group_ids,
-                               action_history_limit=self._action_history_limit())
+                               action_history_limit=self._action_history_limit(),
+                               channel_ids=channel_ids)
 
     def _handle_action_log_list(self, data: dict, language: str) -> dict:
         user_id = get_current_user_id()
@@ -605,8 +640,9 @@ class WorkHubApp(BaseApp):
         target_id = data.get('target_id')
         if not target_id:
             return {'success': False, 'error': 'missing_id'}
-        user_id, group_ids, account_db_path, _ = self._get_user_context()
-        item, err = _db.link_resolve(self._db_path(), int(target_id), user_id, group_ids)
+        user_id, group_ids, account_db_path, _, channel_ids = self._get_user_context()
+        item, err = _db.link_resolve(self._db_path(), int(target_id), user_id, group_ids,
+                                     channel_ids=channel_ids)
         if err:
             return {'success': False, 'error': err}
         item['is_owner'] = (item.get('owner_id') == user_id)
@@ -616,6 +652,125 @@ class WorkHubApp(BaseApp):
             item['owner_avatar_small'] = info.get('avatar_small')
             item['owner_avatar_mime'] = info.get('avatar_mime')
         return {'success': True, 'item': item}
+
+
+    # ------------------------------------------------------------------
+    # Channel handlers
+    # ------------------------------------------------------------------
+
+    def _handle_channel_list(self, data: dict, language: str) -> dict:
+        user_id, group_ids, account_db_path, groups, _ = self._get_user_context()
+        group_names = [g['name'] for g in groups]
+        channels = _db.channel_list(self._db_path(), user_id, group_ids, group_names=group_names)
+        return {'success': True, 'channels': channels}
+
+    def _handle_channel_create(self, data: dict, language: str) -> dict:
+        name = (data.get('name') or '').strip()
+        if not name:
+            return {'success': False, 'error': 'missing_name'}
+        user_id = get_current_user_id()
+        return _db.channel_create(self._db_path(), name, user_id)
+
+    def _handle_channel_get(self, data: dict, language: str) -> dict:
+        channel_id = data.get('channel_id')
+        if not channel_id:
+            return {'success': False, 'error': 'missing_id'}
+        user_id, group_ids, account_db_path, groups, _ = self._get_user_context()
+        group_names = [g['name'] for g in groups]
+        result = _db.channel_get(self._db_path(), channel_id, user_id, group_ids,
+                                 group_names=group_names)
+        if not result.get('success'):
+            return result
+        # Enrich user member display names
+        members = result.get('members', [])
+        enriched = []
+        for m in members:
+            entry = dict(m)
+            if m['member_type'] == 'user':
+                info = enrich_user_info(account_db_path, m['member_id'])
+                entry['display_name'] = info.get('display_name', m['member_id'])
+                entry['avatar_small'] = info.get('avatar_small')
+                entry['avatar_mime'] = info.get('avatar_mime')
+            else:
+                # Group: use member_id as display; no avatar
+                entry['display_name'] = m['member_id']
+                entry['avatar_small'] = None
+                entry['avatar_mime'] = None
+            enriched.append(entry)
+        # Enrich group names using account DB
+        all_groups = _group_mod.list_groups(account_db_path)
+        group_name_map = {g['id']: g['name'] for g in all_groups}
+        for entry in enriched:
+            if entry['member_type'] == 'group':
+                entry['display_name'] = group_name_map.get(entry['member_id'], entry['member_id'])
+        result['members'] = enriched
+        return result
+
+    def _handle_channel_update(self, data: dict, language: str) -> dict:
+        channel_id = data.get('channel_id')
+        name = (data.get('name') or '').strip()
+        if not channel_id or not name:
+            return {'success': False, 'error': 'missing_params'}
+        user_id = get_current_user_id()
+        return _db.channel_update(self._db_path(), channel_id, user_id, name)
+
+    def _handle_channel_member_add(self, data: dict, language: str) -> dict:
+        channel_id = data.get('channel_id')
+        member_type = data.get('member_type')
+        member_id = (data.get('member_id') or '').strip()
+        if not channel_id or not member_type or not member_id:
+            return {'success': False, 'error': 'missing_params'}
+        user_id = get_current_user_id()
+        if member_type == 'group':
+            # member_id may be a group name; resolve to UUID
+            account_db_path = self._get_account_db_path()
+            all_groups = _group_mod.list_groups(account_db_path)
+            matched = [g for g in all_groups if g['name'] == member_id or g['id'] == member_id]
+            if not matched:
+                return {'success': False, 'error': 'group_not_found'}
+            member_id = matched[0]['id']
+        return _db.channel_member_add(self._db_path(), channel_id, user_id, member_type, member_id)
+
+    def _handle_channel_member_remove(self, data: dict, language: str) -> dict:
+        channel_id = data.get('channel_id')
+        member_type = data.get('member_type')
+        member_id = (data.get('member_id') or '').strip()
+        if not channel_id or not member_type or not member_id:
+            return {'success': False, 'error': 'missing_params'}
+        user_id = get_current_user_id()
+        return _db.channel_member_remove(self._db_path(), channel_id, user_id, member_type, member_id)
+
+    def _handle_channel_delete(self, data: dict, language: str) -> dict:
+        channel_id = data.get('channel_id')
+        if not channel_id:
+            return {'success': False, 'error': 'missing_params'}
+        user_id = get_current_user_id()
+        return _db.channel_delete(self._db_path(), channel_id, user_id)
+
+    def _handle_channel_set_admin(self, data: dict, language: str) -> dict:
+        channel_id = data.get('channel_id')
+        new_admin_id = (data.get('new_admin_id') or '').strip()
+        if not channel_id or not new_admin_id:
+            return {'success': False, 'error': 'missing_params'}
+        user_id = get_current_user_id()
+        return _db.channel_set_admin(self._db_path(), channel_id, user_id, new_admin_id)
+
+    def _handle_channel_active_load(self, data: dict, language: str) -> dict:
+        config = self.load_config(CONFIG_DEFAULTS)
+        channel_id = config.get('workhub.active_channel_id', '') or None
+        return {'success': True, 'channel_id': channel_id}
+
+    def _handle_channel_active_save(self, data: dict, language: str) -> dict:
+        channel_id = data.get('channel_id') or ''
+        config = self.load_config(CONFIG_DEFAULTS)
+        config['workhub.active_channel_id'] = channel_id
+        self.save_config(config)
+        return {'success': True}
+
+    def _handle_group_list_all(self, data: dict, language: str) -> dict:
+        account_db_path = self._get_account_db_path()
+        groups = _group_mod.list_groups(account_db_path)
+        return {'success': True, 'groups': [{'id': g['id'], 'name': g['name']} for g in groups]}
 
 
 register_app_class(WorkHubApp)
