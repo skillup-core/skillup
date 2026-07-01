@@ -201,7 +201,6 @@ Skillup is a plugin-based multi-app desktop platform:
 - **Peerbus**: optional encrypted peer-to-peer RPC for multi-user features (Skill Talk, etc.)
 - **Shared theme**: one CSS file (`desktop/common/style/default.css`) controls the look of all apps
 
-See [docs/APP.md](docs/APP.md) for the developer guide and API reference.
 
 ---
 

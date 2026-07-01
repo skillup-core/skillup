@@ -22,21 +22,31 @@ def on_pre_req(session_id, agent, messages, new_message):
     print(f'[create_path] on_pre_req turns={len(messages)} msg={new_message[:60]!r}')
 
 
-def on_post_req(session_id, agent, messages, response):
-    print(f'[create_path] on_post_req response_len={len(response)}')
-
-    # extract the <command> block
-    m = re.search(r'<command>(.*?)</command>', response, re.DOTALL)
+def _parse_command(response):
+    # LLM output sometimes wraps the block in a ``` fence; strip that first
+    # so the <command> regex still matches either way.
+    stripped = re.sub(r'```(?:\w+)?\s*(<command>.*?</command>)\s*```',
+                       r'\1', response, flags=re.DOTALL)
+    m = re.search(r'<command>(.*?)</command>', stripped, re.DOTALL)
     if not m:
-        return
-
-    # parse name = value lines
+        return None
     values = {}
     for line in m.group(1).splitlines():
         line = line.strip()
         if '=' in line:
             name, _, value = line.partition('=')
             values[name.strip()] = value.strip()
+    return values
+
+
+def on_post_req(session_id, agent, messages, response):
+    print(f'[create_path] on_post_req response_len={len(response)}')
+
+    values = _parse_command(response)
+    if values is None:
+        # No <command> block: the LLM asked a clarifying question instead —
+        # show that question as-is, it's already natural language.
+        return {'response': response.strip()}
 
     layer_raw = values.get('layer', '').strip()
     points_raw = values.get('points', '').strip()
@@ -44,7 +54,7 @@ def on_post_req(session_id, agent, messages, response):
 
     if not layer_raw or not points_raw or not width_raw:
         print(f'[create_path] incomplete command: {values}')
-        return
+        return {'response': response.strip()}
 
     # numeric layer is passed as-is; string layer is quoted
     try:
@@ -70,8 +80,10 @@ def on_post_req(session_id, agent, messages, response):
         session_data['has_path'] = True
         _sessions[session_id] = session_data
         print(f'[create_path] path created: {skill_code}')
+        return {'response': f'{layer_raw} 레이어에 폭 {width_raw}의 경로를 그렸습니다 ({points_raw}).'}
     else:
         print(f'[create_path] call_skill failed')
+        return {'response': 'CIW에 SKILL 코드 전달에 실패했습니다.'}
 
 
 def on_exit(session_id, agent, messages):

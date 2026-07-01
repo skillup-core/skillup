@@ -332,6 +332,68 @@
         .sa-msg-assistant .sa-bubble strong { font-weight: 700; }
         .sa-msg-assistant .sa-bubble em { font-style: italic; }
 
+        /* nested sub-agent transcript inside a leader bubble */
+        .sa-subagent-wrap {
+            margin-top: 0;
+        }
+        .sa-subagent-wrap + .sa-subagent-summary {
+            margin-top: 10px;
+        }
+        .sa-subagent-box {
+            margin-top: 8px;
+            padding: 8px 10px;
+            border: 2px dashed var(--border-color, #373c47);
+            border-radius: 6px;
+            background: var(--bg-primary, #1a1d23);
+            font-size: 12px;
+        }
+        .sa-subagent-turn {
+            display: flex;
+            flex-direction: column;
+            margin-top: 8px;
+        }
+        .sa-subagent-turn:first-child { margin-top: 0; }
+        .sa-subagent-turn-leader { align-items: flex-end; }
+        .sa-subagent-turn-subagent { align-items: flex-start; }
+        .sa-subagent-role {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-secondary, #a0a0a0);
+            margin-bottom: 3px;
+        }
+        .sa-subagent-role-tag {
+            font-weight: 400;
+            color: var(--text-secondary, #6b7280);
+            opacity: 0.75;
+        }
+        .sa-subagent-turn-leader .sa-bubble {
+            background: var(--accent-color, #4a90e2);
+            color: #fff;
+            border-top-right-radius: 3px;
+            white-space: pre-wrap;
+            text-align: right;
+        }
+        .sa-subagent-turn-subagent .sa-bubble {
+            background: var(--bg-secondary, #22252e);
+            border: 1px solid var(--border-color, #373c47);
+            color: var(--text-primary, #e0e0e0);
+            border-top-left-radius: 3px;
+        }
+        .sa-subagent-box .sa-bubble {
+            max-width: 85%;
+            padding: 8px 12px;
+            border-radius: 10px;
+            font-size: 13px;
+            line-height: 1.5;
+            word-break: break-word;
+            font-family: var(--font-mono, 'Consolas', 'Monaco', monospace);
+        }
+        .sa-subagent-wait {
+            display: flex;
+            align-items: center;
+            margin-top: 10px;
+        }
+
         .sa-thinking {
             display: flex;
             align-items: center;
@@ -1057,6 +1119,12 @@
         div.appendChild(_makeAvatar(false));
         var bubble = document.createElement('div');
         bubble.className = 'sa-bubble';
+        _renderAssistantText(bubble, text);
+        div.appendChild(bubble);
+        appendMsg(div);
+    }
+
+    function _renderAssistantText(bubble, text) {
         if (window.marked) {
             bubble.innerHTML = marked.parse(text);
             if (window.hljs) {
@@ -1068,8 +1136,123 @@
             bubble.style.whiteSpace = 'pre-wrap';
             bubble.textContent = text;
         }
+    }
+
+    // ── Streaming sub-agent transcript ──────────────────────────────
+    // While a leader turn is delegating to sub-agent(s), each round-trip
+    // arrives as its own 'subagent_turn' event as soon as it happens (not
+    // batched at the end). _streamMsg tracks the in-progress leader bubble
+    // so turns can be appended live; the trailing 'response' event fills in
+    // the leader's own summary text and closes the bubble out.
+    var _streamMsg = null;  // { div, bubble, boxes: {agent_id: boxEl}, waitEl }
+
+    function _beginStreamingAssistantMsg() {
+        var div = document.createElement('div');
+        div.className = 'sa-msg sa-msg-assistant';
+        div.appendChild(_makeAvatar(false));
+        var bubble = document.createElement('div');
+        bubble.className = 'sa-bubble';
         div.appendChild(bubble);
         appendMsg(div);
+        // summaryEl is created lazily in _finalizeStreamingAssistantMsg so it
+        // lands after the subagent-turn boxes in DOM order (leader's summary
+        // is only known once delegation finishes, so it renders last/bottom).
+        _streamMsg = { div: div, bubble: bubble, boxes: {}, waitEl: null };
+        _showStreamWait();
+        return _streamMsg;
+    }
+
+    // Small blinking-dots indicator kept at the bottom of the in-progress
+    // streaming bubble, below the subagent boxes, so it's clear more
+    // delegation turns (or the leader's closing summary) are still coming.
+    function _showStreamWait() {
+        if (!_streamMsg || _streamMsg.waitEl) return;
+        var waitEl = document.createElement('div');
+        waitEl.className = 'sa-subagent-wait';
+        waitEl.innerHTML =
+            '<span class="sa-thinking-dot"></span>' +
+            '<span class="sa-thinking-dot"></span>' +
+            '<span class="sa-thinking-dot"></span>';
+        _streamMsg.bubble.appendChild(waitEl);
+        _streamMsg.waitEl = waitEl;
+    }
+
+    function _hideStreamWait() {
+        if (!_streamMsg || !_streamMsg.waitEl) return;
+        _streamMsg.waitEl.parentNode.removeChild(_streamMsg.waitEl);
+        _streamMsg.waitEl = null;
+    }
+
+    // Renders the leader <-> sub-agent transcript nested inside the
+    // leader's own bubble. Uses margin for spacing (no `gap`/`grid-gap` —
+    // unsupported in PySide2) and no `title` attributes (CentOS 7 PySide2
+    // tooltip crash) per CLAUDE.md.
+    function _appendSubagentTurnLive(data) {
+        if (!_streamMsg) _beginStreamingAssistantMsg();
+        _hideStreamWait();
+
+        var box = _streamMsg.boxes[data.agent_id];
+        if (!box) {
+            var wrap = _streamMsg.bubble.querySelector('.sa-subagent-wrap');
+            if (!wrap) {
+                wrap = document.createElement('div');
+                wrap.className = 'sa-subagent-wrap';
+                _streamMsg.bubble.appendChild(wrap);
+            }
+            box = document.createElement('div');
+            box.className = 'sa-subagent-box';
+            wrap.appendChild(box);
+            _streamMsg.boxes[data.agent_id] = box;
+        }
+
+        var isLeader = data.role === 'leader';
+        var turnDiv = document.createElement('div');
+        turnDiv.className = 'sa-subagent-turn sa-subagent-turn-' + (isLeader ? 'leader' : 'subagent');
+
+        var roleDiv = document.createElement('div');
+        roleDiv.className = 'sa-subagent-role';
+        var nameSpan = document.createElement('span');
+        var tagSpan = document.createElement('span');
+        tagSpan.className = 'sa-subagent-role-tag';
+        if (isLeader) {
+            nameSpan.textContent = data.leader_name || t('Leader', 'Leader');
+            tagSpan.textContent = t(' (Leader)', ' (Leader)');
+        } else {
+            nameSpan.textContent = data.agent_name || data.agent_id || t('Sub', 'Sub');
+            tagSpan.textContent = t(' (subagent)', ' (subagent)');
+        }
+        roleDiv.appendChild(nameSpan);
+        roleDiv.appendChild(tagSpan);
+        turnDiv.appendChild(roleDiv);
+
+        var textBubble = document.createElement('div');
+        textBubble.className = 'sa-bubble';
+        textBubble.textContent = data.content || '';
+        turnDiv.appendChild(textBubble);
+
+        box.appendChild(turnDiv);
+        _showStreamWait();
+        var container = document.getElementById('chat-messages');
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function _finalizeStreamingAssistantMsg(text) {
+        var msg = _streamMsg;
+        if (!msg) {
+            appendAssistantMsg(text);
+            return;
+        }
+        if (msg.waitEl) {
+            msg.waitEl.parentNode.removeChild(msg.waitEl);
+            msg.waitEl = null;
+        }
+        _streamMsg = null;
+        var summaryEl = document.createElement('div');
+        summaryEl.className = 'sa-subagent-summary';
+        msg.bubble.appendChild(summaryEl);
+        _renderAssistantText(summaryEl, text);
+        var container = document.getElementById('chat-messages');
+        container.scrollTop = container.scrollHeight;
     }
 
     function appendError(text) {
@@ -1126,13 +1309,26 @@
             document.getElementById('init-error').textContent   = data.error || 'Error';
             document.getElementById('init-error').style.display = '';
             document.getElementById('btn-init-back').style.display = '';
+        } else if (type === 'subagent_turn') {
+            // Fired live, as each leader<->sub-agent round-trip completes,
+            // before the final 'response' event arrives.
+            hideThinking();
+            _appendSubagentTurnLive(data);
         } else if (type === 'response') {
             hideThinking();
-            appendAssistantMsg(data.content || '');
+            if (data.had_subagents) {
+                _finalizeStreamingAssistantMsg(data.content || '');
+            } else {
+                appendAssistantMsg(data.content || '');
+            }
             enableInput(true);
             document.getElementById('chat-input').focus();
         } else if (type === 'chat_error') {
             hideThinking();
+            if (_streamMsg && _streamMsg.waitEl) {
+                _streamMsg.waitEl.parentNode.removeChild(_streamMsg.waitEl);
+            }
+            _streamMsg = null;
             appendError(data.error || t('오류가 발생했습니다.', 'An error occurred.'));
             enableInput(true);
         }

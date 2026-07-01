@@ -126,6 +126,15 @@ def _load_agent_module(agent_dir):
         return None
 
 
+# Real stdout, captured before any hook can redirect sys.stdout to stderr
+# (see _call_hook below). The subprocess bridge (lib/comm.py) writes
+# JSON-RPC frames straight to sys.stdout, so callJS() calls made from
+# *inside* a hook (streaming sub-agent events) must go through this
+# captured reference instead of the live sys.stdout, or they get silently
+# swallowed as stderr log lines.
+_REAL_STDOUT = sys.stdout
+
+
 def _call_hook(mod, name, *args):
     """Call a hook function on the agent module. Returns its return value or None.
     stdout is redirected to stderr during the call so plain print() in agent.py is safe."""
@@ -181,6 +190,13 @@ class SkillupAgentApp(BaseApp):
         self._init_called    = False
         self._model_params   = {}
         self._agent_ctx      = {}
+        # sub-agent sessions: agent_id -> {conversation, session_id, module,
+        # model_params, agent_dir, name}. Isolated from the leader's own
+        # session fields above; never read/written by the leader's _bg.
+        self._subsessions    = {}
+        # accumulator for the current on_post_req call: list of
+        # {'agent_id', 'agent_name', 'turns'} dicts, one per call_subagent().
+        self._subagent_turns = []
 
     # ── CLI ─────────────────────────────────────────────────────
 
@@ -215,6 +231,18 @@ class SkillupAgentApp(BaseApp):
         self._conversation   = []
         self._call_on_exit()
 
+    def _stream_callJS(self, action, data):
+        """callJS() safe to call from inside a hook (i.e. while sys.stdout may
+        be redirected to sys.stderr by _call_hook). Restores the real stdout
+        for the duration of the call so subprocess-mode JSON-RPC notifications
+        aren't misrouted to the stderr log stream."""
+        cur = sys.stdout
+        sys.stdout = _REAL_STDOUT
+        try:
+            self.callJS(action, data)
+        finally:
+            sys.stdout = cur
+
     # ── Default system prompt ─────────────────────────────────────
 
     _LANG_INSTRUCTION = {
@@ -232,8 +260,13 @@ class SkillupAgentApp(BaseApp):
 
     # ── DDE ──────────────────────────────────────────────────────
 
-    def _make_agent_ctx(self, language='en'):
-        """Build the agent context dict passed to agent.py hooks as 'agent'."""
+    def _make_agent_ctx(self, language='en', allow_subagent=True):
+        """Build the agent context dict passed to agent.py hooks as 'agent'.
+
+        allow_subagent=False omits 'call_subagent' from the context, which is
+        how sub-agent nesting is capped at depth 1: a sub-agent's own hooks
+        get call_skill/language only, so they cannot delegate further.
+        """
         def call_skill(code):
             try:
                 from app.skillbot.inject.skillbot_inject import (
@@ -253,7 +286,157 @@ class SkillupAgentApp(BaseApp):
             except Exception as e:
                 print(f'[SkillupAgent] call_skill error: {e}', file=sys.stderr)
                 return False
-        return {'call_skill': call_skill, 'language': language}
+        ctx = {'call_skill': call_skill, 'language': language}
+        if allow_subagent:
+            ctx['call_subagent'] = lambda agent_id, message, display=None: self._call_subagent(
+                agent_id, message, language, display=display)
+        return ctx
+
+    # ── Sub-agent ────────────────────────────────────────────────
+
+    def _call_subagent(self, agent_id, message, language, display=None):
+        """Run one delegation turn against a sub-agent, isolated from the
+        leader's own session fields (_conversation/_session_id/_agent_module/
+        _model_params are never touched here).
+
+        Sub-sessions persist per agent_id in self._subsessions for the
+        lifetime of the leader session, so a second call_subagent() for the
+        same agent_id continues that sub-agent's own conversation history
+        (e.g. "change the width you just drew to 4").
+
+        `display`, if given, is a human-readable version of `message` shown
+        in the UI's streamed leader turn instead of the raw `message` text
+        (which is often a compact key=value string meant for the sub-agent's
+        LLM, not for display). The raw `message` is still what's actually
+        sent to the sub-agent — `display` only affects rendering.
+
+        Returns the sub-agent's response text, or None on failure.
+        """
+        agent_id = str(agent_id).strip()
+        message = str(message)
+        display_message = str(display) if display is not None else message
+
+        agents = self._scan_agents(language)
+        agent = next((a for a in agents if a['id'] == agent_id), None)
+        if agent is None:
+            print(f'[SkillupAgent] call_subagent: agent not found: {agent_id}', file=sys.stderr)
+            return None
+
+        sub = self._subsessions.get(agent_id)
+        if sub is None:
+            system_path = Path(agent['dir']) / 'system.txt'
+            if not system_path.exists():
+                print(f'[SkillupAgent] call_subagent: system.txt not found for {agent_id}',
+                      file=sys.stderr)
+                return None
+            system_content = system_path.read_text(encoding='utf-8').strip()
+            default_prompt = self._default_system_prompt(language)
+            if default_prompt:
+                system_content = default_prompt + '\n\n' + system_content
+
+            sub_session_id = str(uuid.uuid4())
+            # Sub-agent hooks get call_skill/language only — no call_subagent,
+            # so delegation cannot recurse past depth 1.
+            sub_ctx = self._make_agent_ctx(language, allow_subagent=False)
+            sub_module = _load_agent_module(agent['dir'])
+
+            raw = _call_hook(sub_module, 'on_init', sub_session_id, sub_ctx,
+                              agent['dir'], system_content)
+            if isinstance(raw, dict):
+                sub_model_params = raw.get('hyperparameter', {})
+                send_system = raw.get('system_prompt', system_content)
+            else:
+                sub_model_params = {}
+                send_system = system_content
+
+            init_messages = [{'role': 'user', 'content': send_system}]
+            init_content, err = _llm_chat(
+                self._llm_host, self._llm_port, init_messages,
+                model_params=sub_model_params,
+            )
+            if err:
+                print(f'[SkillupAgent] call_subagent: init failed for {agent_id}: {err}',
+                      file=sys.stderr)
+                return None
+
+            sub = {
+                'conversation': [
+                    {'role': 'user',      'content': send_system},
+                    {'role': 'assistant', 'content': init_content},
+                ],
+                'session_id':   sub_session_id,
+                'module':       sub_module,
+                'ctx':          sub_ctx,
+                'model_params': sub_model_params,
+                'agent_dir':    agent['dir'],
+                'name':         agent['name'],
+            }
+            self._subsessions[agent_id] = sub
+
+        turns = []
+
+        pre_result = _call_hook(sub['module'], 'on_pre_req', sub['session_id'], sub['ctx'],
+                                 list(sub['conversation']), message)
+        send_message = pre_result.get('new_message', message) if isinstance(pre_result, dict) else message
+
+        # Stream the leader→sub-agent turn as soon as it's known, before the
+        # (potentially slow) LLM round-trip — this is what makes the leader
+        # turn appear immediately instead of after the whole delegation
+        # chain completes.
+        leader_name = self._selected_agent['name'] if self._selected_agent else None
+        self._stream_callJS('onAgentEvent', {
+            'type':        'subagent_turn',
+            'agent_id':    agent_id,
+            'agent_name':  sub['name'],
+            'leader_name': leader_name,
+            'role':        'leader',
+            'content':     display_message,
+        })
+
+        full_msgs = sub['conversation'] + [{'role': 'user', 'content': send_message}]
+        content, err = _llm_chat(
+            self._llm_host, self._llm_port, full_msgs,
+            model_params=sub['model_params'],
+        )
+        if err:
+            print(f'[SkillupAgent] call_subagent: chat failed for {agent_id}: {err}',
+                  file=sys.stderr)
+            return None
+
+        sub['conversation'].append({'role': 'user',      'content': send_message})
+        sub['conversation'].append({'role': 'assistant', 'content': content})
+
+        post_result = _call_hook(sub['module'], 'on_post_req', sub['session_id'], sub['ctx'],
+                                  list(sub['conversation']), content)
+        display = post_result.get('response', content) if isinstance(post_result, dict) else content
+
+        # Stream the sub-agent's reply the moment it's ready.
+        self._stream_callJS('onAgentEvent', {
+            'type':        'subagent_turn',
+            'agent_id':    agent_id,
+            'agent_name':  sub['name'],
+            'leader_name': leader_name,
+            'role':        'subagent',
+            'content':     display,
+        })
+
+        turns.append({'role': 'leader',   'content': send_message})
+        turns.append({'role': 'subagent', 'content': display})
+
+        # Merge into any existing transcript entry for this agent_id within
+        # the current on_post_req call, so repeated delegations in one turn
+        # accumulate under a single subagents[] entry.
+        existing = next((e for e in self._subagent_turns if e['agent_id'] == agent_id), None)
+        if existing is not None:
+            existing['turns'].extend(turns)
+        else:
+            self._subagent_turns.append({
+                'agent_id':   agent_id,
+                'agent_name': sub['name'],
+                'turns':      turns,
+            })
+
+        return display
 
     def _call_on_exit(self):
         if self._init_called and self._agent_module is not None:
@@ -264,6 +447,12 @@ class SkillupAgentApp(BaseApp):
         self._model_params = {}
         self._session_id   = None
         self._agent_ctx    = {}
+
+        for agent_id, sub in self._subsessions.items():
+            _call_hook(sub['module'], 'on_exit', sub['session_id'], sub['ctx'],
+                       list(sub['conversation']))
+        self._subsessions    = {}
+        self._subagent_turns = []
 
     # ── Connection check ─────────────────────────────────────────
 
@@ -528,9 +717,14 @@ class SkillupAgentApp(BaseApp):
             self._conversation.append({'role': 'user',      'content': send_message})
             self._conversation.append({'role': 'assistant', 'content': content})
 
+            # Reset the accumulator so this turn's payload only carries
+            # delegations made during this on_post_req call.
+            self._subagent_turns = []
             result = _call_hook(agent_module, 'on_post_req', session_id, agent_ctx,
                                 list(self._conversation), content)
             display = result.get('response', content) if isinstance(result, dict) else content
+            subagent_turns = self._subagent_turns
+            self._subagent_turns = []
 
             if log_enabled:
                 entry = {'time': datetime.datetime.now().isoformat(), 'event': 'response',
@@ -539,7 +733,14 @@ class SkillupAgentApp(BaseApp):
                     entry['modified'] = display
                 _write_log(entry)
 
-            self.callJS('onAgentEvent', {'type': 'response', 'content': display})
+            # Sub-agent turns were already streamed live via 'subagent_turn'
+            # events fired from inside on_post_req (_call_subagent). The
+            # final 'response' event only carries a flag, not the full
+            # transcript again, so the UI doesn't double-render it.
+            event = {'type': 'response', 'content': display}
+            if subagent_turns:
+                event['had_subagents'] = True
+            self.callJS('onAgentEvent', event)
 
         threading.Thread(target=_bg, daemon=True).start()
         return {'success': True, 'status': 'pending'}
