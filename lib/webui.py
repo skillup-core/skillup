@@ -37,6 +37,77 @@ def find_free_port() -> int:
     return port
 
 
+def ensure_desktop_icon_registered() -> None:
+    """
+    Install/refresh the skillup .desktop launcher and icon theme entry
+    under XDG user data dirs (~/.local/share), so window-manager taskbars
+    can resolve the app icon via WM_CLASS -> .desktop -> Icon= lookup.
+
+    Alt+Tab reads the live X11 window icon (set via QApplication.setWindowIcon)
+    and works without this. Many taskbar panels instead resolve icons through
+    the desktop-entry system, which requires a registered .desktop file with
+    a matching StartupWMClass and an icon installed under a themed directory.
+
+    No-op on non-Linux platforms. Runs on every desktop-mode startup so the
+    registration self-heals and picks up path/version changes automatically,
+    without requiring a separate install step.
+    """
+    if sys.platform != 'linux':
+        return
+
+    try:
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        icon_svg_src = os.path.join(repo_root, 'desktop', 'common', 'resource', 'img', 'favicon.svg')
+        executor_sh = os.path.join(os.path.dirname(repo_root), 'skillup-tool', 'skillup-executor.sh')
+        if not os.path.exists(icon_svg_src) or not os.path.exists(executor_sh):
+            return
+
+        data_home = os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share')
+
+        icon_dir = os.path.join(data_home, 'icons', 'hicolor', 'scalable', 'apps')
+        icon_dest = os.path.join(icon_dir, 'skillup.svg')
+        os.makedirs(icon_dir, exist_ok=True)
+        with open(icon_svg_src, 'rb') as f:
+            icon_data = f.read()
+        if not os.path.exists(icon_dest) or open(icon_dest, 'rb').read() != icon_data:
+            with open(icon_dest, 'wb') as f:
+                f.write(icon_data)
+
+        apps_dir = os.path.join(data_home, 'applications')
+        desktop_dest = os.path.join(apps_dir, 'skillup.desktop')
+        os.makedirs(apps_dir, exist_ok=True)
+        desktop_entry = (
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=Skillup Desktop\n"
+            f"Exec={executor_sh} --desktop\n"
+            "Icon=skillup\n"
+            "StartupWMClass=skillup\n"
+            "Terminal=false\n"
+            "Categories=Development;\n"
+        )
+        entry_changed = not os.path.exists(desktop_dest) or open(desktop_dest, 'r').read() != desktop_entry
+        if entry_changed:
+            with open(desktop_dest, 'w') as f:
+                f.write(desktop_entry)
+
+        # Newly written/changed .desktop and icon files are often not picked
+        # up by the shell until the desktop/icon caches are refreshed.
+        if entry_changed:
+            import subprocess
+            try:
+                subprocess.run(['update-desktop-database', apps_dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except (OSError, FileNotFoundError):
+                pass
+            try:
+                subprocess.run(['gtk-update-icon-cache', '-f', '-t', os.path.join(data_home, 'icons', 'hicolor')],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except (OSError, FileNotFoundError):
+                pass
+    except Exception as e:
+        log("warn", message=f"failed to register desktop icon: {e}", tag="qt")
+
+
 def load_static_files(web_dir: str) -> Dict[str, Tuple[bytes, str]]:
     """
     Load all static files from web directory into memory.
@@ -637,7 +708,7 @@ class WebUIEngine:
             from PySide2.QtWidgets import QApplication  # type: ignore
             from PySide2.QtWebEngineWidgets import QWebEngineView  # type: ignore
             from PySide2.QtCore import QUrl, qInstallMessageHandler  # type: ignore
-            from PySide2.QtGui import QFontDatabase  # type: ignore
+            from PySide2.QtGui import QFontDatabase, QIcon  # type: ignore
             from PySide2.QtWebChannel import QWebChannel  # type: ignore
             pyside_version = 2
         except ImportError:
@@ -645,7 +716,7 @@ class WebUIEngine:
                 from PySide6.QtWidgets import QApplication  # type: ignore
                 from PySide6.QtWebEngineWidgets import QWebEngineView  # type: ignore
                 from PySide6.QtCore import QUrl, qInstallMessageHandler  # type: ignore
-                from PySide6.QtGui import QFontDatabase  # type: ignore
+                from PySide6.QtGui import QFontDatabase, QIcon  # type: ignore
                 from PySide6.QtWebChannel import QWebChannel  # type: ignore
                 pyside_version = 6
             except ImportError:
@@ -848,7 +919,27 @@ class WebUIEngine:
                 log(msg_type, message=f"{message}{location}", tag="web")
 
 
+        # Install/refresh the .desktop launcher + themed icon under
+        # ~/.local/share so taskbar panels can resolve the app icon.
+        ensure_desktop_icon_registered()
+
         self.qt_app = QApplication(sys.argv)
+
+        # Set application name / desktop file name so the window's WM_CLASS
+        # is a stable "skillup" identifier, matching the installed
+        # skillup.desktop file's StartupWMClass. Without this, taskbar
+        # panels (which resolve icons via WM_CLASS -> .desktop -> Icon=,
+        # unlike Alt+Tab which reads the live X11 window icon) can't find
+        # a matching launcher and show a blank icon.
+        self.qt_app.setApplicationName('skillup')
+        self.qt_app.setDesktopFileName('skillup')
+
+        # Set app icon so the taskbar / Alt+Tab window switcher shows the
+        # skillup logo instead of a blank/default Qt icon.
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                  'desktop', 'common', 'resource', 'img', 'favicon.ico')
+        if os.path.exists(icon_path):
+            self.qt_app.setWindowIcon(QIcon(icon_path))
 
         for _cb in self._qt_ready_callbacks:
             try:
