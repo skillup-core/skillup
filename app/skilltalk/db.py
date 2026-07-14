@@ -342,13 +342,29 @@ class SkilltalkDB:
         room_cutoff = now - chatroom_retention_days * 86400
         with self._lock:
             self._conn.execute("DELETE FROM chat WHERE created_at < ?", (chat_cutoff,))
+            # Delete child rows (chat, chatroom_member) of doomed rooms before the
+            # room itself, otherwise the immediate FK check rolls back the whole
+            # cleanup whenever a doomed room still has newer chats or members.
+            self._conn.execute(
+                "DELETE FROM chat WHERE chatroom_id IN ("
+                "  SELECT id FROM chatroom WHERE "
+                "  (last_chat_at IS NOT NULL AND last_chat_at < ?) "
+                "  OR (last_chat_at IS NULL AND created_at < ?)"
+                ")",
+                (room_cutoff, room_cutoff)
+            )
+            self._conn.execute(
+                "DELETE FROM chatroom_member WHERE chatroom_id IN ("
+                "  SELECT id FROM chatroom WHERE "
+                "  (last_chat_at IS NOT NULL AND last_chat_at < ?) "
+                "  OR (last_chat_at IS NULL AND created_at < ?)"
+                ")",
+                (room_cutoff, room_cutoff)
+            )
             self._conn.execute(
                 "DELETE FROM chatroom WHERE (last_chat_at IS NOT NULL AND last_chat_at < ?) "
                 "OR (last_chat_at IS NULL AND created_at < ?)",
                 (room_cutoff, room_cutoff)
-            )
-            self._conn.execute(
-                "DELETE FROM chatroom_member WHERE chatroom_id NOT IN (SELECT id FROM chatroom)"
             )
             self._conn.commit()
 

@@ -686,6 +686,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 newActive = cursorDepth > 0 ? cursorDepth - 1 : -1;
             }
 
+            // Fast path: cursor stayed within the same active block at the same depth —
+            // the scan below would recompute the identical range, so skip it entirely.
+            if (newActive === _activeDepth && _activeRange &&
+                cur.line >= _activeRange.from && cur.line <= _activeRange.to) {
+                return;
+            }
+
             // Compute the line range of the block the cursor belongs to.
             // A block boundary is any line whose indent depth <= newActive (i.e. < newActive+1 spaces).
             if (newActive >= 0) {
@@ -717,12 +724,37 @@ document.addEventListener('DOMContentLoaded', function() {
             if (newActive !== _activeDepth || rangeChanged) {
                 _activeDepth = newActive;
                 _activeRange = newRange;
-                cm.refresh();
+                _restyleVisibleLines(cm);
+            }
+        }
+
+        // Re-run applyIndentGuides for only the currently-rendered (viewport) lines,
+        // instead of cm.refresh(), which re-measures and re-renders the whole editor.
+        // Relies on one .CodeMirror-code child per rendered line, in document order
+        // starting at getViewport().from. That 1:1 mapping breaks when a folded
+        // (collapsed markText) region sits inside the viewport — a folded range renders
+        // as a single row for multiple document lines — so bail out to cm.refresh()
+        // whenever any collapsed mark overlaps the visible range.
+        function _restyleVisibleLines(cm) {
+            const viewport = cm.getViewport();
+            const marks = cm.findMarks({ line: viewport.from, ch: 0 }, { line: viewport.to, ch: 0 });
+            if (marks.some(m => m.collapsed)) { cm.refresh(); return; }
+            const codeEl = cm.getWrapperElement().querySelector('.CodeMirror-code');
+            if (!codeEl) { cm.refresh(); return; }
+            const rows = codeEl.children;
+            let lineNo = viewport.from;
+            for (let r = 0; r < rows.length && lineNo < viewport.to; r++, lineNo++) {
+                const handle = cm.getLineHandle(lineNo);
+                if (!handle) continue;
+                applyIndentGuides(cm, handle, rows[r]);
             }
         }
 
         editor.on('renderLine', applyIndentGuides);
         editor.on('cursorActivity', updateActiveGuide);
+        // Edits can shift block boundaries without moving the cursor line, so the
+        // cached active range can no longer be trusted as a fast-path shortcut.
+        editor.on('change', () => { _activeRange = null; });
         editor.refresh();
     })();
 
@@ -2856,7 +2888,11 @@ const ISK = (() => {
             }
 
             while (i < line.length) {
-                if (line[i] === '/' && line[i + 1] === '*') { inBlockComment = true; i += 2; continue; }
+                if (line[i] === '/' && line[i + 1] === '*') {
+                    const end = line.indexOf('*/', i + 2);
+                    if (end >= 0) { i = end + 2; continue; }
+                    inBlockComment = true; i += 2; continue;
+                }
                 if (line[i] === ';') break;
                 if (line[i] === '"') {
                     i++;
@@ -6176,13 +6212,16 @@ const SPLIT = (function() {
         const newVal = cm.getValue();
         if (editor2.getValue() === newVal) return;
         _syncing = true;
-        const cur = editor2.getCursor();
-        const scroll = editor2.getScrollInfo();
-        editor2.setValue(newVal);
-        editor2.setCursor(cur);
-        editor2.scrollTo(scroll.left, scroll.top);
-        splitTab.content = newVal;
-        _syncing = false;
+        try {
+            const cur = editor2.getCursor();
+            const scroll = editor2.getScrollInfo();
+            editor2.setValue(newVal);
+            editor2.setCursor(cur);
+            editor2.scrollTo(scroll.left, scroll.top);
+            splitTab.content = newVal;
+        } finally {
+            _syncing = false;
+        }
     }
 
     // Called on every editor2 change: mirror to the matching main tab
@@ -6196,18 +6235,21 @@ const SPLIT = (function() {
         const newVal = editor2.getValue();
         if (editor && editor.getValue() === newVal) return;
         _syncing = true;
-        const cur = editor.getCursor();
-        const scroll = editor.getScrollInfo();
-        // Only update if this is the active main tab; otherwise just update tab.content
-        if (mainTab === EXP.getActiveTab()) {
-            editor.setValue(newVal);
-            editor.setCursor(cur);
-            editor.scrollTo(scroll.left, scroll.top);
+        try {
+            const cur = editor.getCursor();
+            const scroll = editor.getScrollInfo();
+            // Only update if this is the active main tab; otherwise just update tab.content
+            if (mainTab === EXP.getActiveTab()) {
+                editor.setValue(newVal);
+                editor.setCursor(cur);
+                editor.scrollTo(scroll.left, scroll.top);
+            }
+            mainTab.content = newVal;
+            mainTab.dirty = (newVal !== mainTab.savedContent);
+            EXP.renderTabs();
+        } finally {
+            _syncing = false;
         }
-        mainTab.content = newVal;
-        mainTab.dirty = (newVal !== mainTab.savedContent);
-        EXP.renderTabs();
-        _syncing = false;
     }
 
     // Called after main saves: clear dirty on matching split tab
