@@ -115,7 +115,7 @@ If both are installed, **PySide2 takes precedence**. The application auto-detect
 ## Installation
 
 ```bash
-git clone https://github.com/greenfish77/skillup.git
+git clone https://github.com/skillup-core/skillup.git
 cd skillup
 
 # Choose one — PySide2 (Python 3.7–3.10) or PySide6 (Python 3.9+)
